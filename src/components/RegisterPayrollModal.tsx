@@ -657,7 +657,7 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                 )}
               </div>
 
-              {/* Batch 4-Stage Lifecycle Alert */}
+              {/* Batch workflow assignment summary */}
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 border border-blue-200/80 rounded-xl p-4 flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
@@ -665,13 +665,13 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-blue-900">4-Stage Batch Lifecycle:</span>
+                      <span className="text-xs font-bold text-blue-900">Configured Payroll Workflow:</span>
                       <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900">
-                        1. Docketing &rarr; 2. Initial Checking Desk (configured personnel or team)
+                        Phase 1 completed at registration &rarr; Phase 2 Initial Checking assignee
                       </span>
                     </div>
                     <p className="text-xs text-blue-700 mt-0.5">
-                      Docketing is completed by the receiving officer, then the batch is assigned to the configured Initial Checking desk before it is split into parallel work groups by employment classification.
+                      Phase names, actions, and assignments come from the active Payroll workflow. Registration completes its first internal phase, then the batch is assigned to the configured Phase 2 desk before eligible items are routed to employment work groups.
                     </p>
                   </div>
                 </div>

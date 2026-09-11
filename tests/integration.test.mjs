@@ -30,6 +30,18 @@ test('user accounts can sign in; non-admin accounts cannot alter configuration',
   await admin.action('deleteUser',[admin.state.users.find(u=>u.role==='admin').id],422);
   assert(!JSON.stringify(admin.state).includes(testPassword)); assert(!JSON.stringify(admin.state).includes('password_hash'));
 });
+test('payroll batch intake derives its first phases from the configured workflow template',async()=>{
+  const configured=(await admin.action('createWorkflowTemplate',[{title:'Config-driven Voucher Payroll',description:'Custom payroll phase labels and actions',classification:'Payroll',documentType:'Voucher',employmentClassification:'All',isActive:true,steps:[
+    {...step(1,'receiving_officer','Review & Recommend'),name:'Receiving Validation'},
+    {...step(2,'processor','Approve & Sign'),name:'Payroll Classification Review'},
+    {...step(3,'releasing_officer','Release & Archive'),name:'Custom Payroll Release'},
+  ]}])).result;
+  const configuredBatch=(await receiver.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Voucher',batchBarcode:'CONFIG-DRIVEN-VOUCHER-001',items:[{title:'Config-driven payroll item',barcode:'CONFIG-DRIVEN-PAY-001',classificationType:'Voucher'}],files:[]}])).result;
+  assert.equal(configuredBatch.workflowTemplateId,configured.id);
+  assert.equal(configuredBatch.workflowStages[0].name,'Receiving Validation');
+  assert.equal(configuredBatch.workflowStages[1].name,'Payroll Classification Review');
+  assert.equal(configuredBatch.initialCheckingDesk.roleId,'processor');
+});
 test('catalogue create/edit/toggle and routing validation persist',async()=>{
   const category=admin.state.classifications.find(c=>c.classification==='Communication');
   const added=(await admin.action('addClassificationType',[category.id,{name:'Special Letter',description:'Test',defaultSlaHours:12}])).result;

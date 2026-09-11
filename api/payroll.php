@@ -66,12 +66,15 @@ function payroll_batch_workflow(array $s,string $documentType): array {
     try {
         $workflow=resolve_workflow($s,['classification'=>'Payroll','documentType'=>$documentType,'employmentClassification'=>null]);
     } catch (ApiError $error) {
-        throw new ApiError('Configure one active Payroll workflow for '.$documentType.' with Docketing and Initial Checking phases.',422);
+        throw new ApiError('Configure an active Payroll workflow for '.$documentType.'.',422);
     }
-    fail_unless(count($workflow['steps']??[])>=2,'The Payroll workflow must define Phase 1 Docketing and Phase 2 Initial Checking.',422);
+    fail_unless(count($workflow['steps']??[])>=2,'The selected Payroll workflow needs at least two configured internal phases.',422);
     $docketing=$workflow['steps'][0]; $initialChecking=$workflow['steps'][1];
-    fail_unless(($docketing['stageType']??'INTERNAL_PROCESSING')==='INTERNAL_PROCESSING' && ($docketing['requiredAction']??'')==='Receive','Phase 1 of the Payroll workflow must be an internal Receive (Docketing) phase.',422);
-    fail_unless(($initialChecking['stageType']??'INTERNAL_PROCESSING')==='INTERNAL_PROCESSING' && ($initialChecking['requiredAction']??'')==='Verify & Process','Phase 2 of the Payroll workflow must be an internal Verify & Process (Initial Checking) phase.',422);
+    // Payroll registration completes the first configured internal phase. The
+    // second configured internal phase supplies the Initial Checking assignment.
+    // Names and action labels remain entirely template-defined.
+    fail_unless(($docketing['stageType']??'INTERNAL_PROCESSING')==='INTERNAL_PROCESSING','Phase 1 of the selected Payroll workflow must be an internal phase.',422);
+    fail_unless(($initialChecking['stageType']??'INTERNAL_PROCESSING')==='INTERNAL_PROCESSING','Phase 2 of the selected Payroll workflow must be an internal phase.',422);
     return $workflow;
 }
 function payroll_desk_from_workflow_step(array $s,array $step,string $stage): array {
