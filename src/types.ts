@@ -61,7 +61,7 @@ export type PayrollBatchStage =
 
 export type PayrollItemVerificationStatus = 'Pending' | 'Passed' | 'Exception';
 
-export type PayrollItemStatus = 'Pending' | 'Ready' | 'In_Progress' | 'Completed' | 'On_Hold' | 'Ready_For_Release' | 'Released';
+export type PayrollItemStatus = 'Pending' | 'Ready' | 'Ready_For_Recheck' | 'In_Progress' | 'Completed' | 'On_Hold' | 'Ready_For_Release' | 'Released';
 
 export interface PayrollItemAuditEntry {
   id: string;
@@ -91,6 +91,19 @@ export interface PayrollItem {
   currentStage?: PayrollBatchStage;
   exceptionReason?: string;
   exceptionNotes?: string;
+  holdReason?: string;
+  holdRemarks?: string;
+  holdStage?: PayrollBatchStage;
+  heldAt?: string;
+  heldByUserId?: string;
+  heldByName?: string;
+  holdResolvedAt?: string;
+  holdResolvedByUserId?: string;
+  holdResolvedByName?: string;
+  complianceRemarks?: string;
+  complianceAttachments?: FileAttachment[];
+  recheckedAt?: string;
+  recheckedByUserId?: string;
   workGroupId?: string;
   assignedToUserId?: string;
   assignedToName?: string;

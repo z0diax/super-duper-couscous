@@ -8,8 +8,11 @@ function payroll_rule(array $s,string $classification): array {
     }
     throw new ApiError('Assign a payroll processor for '.$classification.' in Employment Routing Rules.');
 }
-function payroll_item_audit(array &$item,array $u,string $action,string $details): void {
-    $item['auditHistory'][]=['id'=>uid('event'),'timestamp'=>now(),'actorId'=>$u['id'],'actorName'=>$u['name'],'actorRole'=>$u['roleTitle'],'action'=>$action,'details'=>$details]; $item['updatedAt']=now();
+function payroll_item_audit(array &$item,array $u,string $action,string $details,?string $previousState=null,?string $newState=null): void {
+    $event=['id'=>uid('event'),'timestamp'=>now(),'actorId'=>$u['id'],'actorName'=>$u['name'],'actorRole'=>$u['roleTitle'],'action'=>$action,'details'=>$details];
+    if ($previousState!==null) $event['previousState']=$previousState;
+    if ($newState!==null) $event['newState']=$newState;
+    $item['auditHistory'][]=$event; $item['updatedAt']=now();
 }
 function payroll_item_is_held(array $item): bool { return ($item['status']??'')==='On_Hold' || ($item['verificationStatus']??'')==='Exception'; }
 function payroll_item_is_ready(array $item): bool {
@@ -174,7 +177,7 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
         $pdo->prepare('DELETE FROM app_files WHERE owner_id=?')->execute([$batch['id']]);
         return true;
     }
-    if (in_array($action,['updatePayrollItemClassification','bulkClassifyPayrollItems','markPayrollItemException','clearPayrollItemException'],true)) {
+    if (in_array($action,['updatePayrollItemClassification','bulkClassifyPayrollItems','markPayrollItemException','clearPayrollItemException','recordPayrollItemCompliance','recheckPayrollItem'],true)) {
         $ids=$action==='bulkClassifyPayrollItems'?$d:[$d]; fail_unless(is_array($ids) && count($ids)>0,'Select at least one item.');
         foreach ($ids as $id) {
             $i=index_of($s['payrollItems'],(string)$id); $item=&$s['payrollItems'][$i];
@@ -189,28 +192,58 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
                 $b=$s['payrollBatches'][index_of($s['payrollBatches'],$item['batchId'])];
                 fail_unless(payroll_initial_check_authorized($s,$u,$b),'This batch is assigned to another officer.',403);
             }
-            if ($action==='markPayrollItemException') { $item['verificationStatus']='Exception'; $item['status']='On_Hold'; $item['exceptionReason']=required(['reason'=>$args[1]??''],'reason',2000); $item['exceptionNotes']=$args[2]??''; }
-            elseif ($action==='clearPayrollItemException') {
-                unset($item['exceptionReason'],$item['exceptionNotes']);
-                // A hold can be cleared after the supporting record is corrected.  Preserve an
-                // already-selected classification so the officer can route this item without
-                // having to select the same classification again.
-                if (in_array($item['employmentClassification']??null,['JOW/COS','Job Order (JOW)','Regular','Casual'],true)) {
-                    $item['verificationStatus']='Passed'; $item['status']='Ready';
-                } else { $item['verificationStatus']='Pending'; $item['status']='Pending'; }
+            if ($action==='markPayrollItemException') {
+                $reason=required(['reason'=>$args[1]??''],'reason',2000);
+                $allowedReasons=['Missing DTR','Missing Signature','Incomplete Attachments','Missing Certification','Incorrect Supporting Document','For Clarification','Other'];
+                // Existing records and integrations can retain their detailed legacy reason text.
+                $notes=trim((string)($args[2]??''));
+                fail_unless(in_array($reason,$allowedReasons,true) || strlen($reason)<=2000,'Select a valid hold reason.',422);
+                if ($reason==='Other') fail_unless($notes!=='','Remarks are required when the hold reason is Other.',422);
+                $previous=$item['status']??'Pending'; $isReopened=!empty($item['holdResolvedAt']);
+                $item['verificationStatus']='Exception'; $item['status']='On_Hold';
+                $item['exceptionReason']=$reason; $item['exceptionNotes']=$notes;
+                $item['holdReason']=$reason; $item['holdRemarks']=$notes; $item['holdStage']='initial_checking';
+                $item['heldAt']=now(); $item['heldByUserId']=$u['id']; $item['heldByName']=$u['name'];
+                unset($item['holdResolvedAt'],$item['holdResolvedByUserId'],$item['holdResolvedByName'],$item['complianceRemarks'],$item['complianceAttachments']);
+                payroll_item_audit($item,$u,$isReopened?'PAYROLL_HOLD_REOPENED':'PAYROLL_ITEM_PLACED_ON_HOLD','Initial Checking hold: '.$reason.($notes!==''?' — '.$notes:''),$previous,'On_Hold');
+            } elseif (in_array($action,['clearPayrollItemException','recordPayrollItemCompliance'],true)) {
+                fail_unless(($item['status']??'')==='On_Hold','Only an item currently on hold can receive compliance.',409);
+                $remarks=trim((string)($args[1]??'')); $previous=$item['status'];
+                $item['verificationStatus']='Pending'; $item['status']='Ready_For_Recheck';
+                $item['holdResolvedAt']=now(); $item['holdResolvedByUserId']=$u['id']; $item['holdResolvedByName']=$u['name']; $item['complianceRemarks']=$remarks;
+                $attachments=attach_files($pdo,$u,$args[2]??[],$item['id']); if ($attachments) $item['complianceAttachments']=$attachments;
+                payroll_item_audit($item,$u,'PAYROLL_COMPLIANCE_RECEIVED','Compliance received for '.($item['holdReason']??$item['exceptionReason']??'the hold').($remarks!==''?' — '.$remarks:''),$previous,'Ready_For_Recheck');
+            } elseif ($action==='recheckPayrollItem') {
+                fail_unless(($item['status']??'')==='Ready_For_Recheck','Record compliance before rechecking this payroll item.',409);
+                fail_unless(in_array($item['employmentClassification']??null,['JOW/COS','Job Order (JOW)','Regular','Casual'],true),'Assign an employment classification before completing the recheck.',422);
+                $previous=$item['status']; $item['verificationStatus']='Passed'; $item['status']='Ready'; $item['recheckedAt']=now(); $item['recheckedByUserId']=$u['id'];
+                payroll_item_audit($item,$u,'PAYROLL_ITEM_RECHECK_STARTED','Initial Checking recheck started.',$previous,$previous);
+                payroll_item_audit($item,$u,'PAYROLL_ITEM_RECHECK_COMPLETED','Initial Checking recheck completed.',$previous,'Ready');
+            } else {
+                $item['employmentClassification']=choice($args[1]??null,['JOW/COS','Job Order (JOW)','Regular','Casual'],'employment classification');
+                if (!payroll_item_is_held($item) && ($item['status']??'')!=='Ready_For_Recheck') { $item['verificationStatus']=($args[2]??true)===false?'Pending':'Passed'; $item['status']=$item['verificationStatus']==='Passed'?'Ready':'Pending'; }
+                if (isset($singleDoc)) { $singleDoc['employmentClassification']=$item['employmentClassification']==='JOW/COS'?'Job Order (JOW)':$item['employmentClassification']; }
+                payroll_item_audit($item,$u,$action,'Initial checking classification updated.');
             }
-            else { $item['employmentClassification']=choice($args[1]??null,['JOW/COS','Job Order (JOW)','Regular','Casual'],'employment classification'); if (!payroll_item_is_held($item)) { $item['verificationStatus']=($args[2]??true)===false?'Pending':'Passed'; $item['status']=$item['verificationStatus']==='Passed'?'Ready':'Pending'; } if (isset($singleDoc)) { $singleDoc['employmentClassification']=$item['employmentClassification']==='JOW/COS'?'Job Order (JOW)':$item['employmentClassification']; } }
-            payroll_item_audit($item,$u,$action,'Initial checking updated.'); unset($item);
+            unset($item);
         }
         foreach (array_unique(array_filter(array_map(fn($id)=>$s['payrollItems'][index_of($s['payrollItems'],(string)$id)]['batchId']??null,$ids),fn($batchId)=>$batchId!=='SINGLE_ENTRY')) as $batchId) {
             $batchIndex=index_of($s['payrollBatches'],$batchId); payroll_refresh_batch_aggregate($s,$s['payrollBatches'][$batchIndex]);
         }
         return true;
     }
-    if ($action==='completeInitialCheckingAndRoute') {
-        $i=index_of($s['payrollBatches'],(string)$d); $batch=&$s['payrollBatches'][$i];
+    if (in_array($action,['completeInitialCheckingAndRoute','completePayrollItemInitialCheckingAndRoute'],true)) {
+        $routeOne=$action==='completePayrollItemInitialCheckingAndRoute';
+        if ($routeOne) {
+            $targetId=(string)$d; $targetIndex=index_of($s['payrollItems'],$targetId); $targetItem=$s['payrollItems'][$targetIndex];
+            fail_unless(($targetItem['batchId']??'')!=='SINGLE_ENTRY','Use the document workflow to process a single payroll.',422);
+            $i=index_of($s['payrollBatches'],$targetItem['batchId']);
+        } else $i=index_of($s['payrollBatches'],(string)$d);
+        $batch=&$s['payrollBatches'][$i];
         fail_unless(payroll_initial_check_authorized($s,$u,$batch),'This batch is assigned to another officer.',403);
         $initialItems=array_values(array_filter($s['payrollItems'],fn($item)=>in_array($item['id'],$batch['itemIds'],true) && payroll_item_stage($item)==='initial_checking'));
+        if ($routeOne) $initialItems=array_values(array_filter($initialItems,fn($item)=>$item['id']===$targetId));
+        fail_unless(count($initialItems)>0,'This payroll item is no longer in Initial Checking.',409);
         $unresolved=array_values(array_filter($initialItems,fn($item)=>!payroll_item_is_held($item) && !payroll_item_is_ready($item)));
         fail_unless(count($unresolved)===0,count($unresolved).' payroll item'.(count($unresolved)===1?' is':'s are').' still pending verification or classification.');
         $readyItems=array_values(array_filter($initialItems,'payroll_item_is_ready')); $heldItems=array_values(array_filter($initialItems,'payroll_item_is_held'));
@@ -221,12 +254,21 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
             $j=index_of($s['payrollItems'],$id); $item=&$s['payrollItems'][$j];
             $rule=payroll_rule($s,$item['employmentClassification']); $class=$rule['classification'];
             if (!isset($groups[$class])) {
-                $existing=null; foreach ($s['workGroups'] as $groupIndex=>$group) if ($group['batchId']===$batch['id'] && $group['classification']===$class) { $existing=$groupIndex; break; }
-                if ($existing!==null) { $groups[$class]=$s['workGroups'][$existing]; $groups[$class]['_index']=$existing; $groups[$class]['status']='In_Progress'; unset($groups[$class]['completedAt'],$groups[$class]['completedBy']); }
-                else $groups[$class]=['id'=>uid('group'),'batchId'=>$batch['id'],'batchNumber'=>$batch['batchNumber'],'code'=>$batch['batchNumber'].'-'.$class,'classification'=>$class,'assignedProcessorId'=>$rule['primaryProcessorId'],'assignedProcessorName'=>$rule['primaryProcessorName'],'assignedProcessorRoleTitle'=>$rule['primaryProcessorRoleTitle'],'itemIds'=>[],'status'=>'In_Progress','auditHistory'=>[],'startedAt'=>now(),'createdAt'=>now(),'updatedAt'=>now()];
+                $existing=null; $sameClassCount=0;
+                foreach ($s['workGroups'] as $groupIndex=>$group) if ($group['batchId']===$batch['id'] && $group['classification']===$class) { $sameClassCount++; if ($group['status']!=='Completed') { $existing=$groupIndex; break; } }
+                if ($existing!==null) { $groups[$class]=$s['workGroups'][$existing]; $groups[$class]['_index']=$existing; }
+                else {
+                    $isSupplemental=$sameClassCount>0;
+                    $groups[$class]=['id'=>uid('group'),'batchId'=>$batch['id'],'batchNumber'=>$batch['batchNumber'],'code'=>$batch['batchNumber'].'-'.$class.($isSupplemental?'-SUPPLEMENTAL-'.$sameClassCount:''),'classification'=>$class,'assignedProcessorId'=>$rule['primaryProcessorId'],'assignedProcessorName'=>$rule['primaryProcessorName'],'assignedProcessorRoleTitle'=>$rule['primaryProcessorRoleTitle'],'itemIds'=>[],'status'=>'In_Progress','auditHistory'=>[],'startedAt'=>now(),'createdAt'=>now(),'updatedAt'=>now(),'isSupplemental'=>$isSupplemental];
+                    if ($isSupplemental) $groups[$class]['auditHistory'][]=['id'=>uid('event'),'timestamp'=>now(),'actorId'=>$u['id'],'actorName'=>$u['name'],'actorRole'=>$u['roleTitle'],'action'=>'SUPPLEMENTAL_WORK_GROUP_CREATED','details'=>'Supplemental '.$class.' work group created for resumed payroll item(s).'];
+                }
             }
             if (!in_array($id,$groups[$class]['itemIds'],true)) $groups[$class]['itemIds'][]=$id;
-            $item['currentStage']='verification_signing'; $item['workGroupId']=$groups[$class]['id']; $item['assignedToUserId']=$rule['primaryProcessorId']; $item['assignedToName']=$rule['primaryProcessorName']; $item['status']='In_Progress'; payroll_item_audit($item,$u,'PAYROLL_ITEM_AUTO_ROUTED','Assigned to '.$rule['primaryProcessorName'].(count($heldItems)?'; '.count($heldItems).' held payroll(s) remained in Initial Checking.':'')); unset($item);
+            $wasResumed=!empty($item['holdResolvedAt']);
+            $item['currentStage']='verification_signing'; $item['workGroupId']=$groups[$class]['id']; $item['assignedToUserId']=$rule['primaryProcessorId']; $item['assignedToName']=$rule['primaryProcessorName']; $item['status']='In_Progress'; payroll_item_audit($item,$u,'PAYROLL_ITEM_AUTO_ROUTED','Assigned to '.$rule['primaryProcessorName'].(count($heldItems)?'; '.count($heldItems).' held payroll(s) remained in Initial Checking.':''));
+            if ($wasResumed) payroll_item_audit($item,$u,'PAYROLL_ITEM_ROUTED_AFTER_HOLD','Rechecked payroll routed to '.$rule['primaryProcessorName'].' after compliance was received.');
+            if (($groups[$class]['isSupplemental']??false)===true) payroll_item_audit($item,$u,'SUPPLEMENTAL_WORK_GROUP_CREATED','Assigned to supplemental '.$class.' work group '.$groups[$class]['code'].'.');
+            unset($item);
         }
         foreach ($heldItems as $held) { $j=index_of($s['payrollItems'],$held['id']); payroll_item_audit($s['payrollItems'][$j],$u,'PAYROLL_ITEM_RETAINED_ON_HOLD',count($readyItems).' other payroll(s) routed; this item remains in Initial Checking.'); }
         foreach ($groups as $group) { $existing=$group['_index']??null; unset($group['_index']); $group['updatedAt']=now(); if ($existing===null) { $s['workGroups'][]=$group; $batch['workGroupIds'][]=$group['id']; } else $s['workGroups'][$existing]=$group; }

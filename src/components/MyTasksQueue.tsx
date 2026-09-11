@@ -18,12 +18,21 @@ import {
 } from 'lucide-react';
 
 export const MyTasksQueue: React.FC = () => {
-  const { documents, currentUser, can, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, setActiveTab, openBatchModal } = useApp();
+  const { documents, currentUser, can, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, setActiveTab, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
 
   const [activeQueue, setActiveQueue] = useState<'my_tasks' | 'team_queue' | 'returned' | 'waiting' | 'ready_for_release' | 'completed'>('my_tasks');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [filterClass, setFilterClass] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [complianceRemarks, setComplianceRemarks] = useState<Record<string, string>>({});
+
+  const isInitialCheckingAssignee = (batchId: string) => {
+    const batch = payrollBatches.find(item => item.id === batchId);
+    if (!batch) return false;
+    const desk = batch.initialCheckingDesk || batch.assignedDesk;
+    return can('canSupervise') || (desk.userId ? desk.userId === currentUser.id : desk.assignmentType === 'Role' ? desk.roleId === currentUser.role : desk.assignmentType === 'Team' && !!desk.team && [currentUser.division, currentUser.office].includes(desk.team));
+  };
+  const heldPayrollItems = payrollItems.filter(item => item.batchId !== 'SINGLE_ENTRY' && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking' && (['On_Hold', 'Ready_For_Recheck'].includes(item.status) || (item.status === 'Ready' && !!item.holdResolvedAt)) && isInitialCheckingAssignee(item.batchId));
 
   // Active payroll batches relevant to user desk
   const myPayrollBatches = payrollBatches.filter(b => {
@@ -188,6 +197,26 @@ export const MyTasksQueue: React.FC = () => {
             <span>Open Payroll Workspace</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
+        </div>
+      )}
+
+      {heldPayrollItems.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 shadow-2xs">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div><h2 className="text-sm font-bold text-amber-950">Held / For Compliance</h2><p className="text-xs text-amber-800">Resolve and recheck individual payroll items without reopening the batch.</p></div>
+            <span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-bold text-amber-900">{heldPayrollItems.length}</span>
+          </div>
+          <div className="space-y-2">
+            {heldPayrollItems.map(item => {
+              const batch = payrollBatches.find(record => record.id === item.batchId);
+              const isHeld = item.status === 'On_Hold';
+              const isReadyForRecheck = item.status === 'Ready_For_Recheck';
+              return <div key={item.id} className="rounded-lg border border-amber-200 bg-white p-3 text-xs">
+                <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-mono font-bold text-slate-900">{item.barcode}</p><p className="mt-0.5 text-slate-600">Batch: <strong>{batch?.batchNumber || item.batchNumber}</strong> &bull; {item.office || batch?.office}</p><p className="mt-1 text-amber-800">Initial Checking &bull; {isHeld ? `On hold: ${item.holdReason || item.exceptionReason}` : isReadyForRecheck ? 'Compliance received — ready for recheck' : 'Recheck completed — ready to route'}</p>{item.heldAt && <p className="mt-0.5 text-slate-400">Held since {new Date(item.heldAt).toLocaleString()}</p>}</div><span className={`rounded-full px-2 py-0.5 font-bold ${isHeld ? 'bg-red-100 text-red-800' : isReadyForRecheck ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'}`}>{isHeld ? 'ON HOLD' : isReadyForRecheck ? 'READY FOR RECHECK' : 'READY TO ROUTE'}</span></div>
+                {isHeld ? <div className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={complianceRemarks[item.id] || ''} onChange={event => setComplianceRemarks(current => ({ ...current, [item.id]: event.target.value }))} placeholder="Compliance remarks (optional)" className="min-w-0 flex-1 rounded-md border border-slate-200 px-2.5 py-1.5" /><button onClick={async () => { if (await recordPayrollItemCompliance(item.id, complianceRemarks[item.id] || '')) setComplianceRemarks(current => ({ ...current, [item.id]: '' })); }} className="rounded-md bg-sky-600 px-3 py-1.5 font-bold text-white hover:bg-sky-700">Record Compliance</button></div> : isReadyForRecheck ? <div className="mt-3"><button onClick={async () => await recheckPayrollItem(item.id)} className="rounded-md bg-emerald-600 px-3 py-1.5 font-bold text-white hover:bg-emerald-700">Verify / Recheck</button></div> : <div className="mt-3"><button onClick={async () => await completePayrollItemInitialCheckingAndRoute(item.id)} className="rounded-md bg-blue-600 px-3 py-1.5 font-bold text-white hover:bg-blue-700">Complete &amp; Route</button></div>}
+              </div>;
+            })}
+          </div>
         </div>
       )}
 

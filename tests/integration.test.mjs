@@ -122,10 +122,11 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   assert.equal(releaser.state.payrollItems.find(item=>item.id===batch.itemIds[0]).status,'Released');
   assert.equal(releaser.state.payrollItems.find(item=>item.id===batch.itemIds[1]).status,'On_Hold');
   assert.equal(releaser.state.payrollBatches.find(b=>b.id===batch.id).status,'Active');
-  await receiver.action('clearPayrollItemException',[batch.itemIds[1]],403);
-  await processor.action('clearPayrollItemException',[batch.itemIds[1]]);
+  await receiver.action('recordPayrollItemCompliance',[batch.itemIds[1],'DTR received'],403);
+  await processor.action('recordPayrollItemCompliance',[batch.itemIds[1],'DTR received']);
   assert.equal(processor.state.payrollItems.find(item=>item.id===batch.itemIds[1]).verificationStatus,'Pending');
   await processor.action('bulkClassifyPayrollItems',[[batch.itemIds[1]],'Casual',true]);
+  await processor.action('recheckPayrollItem',[batch.itemIds[1]]);
   await processor.action('completeInitialCheckingAndRoute',[batch.id]); await processor.action('completeInitialCheckingAndRoute',[batch.id],409);
   groups=processor.state.workGroups.filter(g=>g.batchId===batch.id); assert.equal(groups.length,2);
   const resumedGroup=groups.find(group=>group.status==='In_Progress');
@@ -136,13 +137,13 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   // A partial release must not lock a held item in Stage 2.  The four released
   // items remain released while the repaired item is routed and released later.
   const partial=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'BATCH-PARTIAL-001',items:[1,2,3,4,5].map(n=>({title:`Partial payroll ${n}`,barcode:`PARTIAL-PAY-${n}`})),files:[]}])).result;
-  for (const id of partial.itemIds.slice(0,4)) await admin.action('updatePayrollItemClassification',[id,'Regular']);
+  for (const [index, classification] of ['JOW/COS','JOW/COS','Regular','Casual'].entries()) await admin.action('updatePayrollItemClassification',[partial.itemIds[index],classification]);
   await admin.action('updatePayrollItemClassification',[partial.itemIds[4],'Casual']);
   await admin.action('markPayrollItemException',[partial.itemIds[4],'Missing DTR']);
   await admin.action('completeInitialCheckingAndRoute',[partial.id]);
-  const partialGroup=admin.state.workGroups.find(group=>group.batchId===partial.id && group.status==='In_Progress');
-  assert.equal(partialGroup.itemIds.length,4);
-  await processor.action('processWorkGroupItems',[partialGroup.id,partialGroup.itemIds,'complete']);
+  const partialGroups=admin.state.workGroups.filter(group=>group.batchId===partial.id && group.status==='In_Progress');
+  assert.equal(partialGroups.length,3);
+  for (const partialGroup of partialGroups) await processor.action('processWorkGroupItems',[partialGroup.id,partialGroup.itemIds,'complete']);
   let partialState=processor.state.payrollBatches.find(item=>item.id===partial.id);
   assert.equal(partialState.currentStage,'release'); // compatibility summary: four siblings are ready.
   assert.equal(partialState.progress.readyForRelease,4);
@@ -151,13 +152,15 @@ test('payroll batch checking, exceptions, routing, processing and release',async
 
   // The parent compatibility stage is Release, but the held child remains eligible
   // for its own Initial Checking recovery and must not be rejected as batch-level work.
-  await admin.action('clearPayrollItemException',[partial.itemIds[4]]);
-  assert.equal(admin.state.payrollItems.find(item=>item.id===partial.itemIds[4]).status,'Ready');
-  assert.equal(admin.state.payrollItems.find(item=>item.id===partial.itemIds[4]).verificationStatus,'Passed');
+  await admin.action('recordPayrollItemCompliance',[partial.itemIds[4],'Missing DTR submitted by liaison.']);
+  assert.equal(admin.state.payrollItems.find(item=>item.id===partial.itemIds[4]).status,'Ready_For_Recheck');
+  assert.equal(admin.state.payrollItems.find(item=>item.id===partial.itemIds[4]).verificationStatus,'Pending');
+  await admin.action('recheckPayrollItem',[partial.itemIds[4]]);
   assert.equal(admin.state.payrollBatches.find(item=>item.id===partial.id).currentStage,'release');
   await admin.action('completeInitialCheckingAndRoute',[partial.id]);
   const recoveredGroup=admin.state.workGroups.find(group=>group.batchId===partial.id && group.status==='In_Progress');
   assert.equal(recoveredGroup.itemIds.includes(partial.itemIds[4]),true);
+  assert.equal(recoveredGroup.isSupplemental,true);
   assert.equal(admin.state.payrollItems.filter(item=>item.batchId===partial.id && item.status==='Ready_For_Release').length,4);
   assert.equal(admin.state.payrollItems.find(item=>item.id===partial.itemIds[4]).currentStage,'verification_signing');
   await releaser.action('releasePayrollBatch',[partial.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
@@ -170,6 +173,35 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   assert.equal(admin.state.workGroups.some(item=>item.batchId===partial.id),false);
   await admin.action('deleteUser',[processingUser.id],422);
 });
+test('a held payroll item supports repeated compliance cycles after all siblings are released',async()=>{
+  const held=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'BATCH-HOLD-CYCLES-001',items:[1,2,3].map(n=>({title:`Hold-cycle payroll ${n}`,barcode:`HOLD-CYCLE-PAY-${n}`})),files:[]}])).result;
+  await admin.action('updatePayrollItemClassification',[held.itemIds[0],'Regular']);
+  await admin.action('updatePayrollItemClassification',[held.itemIds[1],'Regular']);
+  await admin.action('updatePayrollItemClassification',[held.itemIds[2],'Casual']);
+  await admin.action('markPayrollItemException',[held.itemIds[2],'Missing DTR','Original DTR was not attached.']);
+  await admin.action('completeInitialCheckingAndRoute',[held.id]);
+  for (const group of admin.state.workGroups.filter(group=>group.batchId===held.id && group.status==='In_Progress')) await processor.action('processWorkGroupItems',[group.id,group.itemIds,'complete']);
+  await releaser.action('releasePayrollBatch',[held.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
+  assert.equal(releaser.state.payrollItems.filter(item=>item.batchId===held.id && item.status==='Released').length,2);
+  assert.equal(releaser.state.payrollItems.find(item=>item.id===held.itemIds[2]).status,'On_Hold');
+
+  await admin.action('recordPayrollItemCompliance',[held.itemIds[2],'DTR supplied by liaison.']);
+  await admin.action('recheckPayrollItem',[held.itemIds[2]]);
+  await admin.action('markPayrollItemException',[held.itemIds[2],'Missing Signature','DTR was supplied but the certification is unsigned.']);
+  await admin.action('recordPayrollItemCompliance',[held.itemIds[2],'Signed certification supplied by liaison.']);
+  await admin.action('recheckPayrollItem',[held.itemIds[2]]);
+  await admin.action('completePayrollItemInitialCheckingAndRoute',[held.itemIds[2]]);
+  const resumed=admin.state.payrollItems.find(item=>item.id===held.itemIds[2]);
+  assert.equal(resumed.currentStage,'verification_signing');
+  assert.equal(releaser.state.payrollItems.filter(item=>item.batchId===held.id && item.status==='Released').length,2);
+  assert.deepEqual(resumed.auditHistory.filter(event=>event.action==='PAYROLL_ITEM_PLACED_ON_HOLD' || event.action==='PAYROLL_HOLD_REOPENED').map(event=>event.details.includes('Missing DTR')?'Missing DTR':'Missing Signature'),['Missing DTR','Missing Signature']);
+  assert.equal(resumed.auditHistory.filter(event=>event.action==='PAYROLL_COMPLIANCE_RECEIVED').length,2);
+  const resumedGroup=admin.state.workGroups.find(group=>group.batchId===held.id && group.status==='In_Progress');
+  await processor.action('processWorkGroupItems',[resumedGroup.id,resumedGroup.itemIds,'complete']);
+  await releaser.action('releasePayrollBatch',[held.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
+  assert.equal(releaser.state.payrollItems.filter(item=>item.batchId===held.id && item.status==='Released').length,3);
+});
+
 test('unrouted payroll batches can be edited and deleted from payroll management',async()=>{
   const batch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'EDITABLE-BATCH-001',payrollPeriod:'First period',receivedFromLiaison:'Original liaison',remarks:'Original remarks',items:[{title:'Original payroll',barcode:'EDITABLE-PAY-001',office:'HRMDO',classificationType:'Salary'}],files:[]}])).result;
   const updated=(await admin.action('updatePayrollBatch',[{id:batch.id,batchBarcode:'EDITABLE-BATCH-002',office:'CMO',payrollType:'Voucher',payrollPeriod:'September 2026',receivedFromLiaison:'Updated liaison',remarks:'Updated remarks',items:[{id:batch.itemIds[0],barcode:'EDITABLE-PAY-002',title:'Corrected payroll',office:'CMO',classificationType:'Voucher'}]}])).result;

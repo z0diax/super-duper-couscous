@@ -22,6 +22,7 @@ import {
   UserCheck, 
   ShieldAlert, 
   FileText, 
+  FileCheck2,
   Building2, 
   Calendar, 
   Barcode, 
@@ -55,7 +56,8 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     updatePayrollItemClassification, 
     bulkClassifyPayrollItems, 
     markPayrollItemException, 
-    clearPayrollItemException, 
+    recordPayrollItemCompliance,
+    recheckPayrollItem,
     completeInitialCheckingAndRoute, 
     processWorkGroupItems, 
     releasePayrollBatch,
@@ -69,8 +71,11 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
   // Exception modal state
   const [holdingItemId, setHoldingItemId] = useState<string | null>(null);
-  const [exceptionReason, setExceptionReason] = useState('Missing or incomplete Daily Time Record (DTR)');
+  const [exceptionReason, setExceptionReason] = useState('Missing DTR');
   const [exceptionNotes, setExceptionNotes] = useState('');
+  const [complianceItemId, setComplianceItemId] = useState<string | null>(null);
+  const [complianceRemarks, setComplianceRemarks] = useState('');
+  const [complianceFiles, setComplianceFiles] = useState<File[]>([]);
 
   // Release form state
   const [releasedTo, setReleasedTo] = useState(batch?.receivedFromLiaison || 'Office Liaison Officer');
@@ -155,14 +160,26 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
   const handleOpenHoldModal = (itemId: string) => {
     setHoldingItemId(itemId);
-    setExceptionReason('Missing or incomplete Daily Time Record (DTR)');
+    setExceptionReason('Missing DTR');
     setExceptionNotes('');
+  };
+
+  const handleOpenCompliance = (itemId: string) => {
+    setComplianceItemId(itemId);
+    setComplianceRemarks('');
+    setComplianceFiles([]);
   };
 
   const handleConfirmHold = async () => {
     if (!holdingItemId) return;
     if (!(await markPayrollItemException(holdingItemId, exceptionReason, exceptionNotes))) return;
     setHoldingItemId(null);
+  };
+
+  const handleConfirmCompliance = async () => {
+    if (!complianceItemId) return;
+    if (!(await recordPayrollItemCompliance(complianceItemId, complianceRemarks, complianceFiles))) return;
+    setComplianceItemId(null);
   };
 
   const handleReleaseSubmit = async (e: React.FormEvent) => {
@@ -442,6 +459,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                     {initialCheckingItems.map((item, idx) => {
                       const isSelected = selectedItemIds.includes(item.id);
                       const isHeld = item.status === 'On_Hold';
+                      const isReadyForRecheck = item.status === 'Ready_For_Recheck';
 
                       return (
                         <div 
@@ -491,13 +509,19 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                                     <span>ON HOLD</span>
                                   </span>
                                 )}
+                                {isReadyForRecheck && (
+                                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-100 text-sky-800 border border-sky-200">
+                                    READY FOR RECHECK
+                                  </span>
+                                )}
                               </div>
                               <p className="text-xs font-medium text-slate-700 mt-0.5">{item.title}</p>
-                              {isHeld && item.exceptionReason && (
+                              {(isHeld || isReadyForRecheck) && (item.holdReason || item.exceptionReason) && (
                                 <p className="text-[11px] text-red-700 mt-0.5 font-medium">
-                                  Exception: {item.exceptionReason} {item.exceptionNotes ? `(${item.exceptionNotes})` : ''}
+                                  {isReadyForRecheck ? 'Previous hold' : 'Hold'}: {item.holdReason || item.exceptionReason} {item.holdRemarks || item.exceptionNotes ? `(${item.holdRemarks || item.exceptionNotes})` : ''}
                                 </p>
                               )}
+                              {isReadyForRecheck && item.complianceRemarks && <p className="text-[11px] text-sky-700 mt-0.5">Compliance received: {item.complianceRemarks}</p>}
                             </div>
                           </div>
 
@@ -542,11 +566,16 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                             {/* Exception / Hold Button */}
                             {isHeld ? (
                               <button
-                                onClick={async () => await clearPayrollItemException(item.id)}
-                                className="px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors"
+                                onClick={() => handleOpenCompliance(item.id)}
+                                className="px-2.5 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50 border border-sky-200 rounded-lg transition-colors"
                               >
-                                Clear Hold
+                                Record Compliance
                               </button>
+                            ) : isReadyForRecheck ? (
+                              <div className="flex items-center gap-2">
+                                <button onClick={async () => await recheckPayrollItem(item.id)} className="px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded-lg transition-colors">Verify / Recheck</button>
+                                <button onClick={() => handleOpenHoldModal(item.id)} className="px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors">Hold Again</button>
+                              </div>
                             ) : (
                               <button
                                 onClick={() => handleOpenHoldModal(item.id)}
@@ -976,18 +1005,19 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                 onChange={e => setExceptionReason(e.target.value)}
                 className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
               >
-                <option value="Missing or incomplete Daily Time Record (DTR)">Missing or incomplete Daily Time Record (DTR)</option>
-                <option value="Missing Department Head / Supervisor signature">Missing Department Head / Supervisor signature</option>
-                <option value="Discrepancy in reported hours / Overtime claim">Discrepancy in reported hours / Overtime claim</option>
-                <option value="Missing supporting accomplishment reports">Missing supporting accomplishment reports</option>
-                <option value="Invalid or expired Contract of Service attachment">Invalid or expired Contract of Service attachment</option>
-                <option value="Other administrative discrepancy">Other administrative discrepancy</option>
+                <option value="Missing DTR">Missing DTR</option>
+                <option value="Missing Signature">Missing Signature</option>
+                <option value="Incomplete Attachments">Incomplete Attachments</option>
+                <option value="Missing Certification">Missing Certification</option>
+                <option value="Incorrect Supporting Document">Incorrect Supporting Document</option>
+                <option value="For Clarification">For Clarification</option>
+                <option value="Other">Other</option>
               </select>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Additional Notes (Optional)
+                Additional Notes {exceptionReason === 'Other' ? '(Required)' : '(Optional)'}
               </label>
               <textarea
                 rows={2}
@@ -1007,10 +1037,31 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
               </button>
               <button
                 onClick={handleConfirmHold}
-                className="px-4 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700"
+                disabled={exceptionReason === 'Other' && !exceptionNotes.trim()}
+                className="px-4 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Hold Item
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {complianceItemId && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md p-5 space-y-4">
+            <div className="flex items-center gap-2.5 text-sky-700">
+              <FileCheck2 className="w-5 h-5" />
+              <h3 className="text-sm font-bold text-slate-900">Record Compliance Received</h3>
+            </div>
+            <p className="text-xs text-slate-500">This keeps the payroll item in Initial Checking and marks it ready for an explicit recheck. It will not route yet.</p>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Compliance Remarks</label>
+              <textarea rows={3} value={complianceRemarks} onChange={e => setComplianceRemarks(e.target.value)} placeholder="e.g. Missing DTR submitted by liaison." className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-hidden" />
+            </div>
+            <div><label className="block text-xs font-semibold text-slate-700 mb-1">Compliance Attachment (Optional)</label><input type="file" multiple onChange={event => setComplianceFiles(Array.from(event.target.files || []))} className="block w-full text-xs text-slate-600" /></div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setComplianceItemId(null)} className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
+              <button onClick={handleConfirmCompliance} className="px-4 py-1.5 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700">Record Compliance</button>
             </div>
           </div>
         </div>
