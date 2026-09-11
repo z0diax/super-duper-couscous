@@ -86,6 +86,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
   const items = payrollItems.filter(i => i.batchId === batch.id);
   const batchWorkGroups = workGroups.filter(w => w.batchId === batch.id);
+  const progress = batch.progress;
   const initialCheckingItems = items.filter(item => (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
   const initialCheckingDesk = batch.initialCheckingDesk || batch.assignedDesk;
   const canInitialCheck = can('canSupervise') || (
@@ -115,7 +116,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const readyForReleaseCount = items.filter(item => item.status === 'Ready_For_Release').length;
   const releasedCount = items.filter(item => item.status === 'Released').length;
   const stage3CompletedCount = items.filter(item => ['Ready_For_Release', 'Released'].includes(item.status)).length;
-  const allItemsReleased = items.length > 0 && releasedCount === items.length;
+  const allItemsReleased = progress.derivedStatus === 'COMPLETED';
   const processorFor = (classification: string) => employmentRoutingRules.find(rule => rule.classification === classification)?.primaryProcessorName || 'Processor not configured';
   const releaseDesk = batch.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
   const lifecycleAudit = [
@@ -124,10 +125,10 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
   const allWorkGroupsCompleted = batchWorkGroups.length > 0 && batchWorkGroups.every(w => w.status === 'Completed');
-  const hasConcurrentStages = initialCheckingItems.length > 0 && (processingCount > 0 || readyForReleaseCount > 0 || releasedCount > 0);
-  const batchStageLabel = hasConcurrentStages
-    ? `Concurrent processing: ${initialCheckingItems.length} in Initial Checking`
-    : batch.currentStageName;
+  const batchStatusClass = progress.derivedStatus === 'PROCESSING_WITH_HOLDS' || progress.derivedStatus === 'ON_HOLD'
+    ? 'bg-amber-100 text-amber-800'
+    : progress.derivedStatus === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800'
+    : progress.derivedStatus.includes('RELEASE') ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800';
 
   // Multi-select handlers
   const handleToggleSelect = (id: string) => {
@@ -207,22 +208,14 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-mono font-bold text-sm text-slate-900">{batch.batchNumber}</span>
-                <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                  batch.currentStage === 'initial_checking' 
-                    ? 'bg-amber-100 text-amber-800'
-                    : batch.currentStage === 'verification_signing'
-                    ? 'bg-blue-100 text-blue-800'
-                    : batch.currentStage === 'release'
-                    ? 'bg-purple-100 text-purple-800'
-                    : 'bg-emerald-100 text-emerald-800'
-                }`}>
-                  {batchStageLabel}
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${batchStatusClass}`}>
+                  {progress.displayStatus}
                 </span>
                 <span className="text-xs text-slate-400">&bull;</span>
                 <span className="text-xs text-slate-600 font-medium truncate">{batch.office}</span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5 truncate">
-                {batch.payrollType} &bull; Total: {items.length} &bull; Processing: {processingCount} &bull; On hold at Initial Checking: {onHoldCount}
+                {batch.payrollType} &bull; Total: {progress.totalItems} &bull; In process: {progress.management.active} &bull; On hold: {progress.onHoldTotal}
               </p>
             </div>
           </div>
@@ -254,37 +247,37 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-slate-800 truncate">1. Docketing</p>
-                <p className="text-[10px] text-emerald-600 truncate">Completed by {batch.encodedBy.userName}</p>
+                <p className="text-[10px] text-emerald-600 truncate">{progress.stage1Completed}/{progress.totalItems} complete</p>
               </div>
             </div>
 
             {/* Stage 2: Initial Checking */}
             <div className="flex items-center gap-2">
               <div className={`relative isolate w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                initialCheckingItems.length > 0
+                progress.initialChecking.active > 0
                   ? 'bg-amber-500 text-white ring-2 ring-amber-400/30'
                   : 'bg-emerald-600 text-white'
               }`}>
-                {initialCheckingItems.length > 0 && <span aria-hidden="true" className="absolute inset-0 -z-10 rounded-full bg-amber-400 opacity-60 animate-ping motion-reduce:animate-none" />}
-                <span className="relative">{initialCheckingItems.length > 0 ? '2' : <CheckCircle2 className="w-3.5 h-3.5" />}</span>
+                {progress.initialChecking.active > 0 && <span aria-hidden="true" className="absolute inset-0 -z-10 rounded-full bg-amber-400 opacity-60 animate-ping motion-reduce:animate-none" />}
+                <span className="relative">{progress.initialChecking.active > 0 ? '2' : <CheckCircle2 className="w-3.5 h-3.5" />}</span>
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-slate-800 truncate">2. Initial Checking</p>
-                <p className="text-[10px] text-slate-500 truncate">{initialCheckingItems.length} remaining &bull; {onHoldCount} on hold</p>
+                <p className="text-[10px] text-slate-500 truncate">{progress.initialChecking.completed}/{progress.totalItems} complete &bull; {progress.initialChecking.onHold} on hold</p>
               </div>
             </div>
 
             {/* Stage 3: Verification & Signing */}
             <div className="flex items-center gap-2">
               <div className={`relative isolate w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                processingCount > 0
+                progress.management.active > 0
                   ? 'bg-blue-600 text-white ring-2 ring-blue-400/30'
                   : stage3CompletedCount > 0
                   ? 'bg-emerald-600 text-white'
                   : 'bg-slate-200 text-slate-500'
               }`}>
-                {processingCount > 0 && <span aria-hidden="true" className="absolute inset-0 -z-10 rounded-full bg-blue-500 opacity-60 animate-ping motion-reduce:animate-none" />}
-                <span className="relative">{stage3CompletedCount > 0 && processingCount === 0 ? (
+                {progress.management.active > 0 && <span aria-hidden="true" className="absolute inset-0 -z-10 rounded-full bg-blue-500 opacity-60 animate-ping motion-reduce:animate-none" />}
+                <span className="relative">{progress.management.completed > 0 && progress.management.active === 0 && progress.management.onHold === 0 ? (
                   <CheckCircle2 className="w-3.5 h-3.5" />
                 ) : (
                   '3'
@@ -292,25 +285,25 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-slate-800 truncate">3. Parallel Groups</p>
-                <p className="text-[10px] text-slate-500 truncate">{processingCount} processing &bull; {stage3CompletedCount} completed</p>
+                <p className="text-[10px] text-slate-500 truncate">{progress.management.completed} complete &bull; {progress.management.active} processing &bull; {progress.management.onHold} on hold</p>
               </div>
             </div>
 
             {/* Stage 4: Release */}
             <div className="flex items-center gap-2">
               <div className={`relative isolate w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                allItemsReleased || (releasedCount > 0 && readyForReleaseCount === 0)
+                allItemsReleased || (progress.release.released > 0 && progress.release.ready === 0)
                   ? 'bg-emerald-600 text-white'
-                  : readyForReleaseCount > 0
+                : progress.release.ready > 0
                   ? 'bg-purple-600 text-white ring-2 ring-purple-400/30'
                   : 'bg-slate-200 text-slate-500'
               }`}>
-                {readyForReleaseCount > 0 && <span aria-hidden="true" className="absolute inset-0 -z-10 rounded-full bg-purple-500 opacity-60 animate-ping motion-reduce:animate-none" />}
-                <span className="relative">{allItemsReleased || (releasedCount > 0 && readyForReleaseCount === 0) ? <CheckCircle2 className="w-3.5 h-3.5" /> : '4'}</span>
+                {progress.release.ready > 0 && <span aria-hidden="true" className="absolute inset-0 -z-10 rounded-full bg-purple-500 opacity-60 animate-ping motion-reduce:animate-none" />}
+                <span className="relative">{allItemsReleased || (progress.release.released > 0 && progress.release.ready === 0) ? <CheckCircle2 className="w-3.5 h-3.5" /> : '4'}</span>
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-slate-800 truncate">4. Release</p>
-                <p className="text-[10px] text-slate-500 truncate">{readyForReleaseCount} ready &bull; {releasedCount} released</p>
+                <p className="text-[10px] text-slate-500 truncate">{progress.release.ready} ready &bull; {progress.release.released} released &bull; {progress.release.notReached} not reached</p>
               </div>
             </div>
           </div>

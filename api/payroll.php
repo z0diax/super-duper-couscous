@@ -21,40 +21,46 @@ function payroll_item_is_ready(array $item): bool {
 function payroll_item_stage(array $item): string {
     return $item['currentStage']??(empty($item['workGroupId'])?'initial_checking':'verification_signing');
 }
-function payroll_refresh_batch_aggregate(array &$s,array &$batch): array {
-    // currentStage remains for legacy clients and summary filters only.  Payroll items,
-    // never this aggregate value, authorize or gate operational workflow actions.
-    $items=array_values(array_filter($s['payrollItems'],fn($item)=>$item['batchId']===$batch['id']));
-    $progress=['totalItems'=>count($items),'initialChecking'=>0,'stage3Processing'=>0,'readyForRelease'=>0,'released'=>0,'onHold'=>0];
+function calculate_payroll_batch_progress(array $batch,array $items): array {
+    // Payroll items are the operational source of truth. This summary is only for display.
+    $total=count($items); $initialActive=0; $initialOnHold=0; $managementActive=0; $managementOnHold=0;
+    $ready=0; $released=0; $onHold=0;
     foreach ($items as $item) {
-        $stage=payroll_item_stage($item);
-        if ($stage==='initial_checking') $progress['initialChecking']++;
-        if ($stage==='verification_signing') $progress['stage3Processing']++;
-        if (($item['status']??'')==='Ready_For_Release') $progress['readyForRelease']++;
-        if (($item['status']??'')==='Released') $progress['released']++;
-        if (payroll_item_is_held($item)) $progress['onHold']++;
+        $stage=payroll_item_stage($item); $held=payroll_item_is_held($item);
+        if ($stage==='initial_checking') { $initialActive++; if ($held) $initialOnHold++; }
+        if ($stage==='verification_signing') { if ($held) $managementOnHold++; else $managementActive++; }
+        if (($item['status']??'')==='Ready_For_Release') $ready++;
+        if (($item['status']??'')==='Released') $released++;
+        if ($held) $onHold++;
     }
-    $batch['progress']=$progress;
-    if ($progress['totalItems']>0 && $progress['released']===$progress['totalItems']) {
-        $batch['currentStage']='completed'; $batch['currentStageName']='Completed'; $batch['status']='Completed';
-    } elseif ($progress['readyForRelease']>0) {
-        $batch['currentStage']='release';
-        $batch['currentStageName']=$progress['onHold']>0 ? 'Ready for Release with Initial Holds' : 'Payrolls Ready for Release';
-        $batch['status']='Active';
-        $batch['assignedDesk']=['stage'=>'release','userName'=>'Releasing Officer','roleTitle'=>'Releasing Officer'];
-    } elseif ($progress['stage3Processing']>0) {
-        $batch['currentStage']='verification_signing';
-        $batch['currentStageName']=$progress['onHold']>0 ? 'Processing with Initial Holds' : 'Verification & Signing';
-        $batch['status']='Active';
-        $batch['assignedDesk']=['stage'=>'verification_signing','assignmentType'=>'Dynamic','userName'=>'Assigned work groups','roleTitle'=>'Payroll processors'];
-    } else {
-        $batch['currentStage']='initial_checking';
-        $batch['currentStageName']=$progress['onHold']>0 && $progress['released']>0 ? 'Released with Initial Holds' : 'Initial Checking';
-        $batch['status']='Active';
-        $batch['assignedDesk']=$batch['initialCheckingDesk']??$batch['assignedDesk'];
-    }
-    $batch['updatedAt']=now();
-    return $progress;
+    $managementReached=$total-$initialActive;
+    if ($total>0 && $released===$total) { $derived='COMPLETED'; $label='Completed'; }
+    elseif ($onHold>0 && ($managementReached>0 || $ready>0 || $released>0)) { $derived='PROCESSING_WITH_HOLDS'; $label='Processing with Holds'; }
+    elseif ($onHold>0 && $initialActive===$onHold) { $derived='ON_HOLD'; $label='On Hold'; }
+    elseif (($ready>0 || $released>0) && ($initialActive>0 || $managementActive>0 || $managementOnHold>0)) { $derived='PARTIALLY_READY_FOR_RELEASE'; $label='Partially Ready for Release'; }
+    elseif ($ready>0 || $released>0) { $derived='READY_FOR_RELEASE'; $label='Ready for Release'; }
+    elseif ($managementActive>0 || $managementOnHold>0) { $derived='IN_PROCESS'; $label='In Process'; }
+    else { $derived='INITIAL_CHECKING'; $label='Initial Checking'; }
+    return [
+        'totalItems'=>$total, 'docketed'=>$total, 'stage1Completed'=>$total,
+        'initialChecking'=>['active'=>$initialActive,'completed'=>$total-$initialActive,'onHold'=>$initialOnHold],
+        'management'=>['reached'=>$managementReached,'active'=>$managementActive,'completed'=>$ready+$released,'onHold'=>$managementOnHold,'notReached'=>$initialActive],
+        'release'=>['ready'=>$ready,'released'=>$released,'notReached'=>$total-$ready-$released],
+        'onHoldTotal'=>$onHold,'exceptionCount'=>$onHold,'completedCount'=>$released,
+        'derivedStatus'=>$derived,'displayStatus'=>$label,
+    ];
+}
+function payroll_refresh_batch_aggregate(array &$s,array &$batch): array {
+    $items=array_values(array_filter($s['payrollItems'],fn($item)=>$item['batchId']===$batch['id']));
+    $progress=calculate_payroll_batch_progress($batch,$items); $batch['progress']=$progress;
+    // Deprecated compatibility fields. They are derived only and are never routing gates.
+    $batch['status']=$progress['derivedStatus']; $batch['currentStageName']=$progress['displayStatus'];
+    $batch['currentStage']=$progress['derivedStatus']==='COMPLETED'?'completed':($progress['release']['ready']>0||$progress['release']['released']>0?'release':($progress['management']['reached']>0?'verification_signing':'initial_checking'));
+    $batch['updatedAt']=now(); return $progress;
+}
+function payroll_attach_batch_progress(array &$s): void {
+    foreach ($s['payrollBatches'] as &$batch) payroll_refresh_batch_aggregate($s,$batch);
+    unset($batch);
 }
 function payroll_batch_workflow(array $s,string $documentType): array {
     try {
@@ -110,7 +116,7 @@ function editable_payroll_batch(array $s,array $u,array $batch): void {
     $items=array_values(array_filter($s['payrollItems'],fn($item)=>$item['batchId']===$batch['id']));
     $hasStarted=array_filter($items,fn($item)=>payroll_item_stage($item)!=='initial_checking');
     $hasWorkGroups=count(array_filter($s['workGroups'],fn($group)=>$group['batchId']===$batch['id']))>0;
-    fail_unless($batch['status']==='Active' && !$hasStarted && !$hasWorkGroups,'Only a batch that is still in Initial Checking can be edited or deleted.',409);
+    fail_unless(!$hasStarted && !$hasWorkGroups,'Only a batch that is still in Initial Checking can be edited or deleted.',409);
 }
 function assert_editable_batch_barcodes(array $s,array $batch,array $entries,string $batchBarcode): void {
     $codes=[];

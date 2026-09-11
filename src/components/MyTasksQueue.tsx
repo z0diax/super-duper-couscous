@@ -36,7 +36,7 @@ export const MyTasksQueue: React.FC = () => {
 
   // Active payroll batches relevant to user desk
   const myPayrollBatches = payrollBatches.filter(b => {
-    if (b.status !== 'Active') return false;
+    if (b.progress.derivedStatus === 'COMPLETED') return false;
     const hasInitialItems = payrollItems.some(item => item.batchId === b.id && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
     const initialDesk = b.initialCheckingDesk || b.assignedDesk;
     const assignedToInitialChecking = can('canSupervise') || (initialDesk.userId ? initialDesk.userId === currentUser.id : initialDesk.assignmentType === 'Role' ? initialDesk.roleId === currentUser.role : initialDesk.assignmentType === 'Team' && !!initialDesk.team && [currentUser.division, currentUser.office].includes(initialDesk.team));

@@ -121,7 +121,7 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   await releaser.action('releasePayrollBatch',[batch.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
   assert.equal(releaser.state.payrollItems.find(item=>item.id===batch.itemIds[0]).status,'Released');
   assert.equal(releaser.state.payrollItems.find(item=>item.id===batch.itemIds[1]).status,'On_Hold');
-  assert.equal(releaser.state.payrollBatches.find(b=>b.id===batch.id).status,'Active');
+  assert.equal(releaser.state.payrollBatches.find(b=>b.id===batch.id).status,'PROCESSING_WITH_HOLDS');
   await receiver.action('recordPayrollItemCompliance',[batch.itemIds[1],'DTR received'],403);
   await processor.action('recordPayrollItemCompliance',[batch.itemIds[1],'DTR received']);
   assert.equal(processor.state.payrollItems.find(item=>item.id===batch.itemIds[1]).verificationStatus,'Pending');
@@ -132,7 +132,7 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   const resumedGroup=groups.find(group=>group.status==='In_Progress');
   await processor.action('processWorkGroupItems',[resumedGroup.id,resumedGroup.itemIds,'complete']);
   await releaser.action('releasePayrollBatch',[batch.id,{releasedTo:'Payroll liaison',releaseMode:'In-Person Pick-up'}]);
-  assert.equal(releaser.state.payrollBatches.find(b=>b.id===batch.id).status,'Completed');
+  assert.equal(releaser.state.payrollBatches.find(b=>b.id===batch.id).status,'COMPLETED');
 
   // A partial release must not lock a held item in Stage 2.  The four released
   // items remain released while the repaired item is routed and released later.
@@ -146,8 +146,8 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   for (const partialGroup of partialGroups) await processor.action('processWorkGroupItems',[partialGroup.id,partialGroup.itemIds,'complete']);
   let partialState=processor.state.payrollBatches.find(item=>item.id===partial.id);
   assert.equal(partialState.currentStage,'release'); // compatibility summary: four siblings are ready.
-  assert.equal(partialState.progress.readyForRelease,4);
-  assert.equal(partialState.progress.onHold,1);
+  assert.equal(partialState.progress.release.ready,4);
+  assert.equal(partialState.progress.onHoldTotal,1);
   assert.equal(processor.state.payrollItems.find(item=>item.id===partial.itemIds[4]).status,'On_Hold');
 
   // The parent compatibility stage is Release, but the held child remains eligible
@@ -167,7 +167,7 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   assert.equal(releaser.state.payrollItems.filter(item=>item.batchId===partial.id && item.status==='Released').length,4);
   await processor.action('processWorkGroupItems',[recoveredGroup.id,[partial.itemIds[4]],'complete']);
   await releaser.action('releasePayrollBatch',[partial.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
-  assert.equal(releaser.state.payrollBatches.find(item=>item.id===partial.id).status,'Completed');
+  assert.equal(releaser.state.payrollBatches.find(item=>item.id===partial.id).status,'COMPLETED');
   await admin.action('deletePayrollBatch',[partial.id]);
   assert.equal(admin.state.payrollBatches.some(item=>item.id===partial.id),false);
   assert.equal(admin.state.workGroups.some(item=>item.batchId===partial.id),false);
@@ -200,6 +200,24 @@ test('a held payroll item supports repeated compliance cycles after all siblings
   await processor.action('processWorkGroupItems',[resumedGroup.id,resumedGroup.itemIds,'complete']);
   await releaser.action('releasePayrollBatch',[held.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
   assert.equal(releaser.state.payrollItems.filter(item=>item.batchId===held.id && item.status==='Released').length,3);
+});
+
+test('batch progress is a child-item aggregate for mixed release, processing, and holds',async()=>{
+  const aggregate=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'BATCH-AGGREGATE-001',items:[1,2,3,4,5].map(n=>({title:`Aggregate payroll ${n}`,barcode:`AGGREGATE-PAY-${n}`})),files:[]}])).result;
+  for (const [index, classification] of ['JOW/COS','JOW/COS','Regular','Casual','Casual'].entries()) await admin.action('updatePayrollItemClassification',[aggregate.itemIds[index],classification]);
+  await admin.action('markPayrollItemException',[aggregate.itemIds[4],'Missing DTR']);
+  await admin.action('completeInitialCheckingAndRoute',[aggregate.id]);
+  const groups=admin.state.workGroups.filter(group=>group.batchId===aggregate.id && group.status==='In_Progress');
+  const jow=groups.find(group=>group.classification==='JOW/COS'); const regular=groups.find(group=>group.classification==='Regular');
+  await processor.action('processWorkGroupItems',[jow.id,[aggregate.itemIds[0]],'complete']);
+  await releaser.action('releasePayrollBatch',[aggregate.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
+  await processor.action('processWorkGroupItems',[regular.id,[aggregate.itemIds[2]],'complete']);
+  const summary=processor.state.payrollBatches.find(batch=>batch.id===aggregate.id).progress;
+  assert.equal(summary.totalItems,5); assert.equal(summary.stage1Completed,5);
+  assert.deepEqual(summary.initialChecking,{active:1,completed:4,onHold:1});
+  assert.deepEqual(summary.management,{reached:4,active:2,completed:2,onHold:0,notReached:1});
+  assert.deepEqual(summary.release,{ready:1,released:1,notReached:3});
+  assert.equal(summary.onHoldTotal,1); assert.equal(summary.derivedStatus,'PROCESSING_WITH_HOLDS');
 });
 
 test('unrouted payroll batches can be edited and deleted from payroll management',async()=>{

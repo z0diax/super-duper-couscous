@@ -185,20 +185,26 @@ export interface PayrollBatch {
     dynamic?: boolean;
   }>;
   workflowHistory?: PayrollItemAuditEntry[];
-  /** Compatibility summary only. Individual PayrollItem state controls routing. */
-  progress?: {
+  /** Server-derived aggregate. Individual PayrollItem state controls routing. */
+  progress: {
     totalItems: number;
-    initialChecking: number;
-    stage3Processing: number;
-    readyForRelease: number;
-    released: number;
-    onHold: number;
+    docketed: number;
+    stage1Completed: number;
+    initialChecking: { active: number; completed: number; onHold: number };
+    management: { reached: number; active: number; completed: number; onHold: number; notReached: number };
+    release: { ready: number; released: number; notReached: number };
+    onHoldTotal: number;
+    exceptionCount: number;
+    completedCount: number;
+    derivedStatus: 'INITIAL_CHECKING' | 'IN_PROCESS' | 'ON_HOLD' | 'PROCESSING_WITH_HOLDS' | 'PARTIALLY_READY_FOR_RELEASE' | 'READY_FOR_RELEASE' | 'COMPLETED';
+    displayStatus: string;
   };
   totalItemsCount: number;
   itemIds: string[];
   workGroupIds: string[];
   attachments: FileAttachment[];
-  status: 'Active' | 'On_Hold' | 'Completed' | 'Archived';
+  /** Deprecated compatibility field; it mirrors progress.derivedStatus. */
+  status: 'Active' | 'On_Hold' | 'Completed' | 'Archived' | 'INITIAL_CHECKING' | 'IN_PROCESS' | 'ON_HOLD' | 'PROCESSING_WITH_HOLDS' | 'PARTIALLY_READY_FOR_RELEASE' | 'READY_FOR_RELEASE' | 'COMPLETED';
   releaseDetails?: {
     releasedAt?: string;
     releasedBy?: string;

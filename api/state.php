@@ -11,7 +11,7 @@ try {
     // One revision lock serializes related entity changes and prevents stale UI actions.
     $revision=(int)$pdo->query('SELECT revision FROM app_meta WHERE id=1 FOR UPDATE')->fetchColumn();
     $user=authenticated_user($pdo);
-    $state=load_state($pdo); $result=null;
+    $state=load_state($pdo); payroll_attach_batch_progress($state); $result=null;
     if ($method==='POST') {
         fail_unless(isset($body['revision']) && $body['revision']===$revision,'Another officer changed the records. Refresh, review the latest data, and submit again.',409);
         $action=required($body,'action',80); $args=$body['args']??[]; fail_unless(is_array($args),'Operation arguments are required.'); $before=$state;
@@ -72,7 +72,7 @@ try {
         $auditAction=['updatePayrollBatch'=>'PAYROLL_BATCH_UPDATED','deletePayrollBatch'=>'PAYROLL_BATCH_DELETED','updatePayrollItemClassification'=>'EMPLOYMENT_CLASSIFICATION_SET','bulkClassifyPayrollItems'=>'BULK_CLASSIFICATION_SET','markPayrollItemException'=>'PAYROLL_ITEM_PLACED_ON_HOLD','clearPayrollItemException'=>'PAYROLL_COMPLIANCE_RECEIVED','recordPayrollItemCompliance'=>'PAYROLL_COMPLIANCE_RECEIVED','recheckPayrollItem'=>'PAYROLL_ITEM_RECHECK_COMPLETED','completeInitialCheckingAndRoute'=>'INITIAL_CHECK_COMPLETED','completePayrollItemInitialCheckingAndRoute'=>'INITIAL_CHECK_ITEM_COMPLETED','processWorkGroupItems'=>($args[2]??'')==='exception'?'PAYROLL_ITEM_EXCEPTION':'PAYROLL_ITEM_COMPLETED','releasePayrollBatch'=>'PAYROLL_RELEASED','fileLeaveApplication'=>'LEAVE_FILED','approveLeaveApplication'=>'LEAVE_APPROVED','addUser'=>'USER_CREATED','updateUser'=>'USER_UPDATED','deleteUser'=>'USER_DELETED','deleteClassificationType'=>'CLASSIFICATION_TYPE_DELETED','recordExternalHandoff'=>'DOCUMENT_SENT_OUTSIDE_HRMDO','recordExternalReturn'=>'DOCUMENT_RETURNED_TO_HRMDO','changePassword'=>'PASSWORD_CHANGED'][$action]??$auditAction;
         audit($pdo,$user,$auditAction,$id,ucfirst(strtolower(preg_replace('/(?<!^)[A-Z]/',' $0',$action))),$details,is_array($result)?($result['trackingNumber']??$result['batchNumber']??''):'');
         $pdo->exec('UPDATE app_meta SET revision=revision+1 WHERE id=1'); $revision++;
-        $state=load_state($pdo);
+        $state=load_state($pdo); payroll_attach_batch_progress($state);
     }
     // Staff may view the operational registry, but only their own leave records.
     if (!has_cap($state,$user,'canApprove') && !has_cap($state,$user,'canSupervise')) $state['leaveApplications']=array_values(array_filter($state['leaveApplications'],fn($l)=>$l['employeeId']===$user['id']));

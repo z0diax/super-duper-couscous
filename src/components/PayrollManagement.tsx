@@ -78,7 +78,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     const hasWorkGroups = workGroups.some(group => group.batchId === batch.id);
     const initialDesk = batch.initialCheckingDesk || batch.assignedDesk;
     const assignedToInitialChecking = can('canSupervise') || (initialDesk.userId ? initialDesk.userId === currentUser.id : initialDesk.assignmentType === 'Role' ? initialDesk.roleId === currentUser.role : initialDesk.assignmentType === 'Team' && !!initialDesk.team && [currentUser.division, currentUser.office].includes(initialDesk.team));
-    return batch.status === 'Active' && !hasStarted && !hasWorkGroups && assignedToInitialChecking;
+    return !hasStarted && !hasWorkGroups && assignedToInitialChecking;
   };
 
   const handleDeleteBatch = async (batch: PayrollBatch) => {
@@ -90,6 +90,18 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     if (!(await deleteDocument(documentId))) return;
     setDeleteConfirmSingleDocumentId(null);
   };
+  const matchesAggregateStage = (batch: PayrollBatch, stage: string) => {
+    const progress = batch.progress;
+    if (stage === 'initial_checking') return progress.initialChecking.active > 0;
+    if (stage === 'verification_signing') return progress.management.active > 0 || progress.management.onHold > 0;
+    if (stage === 'release') return progress.release.ready > 0;
+    if (stage === 'completed') return progress.derivedStatus === 'COMPLETED';
+    return true;
+  };
+  const batchStatusTone = (batch: PayrollBatch) => {
+    const status = batch.progress.derivedStatus;
+    return status === 'PROCESSING_WITH_HOLDS' || status === 'ON_HOLD' ? 'bg-amber-100 text-amber-800' : status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' : status.includes('RELEASE') ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800';
+  };
 
   // Filter batches
   const filteredBatches = payrollBatches.filter(batch => {
@@ -98,7 +110,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
       batch.office.toLowerCase().includes(searchQuery.toLowerCase()) ||
       batch.payrollType.toLowerCase().includes(searchQuery.toLowerCase());
 
-    const matchesStage = stageFilter === 'all' || batch.currentStage === stageFilter;
+    const matchesStage = stageFilter === 'all' || matchesAggregateStage(batch, stageFilter);
     const matchesOffice = officeFilter === 'all' || batch.office === officeFilter;
 
     return matchesSearch && matchesStage && matchesOffice;
@@ -128,10 +140,10 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   });
 
   // Calculate metrics
-  const totalActiveBatches = payrollBatches.filter(b => b.status === 'Active').length;
-  const initialCheckingBatches = payrollBatches.filter(b => b.currentStage === 'initial_checking').length;
+  const totalActiveBatches = payrollBatches.filter(b => b.progress.derivedStatus !== 'COMPLETED').length;
+  const initialCheckingBatches = payrollBatches.filter(b => b.progress.initialChecking.active > 0).length;
   const activeWorkGroupsCount = workGroups.filter(w => w.status === 'In_Progress').length;
-  const releasedBatchesCount = payrollBatches.filter(b => b.status === 'Completed').length;
+  const releasedBatchesCount = payrollBatches.filter(b => b.progress.derivedStatus === 'COMPLETED').length;
 
   // Unique offices for filter
   const offices = Array.from(new Set(payrollBatches.map(b => b.office)));
@@ -336,7 +348,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
           {filteredBatches.map(batch => {
             const batchItems = payrollItems.filter(i => i.batchId === batch.id);
             const bWorkGroups = workGroups.filter(w => w.batchId === batch.id);
-            const isCompleted = batch.status === 'Completed';
+            const progress = batch.progress;
 
             return (
               <div
@@ -351,16 +363,8 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                         <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md">
                           {batch.batchNumber}
                         </span>
-                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                          batch.currentStage === 'initial_checking'
-                            ? 'bg-amber-100 text-amber-800'
-                            : batch.currentStage === 'verification_signing'
-                            ? 'bg-blue-100 text-blue-800'
-                            : batch.currentStage === 'release'
-                            ? 'bg-purple-100 text-purple-800'
-                            : 'bg-emerald-100 text-emerald-800'
-                        }`}>
-                          {batch.currentStageName}
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${batchStatusTone(batch)}`}>
+                          {progress.displayStatus}
                         </span>
                       </div>
                       <h3 className="text-sm font-bold text-slate-900 mt-1.5 line-clamp-1">
@@ -372,23 +376,12 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                     </div>
                   </div>
 
-                  {/* Stage Progress mini-bar */}
-                  <div className="space-y-1 pt-1">
-                    <div className="flex justify-between text-[11px] text-slate-500 font-medium">
-                      <span>Lifecycle Stage</span>
-                      <span className="font-semibold text-slate-700">
-                        {batch.currentStage === 'initial_checking' && 'Stage 2 of 4'}
-                        {batch.currentStage === 'verification_signing' && 'Stage 3 of 4'}
-                        {batch.currentStage === 'release' && 'Stage 4 of 4'}
-                        {batch.currentStage === 'completed' && 'Concluded'}
-                      </span>
-                    </div>
-                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden flex">
-                      <div className="bg-emerald-500 w-1/4" />
-                      <div className={`w-1/4 ${batch.currentStage !== 'initial_checking' ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                      <div className={`w-1/4 ${batch.currentStage === 'verification_signing' ? 'bg-blue-600' : batch.currentStage === 'release' || isCompleted ? 'bg-emerald-500' : 'bg-slate-200'}`} />
-                      <div className={`w-1/4 ${isCompleted ? 'bg-emerald-500' : batch.currentStage === 'release' ? 'bg-purple-600' : 'bg-slate-200'}`} />
-                    </div>
+                  <div className="flex flex-wrap gap-1.5 pt-1 text-[10px] font-semibold">
+                    <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-800">Initial: {progress.initialChecking.active}</span>
+                    <span className="rounded bg-blue-50 px-1.5 py-0.5 text-blue-800">Processing: {progress.management.active}</span>
+                    <span className="rounded bg-purple-50 px-1.5 py-0.5 text-purple-800">Ready: {progress.release.ready}</span>
+                    <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-800">Released: {progress.release.released}</span>
+                    {progress.onHoldTotal > 0 && <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-800">On hold: {progress.onHoldTotal}</span>}
                   </div>
 
                   {/* Details grid */}
@@ -477,13 +470,14 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                 {paginatedBatches.map(batch => {
                 const batchItems = payrollItems.filter(item => item.batchId === batch.id);
                 const editable = canEditBatch(batch);
+                const progress = batch.progress;
                 return (
                   <div key={batch.id} className="grid grid-cols-1 gap-3 px-5 py-4 transition-colors hover:bg-slate-50 lg:grid-cols-[minmax(170px,1.25fr)_minmax(140px,1fr)_120px_80px_120px_190px] lg:items-center lg:gap-4">
                     <div><p className="font-mono text-xs font-bold text-blue-700">{batch.batchNumber}</p><p className="mt-1 truncate text-xs font-medium text-slate-800">{batch.office}</p></div>
                     <p className="truncate text-xs text-slate-600">{batch.payrollType}</p>
                     <p className="truncate text-xs text-slate-600">{batch.payrollPeriod || 'Not specified'}</p>
                     <p className="text-xs font-semibold text-slate-800">{batchItems.length} item{batchItems.length === 1 ? '' : 's'}</p>
-                    <span className="w-fit rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">{batch.currentStageName}</span>
+                    <div className="space-y-1"><span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${batchStatusTone(batch)}`}>{progress.displayStatus}</span><p className="text-[10px] text-slate-500">{progress.release.ready} ready &bull; {progress.onHoldTotal} hold</p></div>
                     <div className="flex items-center justify-start gap-1 lg:justify-end">
                       {editable && <button type="button" aria-label={`Edit ${batch.batchNumber}`} onClick={() => setEditingBatchId(batch.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>}
                       {can('canAdmin') && (deleteConfirmBatchId === batch.id ? <><button type="button" onClick={() => handleDeleteBatch(batch)} className="rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-bold text-white">Confirm</button><button type="button" onClick={() => setDeleteConfirmBatchId(null)} className="rounded-lg px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-200">Cancel</button></> : <button type="button" aria-label={`Delete ${batch.batchNumber}`} onClick={() => setDeleteConfirmBatchId(batch.id)} className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>)}
