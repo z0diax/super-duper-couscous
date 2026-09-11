@@ -140,7 +140,7 @@ test('payroll batch intake saves its items and a downloadable attachment', async
   const item = client.state.payrollItems.find((i:any)=>i.barcode==='BROWSER-PAY-001'); expect(item).toBeTruthy();
   const batch = client.state.payrollBatches.find((b:any)=>b.id===item.batchId); expect(batch.attachments[0].name).toBe('transmittal.pdf');
   const myTasksNav = page.getByRole('button', { name: /^My Tasks & Queues/ });
-  await expect(myTasksNav).toContainText('1');
+  await expect(myTasksNav).toHaveText(/My Tasks & Queues[1-9]\d*$/);
   await expect(page.getByRole('button', { name: 'Payroll Management', exact: true })).toBeVisible();
   await myTasksNav.click();
   await expect(page.getByRole('heading', { name: 'Payroll tasks' })).toBeVisible();
