@@ -1,0 +1,469 @@
+export type UserRole = 
+  | 'receiving_officer'
+  | 'processor'
+  | 'reviewer'
+  | 'approver'
+  | 'releasing_officer'
+  | 'supervisor'
+  | 'admin'
+  | 'employee'
+  | (string & {});
+
+export interface SystemRoleDefinition {
+  id: string;
+  name: string;
+  code: string;
+  description: string;
+  badgeClass: string;
+  canIntake?: boolean;
+  canProcess?: boolean;
+  canReview?: boolean;
+  canApprove?: boolean;
+  canRelease?: boolean;
+  canSupervise?: boolean;
+  canAdmin?: boolean;
+  isSystemDefault?: boolean;
+}
+
+export interface UserAccount {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  roleTitle: string;
+  office: string;
+  division: string;
+  position: string;
+  avatarInitials: string;
+  isMigratedV1?: boolean;
+  legacyId?: string;
+}
+
+export interface AssigneeDesignation {
+  id: string;
+  category: 'Role' | 'Team';
+  title: string;
+  baseRole?: UserRole;
+  description?: string;
+  isCustom?: boolean;
+}
+
+export type EmploymentClassification = 'JOW/COS' | 'Casual' | 'Regular' | 'Job Order (JOW)';
+
+export type PayrollProcessingMode = 'Single Payroll' | 'Payroll Batch';
+
+export type PayrollBatchStage = 
+  | 'receiving'
+  | 'initial_checking'
+  | 'verification_signing'
+  | 'release'
+  | 'completed';
+
+export type PayrollItemVerificationStatus = 'Pending' | 'Passed' | 'Exception';
+
+export type PayrollItemStatus = 'Pending' | 'Ready' | 'In_Progress' | 'Completed' | 'On_Hold' | 'Ready_For_Release' | 'Released';
+
+export interface PayrollItemAuditEntry {
+  id: string;
+  timestamp: string;
+  actorId: string;
+  actorName: string;
+  actorRole: string;
+  action: string;
+  details?: string;
+  previousState?: string;
+  newState?: string;
+}
+
+export interface PayrollItem {
+    id: string;
+    documentId?: string;
+    batchId: string;
+  batchNumber: string;
+  itemNumber: number;
+  barcode: string;
+  title: string;
+  office?: string;
+  classificationType?: string;
+  employmentClassification?: EmploymentClassification | null;
+  verificationStatus: PayrollItemVerificationStatus;
+  status: PayrollItemStatus;
+  currentStage?: PayrollBatchStage;
+  exceptionReason?: string;
+  exceptionNotes?: string;
+  workGroupId?: string;
+  assignedToUserId?: string;
+  assignedToName?: string;
+  remarks?: string;
+  auditHistory: PayrollItemAuditEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkGroup {
+  id: string;
+  batchId: string;
+  batchNumber: string;
+  code: string;
+  classification: EmploymentClassification;
+  assignedProcessorId: string;
+  assignedProcessorName: string;
+  assignedProcessorRoleTitle: string;
+  itemIds: string[];
+  status: 'Pending' | 'In_Progress' | 'Completed';
+  startedAt?: string;
+  completedAt?: string;
+  completedBy?: {
+    userId: string;
+    userName: string;
+  };
+  remarks?: string;
+  auditHistory?: PayrollItemAuditEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayrollBatch {
+  id: string;
+  batchNumber: string;
+  classification: 'Payroll';
+  payrollType: string;
+  office: string;
+  payrollPeriod?: string;
+  receivedFromLiaison?: string;
+  batchBarcode?: string;
+  remarks?: string;
+  dateReceived: string;
+  dateEncoded: string;
+  encodedBy: {
+    userId: string;
+    userName: string;
+    userRole: string;
+  };
+  currentStage: PayrollBatchStage;
+  currentStageName: string;
+  assignedDesk: {
+    stage: PayrollBatchStage;
+    userId?: string;
+    userName: string;
+    roleTitle: string;
+  };
+  totalItemsCount: number;
+  itemIds: string[];
+  workGroupIds: string[];
+  attachments: FileAttachment[];
+  status: 'Active' | 'On_Hold' | 'Completed' | 'Archived';
+  releaseDetails?: {
+    releasedAt?: string;
+    releasedBy?: string;
+    releasedTo?: string;
+    releaseMode?: string;
+    receiptRemarks?: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmploymentRoutingRule {
+  id: string;
+  classification: EmploymentClassification;
+  title: string;
+  primaryProcessorId: string;
+  primaryProcessorName: string;
+  primaryProcessorRoleTitle: string;
+  backupProcessorId?: string;
+  backupProcessorName?: string;
+  assignedTeam?: string;
+  defaultSlaHours?: number;
+  description: string;
+  updatedAt: string;
+}
+
+export type DocumentClassification = 'Communication' | 'Payroll' | 'Request' | 'Others';
+
+export type PriorityLevel = 'Routine' | 'Priority' | 'Urgent';
+
+export type DocumentStatus = 
+  | 'Draft'
+  | 'Registered'
+  | 'In_Progress'
+  | 'Under_Review'
+  | 'Pending_Approval'
+  | 'Awaiting_External_Handoff'
+  | 'Awaiting_External_Return'
+  | 'Approved'
+  | 'Returned'
+  | 'Ready_For_Release'
+  | 'Released'
+  | 'Archived';
+
+export interface FileAttachment {
+  id: string;
+  name: string;
+  sizeBytes: number;
+  mimeType: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  stepNumber?: number;
+  url?: string;
+  isLegacyV1?: boolean;
+}
+
+export interface WorkflowStepTemplate {
+  stepNumber: number;
+  name: string;
+  description: string;
+  stageType?: 'INTERNAL_PROCESSING' | 'EXTERNAL_HANDOFF_REVIEW' | 'FINAL_RELEASE';
+  assigneeType: 'Role' | 'Team' | 'Person' | 'System';
+  assigneeRole?: UserRole;
+  assigneeTeam?: string;
+  assigneeUserId?: string;
+  assigneeName: string;
+  slaHours: number;
+  requiredAction: 'Receive' | 'Verify & Process' | 'Review & Recommend' | 'Approve & Sign' | 'Release & Archive' | 'External Handoff';
+  allowReturn: boolean;
+  requiresAttachment: boolean;
+  externalPurpose?: 'Approval' | 'Comments' | 'Signature' | 'Review' | 'Recommendation' | 'Certification' | 'Other';
+  externalDestinationMode?: 'FIXED_DESTINATION' | 'SELECT_AT_HANDOFF';
+  externalDestinationOffice?: string;
+  returnReceiverType?: 'Role' | 'Team' | 'Person';
+  returnReceiverRole?: UserRole;
+  returnReceiverTeam?: string;
+  returnReceiverUserId?: string;
+  returnReceiverName?: string;
+  expectedTurnaroundHours?: number;
+  requiresReturnedAttachment?: boolean;
+  requiresExternalResult?: boolean;
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  classification: DocumentClassification;
+  documentType: string;
+  documentTypes?: string[];
+  employmentClassification?: 'All' | 'Job Order (JOW)' | 'Regular' | 'Casual';
+  title: string;
+  description: string;
+  version: number;
+  isActive: boolean;
+  steps: WorkflowStepTemplate[];
+}
+
+export interface WorkflowStepInstance {
+  stageType?: WorkflowStepTemplate['stageType'];
+  requiredAction?: WorkflowStepTemplate['requiredAction'];
+  allowReturn?: boolean;
+  requiresAttachment?: boolean;
+  stepNumber: number;
+  name: string;
+  assignedTo: {
+    type: 'Role' | 'Team' | 'Person' | 'System';
+    role?: UserRole;
+    team?: string;
+    userId?: string;
+    displayName: string;
+  };
+  status: 'Pending' | 'In_Progress' | 'Completed' | 'Returned' | 'Skipped';
+  slaHours: number;
+  startedAt?: string;
+  completedAt?: string;
+  completedBy?: {
+    userId: string;
+    userName: string;
+    userRole: string;
+  };
+  actionTaken?: string;
+  remarks?: string;
+  supportingFileIds?: string[];
+  isCurrent: boolean;
+  externalPurpose?: WorkflowStepTemplate['externalPurpose'];
+  externalDestinationMode?: WorkflowStepTemplate['externalDestinationMode'];
+  externalDestinationOffice?: string;
+  returnReceiver?: {
+    type: 'Role' | 'Team' | 'Person';
+    role?: UserRole;
+    team?: string;
+    userId?: string;
+    displayName: string;
+  };
+  expectedTurnaroundHours?: number;
+  requiresReturnedAttachment?: boolean;
+  requiresExternalResult?: boolean;
+  externalStatus?: 'PENDING_HANDOFF' | 'OUTSIDE_HRMDO' | 'COMPLETED';
+  handoffOwner?: { userId: string; userName: string; userRole: string };
+  externalHandoff?: {
+    destinationOffice: string;
+    purpose: string;
+    handedTo: string;
+    representative?: string;
+    remarks?: string;
+    expectedReturn?: string;
+    sentAt: string;
+    sentBy: { userId: string; userName: string; userRole: string };
+  };
+  externalReturn?: {
+    returnedFrom: string;
+    returnedBy?: string;
+    result?: 'Approved' | 'Approved with Comments' | 'Returned with Comments' | 'Signed' | 'Reviewed' | 'Disapproved' | 'No Action' | 'Other';
+    remarks?: string;
+    returnedAt: string;
+    receivedBy: { userId: string; userName: string; userRole: string };
+  };
+}
+
+export interface AuditEvent {
+  id: string;
+  documentId: string;
+  trackingNumber: string;
+  timestamp: string;
+  actorId: string;
+  actorName: string;
+  actorRole: string;
+  actionType: 
+    | 'LEAVE_FILED'
+    | 'LEAVE_APPROVED'
+    | 'USER_CREATED'
+    | 'USER_UPDATED'
+    | 'USER_DELETED'
+    | 'PASSWORD_CHANGED'
+    | 'DOCUMENT_REGISTERED'
+    | 'STEP_STARTED'
+    | 'TASK_CLAIMED'
+    | 'STEP_COMPLETED'
+    | 'STEP_RETURNED'
+    | 'TASK_REASSIGNED'
+    | 'DOCUMENT_APPROVED'
+    | 'DOCUMENT_RELEASED'
+    | 'DOCUMENT_SENT_OUTSIDE_HRMDO'
+    | 'DOCUMENT_RETURNED_TO_HRMDO'
+    | 'REMARK_ADDED'
+    | 'ATTACHMENT_UPLOADED'
+    | 'WORKFLOW_CONFIG_UPDATED'
+    | 'MIGRATION_VERIFIED'
+    | 'PAYROLL_BATCH_CREATED'
+    | 'PAYROLL_ITEM_CREATED'
+    | 'INITIAL_CHECK_STARTED'
+    | 'EMPLOYMENT_CLASSIFICATION_SET'
+    | 'BULK_CLASSIFICATION_SET'
+    | 'PAYROLL_ITEM_EXCEPTION'
+    | 'INITIAL_CHECK_COMPLETED'
+    | 'PAYROLL_ITEM_AUTO_ROUTED'
+    | 'WORK_GROUP_CREATED'
+    | 'WORK_GROUP_ACCEPTED'
+    | 'PAYROLL_ITEM_COMPLETED'
+    | 'PAYROLL_ITEM_RETURNED'
+    | 'PAYROLL_READY_FOR_RELEASE'
+    | 'PAYROLL_RELEASED';
+  summary: string;
+  details?: string;
+  stepNumber?: number;
+}
+
+export interface DocumentRecord {
+  id: string;
+  trackingNumber: string;
+  barcode?: string;
+  title: string;
+  subject: string;
+  sourceType: 'Internal' | 'External';
+  sourceOffice: string;
+  senderName: string;
+  senderContact?: string;
+  classification: DocumentClassification;
+  documentType: string;
+  employmentClassification?: 'Job Order (JOW)' | 'Regular' | 'Casual';
+  priority: PriorityLevel;
+  dateReceived: string;
+  dateEncoded: string;
+  description: string;
+  status: DocumentStatus;
+  currentStepNumber: number;
+  totalSteps: number;
+  workflowTemplateId: string;
+  workflowSteps: WorkflowStepInstance[];
+  attachments: FileAttachment[];
+  currentLocation?: string;
+  custodyHistory?: Array<{
+    id: string;
+    movementType: 'INTAKE' | 'EXTERNAL_HANDOFF' | 'RETURN_TO_HRMDO' | 'FINAL_RELEASE';
+    fromLocation: string;
+    toLocation: string;
+    timestamp: string;
+    stageNumber?: number;
+    purpose?: string;
+    remarks?: string;
+    actorId?: string;
+    actorName?: string;
+    representative?: string;
+  }>;
+  encodedBy: {
+    userId: string;
+    userName: string;
+  };
+  releasedDetails?: {
+    releaseNumber: string;
+    releasedAt: string;
+    releasedBy: string;
+    releasedTo: string;
+    releaseMode: 'In-Person Pick-up' | 'Official Courier' | 'Electronic Copy' | 'Internal Messenger';
+    receiptRemarks?: string;
+  };
+  isLegacyV1?: boolean;
+  legacyId?: string;
+  legacySource?: string;
+}
+
+export interface LeaveApplicationRecord {
+  id: string;
+  legacyId?: string;
+  isLegacyV1: boolean;
+  employeeId: string;
+  employeeName: string;
+  department: string;
+  position: string;
+  leaveType: 
+    | 'Vacation Leave'
+    | 'Sick Leave'
+    | 'Maternity Leave'
+    | 'Paternity Leave'
+    | 'Solo Parent Leave'
+    | 'Mandatory / Forced Leave'
+    | 'Special Privilege Leave'
+    | 'Terminal Leave';
+  filingDate: string;
+  startDate: string;
+  endDate: string;
+  workingDaysNumber: number;
+  commutation: 'Requested' | 'Not Requested';
+  status: 'Pending' | 'Approved' | 'Disapproved' | 'Cancelled';
+  approvalDate?: string;
+  approvedBy?: string;
+  disapprovalReason?: string;
+  remarks?: string;
+  v1MigrationStatus?: 'Reconciled' | 'Historical Reference';
+}
+
+export interface ClassificationCategory {
+  id: string;
+  classification: DocumentClassification;
+  description: string;
+  types: {
+    id: string;
+    name: string;
+    description: string;
+    defaultSlaHours: number;
+    isActive: boolean;
+    hasSpecificWorkflow: boolean;
+  }[];
+}
+
+export interface MigrationSummary {
+  datasetName: string;
+  priority: 'Critical' | 'High' | 'Secondary' | 'None';
+  totalV1Records: number;
+  successfullyMigrated: number;
+  exceptionsCount: number;
+  status: 'Reconciled' | 'Dry-Run Validated' | 'Not Required' | 'Skipped';
+  v2Destination: string;
+  lastReconciledAt: string;
+}

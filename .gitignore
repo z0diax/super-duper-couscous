@@ -1,0 +1,13 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+api/config.php
+storage/*
+!storage/.htaccess
+test-results/
+playwright-report/

@@ -1,0 +1,268 @@
+<?php
+declare(strict_types=1);
+require_once __DIR__.'/store.php';
+function required(array $data,string $key,int $max=190): string {
+    fail_unless(isset($data[$key]) && is_string($data[$key]), "$key is required.");
+    $v=trim($data[$key]); fail_unless($v!=='' && mb_strlen($v)<=$max,"$key must contain 1–$max characters."); return $v;
+}
+function choice($value,array $values,string $label): string {
+    fail_unless(is_string($value) && in_array($value,$values,true),"Invalid $label."); return $value;
+}
+function positive($value,string $label,int $max=8760): float {
+    fail_unless(is_numeric($value) && $value>0 && $value<=$max,"$label must be greater than zero and at most $max."); return (float)$value;
+}
+function index_of(array $items,string $id): int {
+    foreach ($items as $i=>$item) if ($item['id']===$id) return $i;
+    throw new ApiError('Record no longer exists. Refresh and try again.',404);
+}
+function has_cap(array $s,array $u,string $cap): bool {
+    foreach ($s['systemRoles'] as $r) if ($r['id']===$u['role']) return $u['role']==='admin' || !empty($r['canAdmin']) || !empty($r[$cap]);
+    return $u['role']==='admin';
+}
+function require_cap(array $s,array $u,string $cap): void { fail_unless(has_cap($s,$u,$cap),'Your account is not authorized for this action.',403); }
+function can_assign(array $s,array $u,array $assignment): bool {
+    if (has_cap($s,$u,'canSupervise')) return true;
+    if (!empty($assignment['userId'])) return $assignment['userId']===$u['id'];
+    if (($assignment['type']??'')==='Role') return ($assignment['role']??null)===$u['role'];
+    return ($assignment['type']??'')==='Team' && !empty($assignment['team']) && in_array($assignment['team'],[$u['division'],$u['office']],true);
+}
+function assert_barcode(array $s,string $barcode,array $additional=[]): void {
+    fail_unless(strlen($barcode)<=190 && $barcode!=='','Barcode is required and must be at most 190 characters.');
+    $codes=$additional;
+    foreach ($s['documents'] as $r) { $codes[]=$r['barcode']??''; $codes[]=$r['trackingNumber']; }
+    foreach ($s['payrollBatches'] as $r) { $codes[]=$r['batchBarcode']??''; $codes[]=$r['batchNumber']; }
+    foreach ($s['payrollItems'] as $r) $codes[]=$r['barcode'];
+    fail_unless(!in_array(strtolower($barcode),array_map('strtolower',$codes),true),'Barcode is already in use.',409);
+}
+function validated_workflow(array $s,array $d): array {
+    $d['title']=required($d,'title',160);
+    $types=$d['documentTypes']??[$d['documentType']??null];
+    fail_unless(is_array($types) && count($types)>0 && count($types)<=100,'Choose between 1 and 100 document types.');
+    $types=array_values(array_unique(array_map(fn($type)=>required(['type'=>$type],'type'),$types)));
+    fail_unless(!in_array('All',$types,true) || count($types)===1,'All Documents cannot be combined with individual document types.');
+    $d['documentTypes']=$types; $d['documentType']=$types[0];
+    choice($d['classification']??null,['Communication','Payroll','Request','Others'],'classification');
+    fail_unless(is_array($d['steps']??null) && count($d['steps'])>0 && count($d['steps'])<=50,'A workflow needs between 1 and 50 steps.');
+    foreach ($d['steps'] as $i=>&$step) {
+        $step['stepNumber']=$i+1; $step['name']=required($step,'name',160);
+        $step['slaHours']=positive($step['slaHours']??0,'SLA hours');
+        // Legacy templates did not have a stage type. Preserve them as internal steps,
+        // except for their existing terminal release stage.
+        $stageType=choice($step['stageType']??(($step['requiredAction']??'')==='Release & Archive'?'FINAL_RELEASE':'INTERNAL_PROCESSING'),['INTERNAL_PROCESSING','EXTERNAL_HANDOFF_REVIEW','FINAL_RELEASE'],'stage type');
+        $step['stageType']=$stageType;
+        if ($stageType==='EXTERNAL_HANDOFF_REVIEW') {
+            fail_unless($i<count($d['steps'])-1,'An external handoff must be followed by an internal workflow stage.');
+            $step['requiredAction']='External Handoff'; $step['assigneeType']='System'; $step['assigneeName']='System / awaiting HRMDO handoff';
+            $step['externalPurpose']=choice($step['externalPurpose']??null,['Approval','Comments','Signature','Review','Recommendation','Certification','Other'],'external purpose');
+            $step['externalDestinationMode']=choice($step['externalDestinationMode']??'SELECT_AT_HANDOFF',['FIXED_DESTINATION','SELECT_AT_HANDOFF'],'external destination mode');
+            if ($step['externalDestinationMode']==='FIXED_DESTINATION') $step['externalDestinationOffice']=required($step,'externalDestinationOffice',190);
+            else unset($step['externalDestinationOffice']);
+            $receiverType=choice($step['returnReceiverType']??null,['Person','Role','Team'],'return receiver type'); $step['returnReceiverType']=$receiverType;
+            if ($receiverType==='Person') {
+                $receiver=$s['users'][index_of($s['users'],required($step,'returnReceiverUserId'))]; $step['returnReceiverName']=$receiver['name'];
+            } elseif ($receiverType==='Role') {
+                $roleId=required($step,'returnReceiverRole'); $matches=array_values(array_filter($s['systemRoles'],fn($role)=>$role['id']===$roleId));
+                fail_unless(count($matches)>0,'Stage '.($i+1).' uses a return receiver role that no longer exists.'); $step['returnReceiverName']=$matches[0]['name'];
+            } else {
+                $team=required($step,'returnReceiverTeam'); fail_unless(count(array_filter($s['users'],fn($u)=>in_array($team,[$u['division'],$u['office']],true)))>0,'The return receiver team must match an existing user division or office.'); $step['returnReceiverName']=$team;
+            }
+            $turnaround=$step['expectedTurnaroundHours']??null;
+            if ($turnaround!==null && $turnaround!=='') $step['expectedTurnaroundHours']=positive($turnaround,'Expected turnaround hours'); else unset($step['expectedTurnaroundHours']);
+            $step['requiresReturnedAttachment']=(bool)($step['requiresReturnedAttachment']??false); $step['requiresExternalResult']=(bool)($step['requiresExternalResult']??false);
+            $step['allowReturn']=false; $step['requiresAttachment']=false;
+            continue;
+        }
+        $step['requiredAction']=choice($step['requiredAction']??null,['Receive','Verify & Process','Review & Recommend','Approve & Sign','Release & Archive'],'required action');
+        if ($stageType==='FINAL_RELEASE') {
+            fail_unless($i===count($d['steps'])-1,'Final Release must be the final workflow step.'); $step['requiredAction']='Release & Archive';
+        } else fail_unless($step['requiredAction']!=='Release & Archive','Use the Final Release stage type for Release & Archive.');
+        choice($step['assigneeType']??null,['Person','Role','Team'],'assignee type');
+        if ($step['assigneeType']==='Person') {
+            $u=$s['users'][index_of($s['users'],required($step,'assigneeUserId'))]; $step['assigneeName']=$u['name'];
+        } elseif ($step['assigneeType']==='Role') {
+            $roleId=required($step,'assigneeRole');
+            $matches=array_values(array_filter($s['systemRoles'],fn($role)=>$role['id']===$roleId));
+            fail_unless(count($matches)>0,'Stage '.($i+1).' uses a role that no longer exists. Choose another assignee.');
+            $step['assigneeName']=$matches[0]['name'];
+        } else {
+            $team=required($step,'assigneeTeam');
+            fail_unless(count(array_filter($s['users'],fn($u)=>in_array($team,[$u['division'],$u['office']],true)))>0,'A team must match an existing user division or office.');
+            $step['assigneeName']=$team;
+        }
+        $step['allowReturn']=(bool)($step['allowReturn']??false); $step['requiresAttachment']=(bool)($step['requiresAttachment']??false);
+    } unset($step);
+    $d['isActive']=(bool)($d['isActive']??false); return $d;
+}
+function resolve_workflow(array $s,array $d): array {
+    $matches=[];
+    foreach ($s['workflowTemplates'] as $wf) {
+        if (empty($wf['isActive']) || empty($wf['steps']) || $wf['classification']!==$d['classification']) continue;
+        $types=$wf['documentTypes']??[$wf['documentType']];
+        $exact=count(array_filter($types,fn($type)=>strcasecmp($type,$d['documentType'])===0))>0;
+        if (!$exact && count(array_filter($types,fn($type)=>in_array(strtolower($type),['all','default'],true)))===0) continue;
+        $employment=$wf['employmentClassification']??'All';
+        if ($employment!=='All' && $employment!==($d['employmentClassification']??null)) continue;
+        $matches[]=['score'=>($exact?2:0)+($employment!=='All'?1:0),'workflow'=>$wf];
+    }
+    usort($matches,fn($a,$b)=>$b['score']<=>$a['score']);
+    fail_unless(count($matches)>0,'Configure an active workflow for this classification and document type first.');
+    fail_unless(count($matches)<2 || $matches[0]['score']!==$matches[1]['score'],'Multiple workflows match. Deactivate the duplicate routing configuration.');
+    return $matches[0]['workflow'];
+}
+function attach_files(PDO $pdo,array $u,array $files,string $owner,int $step=1): array {
+    fail_unless(count($files)<=20,'At most 20 attachments are allowed per operation.'); $result=[];
+    foreach ($files as $file) {
+        $id=required($file,'id',64); $q=$pdo->prepare('SELECT * FROM app_files WHERE id=? FOR UPDATE'); $q->execute([$id]); $r=$q->fetch();
+        fail_unless((bool)$r && $r['uploaded_by']===$u['id'] && ($r['owner_id']===null || $r['owner_id']===$owner),'Attachment is unavailable or belongs to another record.');
+        $pdo->prepare('UPDATE app_files SET owner_id=? WHERE id=?')->execute([$owner,$id]);
+        $result[]=['id'=>$id,'name'=>$r['original_name'],'sizeBytes'=>(int)$r['size_bytes'],'mimeType'=>$r['mime_type'],'uploadedBy'=>$u['name'],'uploadedAt'=>$r['created_at'],'stepNumber'=>$step,'url'=>'files.php?id='.$id];
+    }
+    return $result;
+}
+function register_document(PDO $pdo,array &$s,array $u,array $d): array {
+    require_cap($s,$u,'canIntake');
+    $title=required($d,'title',300); $office=required($d,'sourceOffice'); $type=required($d,'documentType');
+    $category=null; foreach ($s['classifications'] as $c) if ($c['classification']===($d['classification']??'')) $category=$c;
+    fail_unless($category!==null,'Choose a configured classification.');
+    fail_unless(count(array_filter($category['types'],fn($t)=>!empty($t['isActive']) && strcasecmp($t['name'],$type)===0))>0,'Choose an active document type from the catalogue.');
+    $wf=resolve_workflow($s,$d); $id=uid('doc'); $barcode=trim($d['barcode']??'') ?: 'HRMDO-'.date('Y').'-'.strtoupper(bin2hex(random_bytes(5)));
+    assert_barcode($s,$barcode); $steps=[]; $registeredAt=now();
+    foreach ($wf['steps'] as $i=>$st) {
+        $stageType=$st['stageType']??(($st['requiredAction']??'')==='Release & Archive'?'FINAL_RELEASE':'INTERNAL_PROCESSING');
+        $isExternal=$stageType==='EXTERNAL_HANDOFF_REVIEW';
+        $instance=['stepNumber'=>$i+1,'name'=>$st['name'],'stageType'=>$stageType,'assignedTo'=>$isExternal?['type'=>'System','displayName'=>'System / awaiting HRMDO handoff']:['type'=>$st['assigneeType'],'role'=>$st['assigneeRole']??null,'team'=>$st['assigneeTeam']??null,'userId'=>$st['assigneeType']==='Person'?($st['assigneeUserId']??null):null,'displayName'=>$st['assigneeName']], 'requiredAction'=>$st['requiredAction'],'allowReturn'=>$st['allowReturn'],'requiresAttachment'=>$st['requiresAttachment'],'status'=>$i===0?'In_Progress':'Pending','slaHours'=>$st['slaHours'],'startedAt'=>$i===0?$registeredAt:null,'isCurrent'=>$i===0];
+        if ($isExternal) {
+            $instance=array_merge($instance,['externalPurpose'=>$st['externalPurpose'],'externalDestinationMode'=>$st['externalDestinationMode'],'externalDestinationOffice'=>$st['externalDestinationOffice']??null,'returnReceiver'=>['type'=>$st['returnReceiverType'],'role'=>$st['returnReceiverRole']??null,'team'=>$st['returnReceiverTeam']??null,'userId'=>$st['returnReceiverType']==='Person'?($st['returnReceiverUserId']??null):null,'displayName'=>$st['returnReceiverName']],'expectedTurnaroundHours'=>$st['expectedTurnaroundHours']??null,'requiresReturnedAttachment'=>(bool)($st['requiresReturnedAttachment']??false),'requiresExternalResult'=>(bool)($st['requiresExternalResult']??false),'externalStatus'=>$i===0?'PENDING_HANDOFF':null]);
+            if ($i===0) $instance['handoffOwner']=['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']];
+        }
+        $steps[]=$instance;
+    }
+    $doc=['id'=>$id,'trackingNumber'=>$barcode,'barcode'=>$barcode,'title'=>$title,'subject'=>$d['subject']??$title,'sourceType'=>choice($d['sourceType']??'Internal',['Internal','External'],'source type'),'sourceOffice'=>$office,'senderName'=>$d['senderName']??$u['name'],'classification'=>$category['classification'],'documentType'=>$type,'employmentClassification'=>$d['employmentClassification']??null,'priority'=>choice($d['priority']??'Routine',['Routine','Priority','Urgent'],'priority'),'dateReceived'=>$registeredAt,'dateEncoded'=>$registeredAt,'description'=>$d['description']??'','status'=>'In_Progress','currentStepNumber'=>1,'totalSteps'=>count($steps),'workflowTemplateId'=>$wf['id'],'workflowVersion'=>$wf['version'],'workflowSteps'=>$steps,'attachments'=>attach_files($pdo,$u,$d['files']??[],$id),'currentLocation'=>'HRMDO','custodyHistory'=>[['id'=>uid('custody'),'movementType'=>'INTAKE','fromLocation'=>$office,'toLocation'=>'HRMDO','timestamp'=>$registeredAt,'actorId'=>$u['id'],'actorName'=>$u['name']]],'encodedBy'=>['userId'=>$u['id'],'userName'=>$u['name']]];
+    $doc['status']=($steps[0]['stageType']??'')==='EXTERNAL_HANDOFF_REVIEW'?'Awaiting_External_Handoff':match($steps[0]['requiredAction']) { 'Approve & Sign'=>'Pending_Approval','Review & Recommend'=>'Under_Review','Release & Archive'=>'Ready_For_Release',default=>'In_Progress' };
+    // Registration is the Receive action itself.  A workflow that begins with an
+    // intake phase therefore starts its operational work at the next phase.
+    if (count($steps)>1 && ($steps[0]['stageType']??'INTERNAL_PROCESSING')==='INTERNAL_PROCESSING' && ($steps[0]['requiredAction']??'')==='Receive') {
+        $doc['workflowSteps'][0]['status']='Completed';
+        $doc['workflowSteps'][0]['isCurrent']=false;
+        $doc['workflowSteps'][0]['completedAt']=$registeredAt;
+        $doc['workflowSteps'][0]['completedBy']=['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']];
+        $doc['workflowSteps'][0]['actionTaken']='Document intake and initial docketing completed during registration.';
+        activate_document_step($doc,1,['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']]);
+    }
+    $s['documents'][]=$doc; return $doc;
+}
+function delete_document(PDO $pdo,array &$s,array $u,string $documentId): bool {
+    require_cap($s,$u,'canAdmin'); $i=index_of($s['documents'],$documentId); $doc=$s['documents'][$i];
+    $s['documents']=array_values(array_filter($s['documents'],fn($record)=>$record['id']!==$doc['id']));
+    // A single payroll voucher has a document-backed payroll item.  Removing the
+    // document must also remove that dependent item so it cannot remain in a queue.
+    $s['payrollItems']=array_values(array_filter($s['payrollItems'],fn($item)=>($item['documentId']??null)!==$doc['id']));
+    $pdo->prepare('DELETE FROM app_files WHERE owner_id=?')->execute([$doc['id']]);
+    return true;
+}
+function activate_document_step(array &$doc,int $nextIndex,array $actor): void {
+    $next=&$doc['workflowSteps'][$nextIndex];
+    $next['status']='In_Progress'; $next['isCurrent']=true; $next['startedAt']=now(); $doc['currentStepNumber']=$nextIndex+1;
+    if (($next['stageType']??'INTERNAL_PROCESSING')==='EXTERNAL_HANDOFF_REVIEW') {
+        $next['assignedTo']=['type'=>'System','displayName'=>'System / awaiting HRMDO handoff'];
+        $next['externalStatus']='PENDING_HANDOFF'; $next['handoffOwner']=$actor; unset($next['externalHandoff'],$next['externalReturn']);
+        $doc['status']='Awaiting_External_Handoff';
+    } else $doc['status']=match($next['requiredAction']??'') { 'Approve & Sign'=>'Pending_Approval','Review & Recommend'=>'Under_Review','Release & Archive'=>'Ready_For_Release',default=>'In_Progress' };
+    unset($next);
+}
+function document_action(PDO $pdo,array &$s,array $u,string $action,array $args): array {
+    $i=index_of($s['documents'],(string)($args[0]??'')); $doc=&$s['documents'][$i];
+    fail_unless(empty($doc['isLegacyV1']),'Historical documents are read only.');
+    fail_unless(!in_array($doc['status'],['Released','Archived'],true),'This document has already been released.',409);
+    $n=$doc['currentStepNumber']-1; $step=&$doc['workflowSteps'][$n];
+    fail_unless(is_array($step),'The document has no current workflow step.');
+    $isExternal=($step['stageType']??'INTERNAL_PROCESSING')==='EXTERNAL_HANDOFF_REVIEW';
+    if ($action==='recordExternalHandoff') {
+        fail_unless($isExternal && ($step['externalStatus']??null)==='PENDING_HANDOFF','This document is not awaiting an external handoff.',409);
+        $owner=$step['handoffOwner']['userId']??null;
+        fail_unless($owner===$u['id'] || has_cap($s,$u,'canIntake') || has_cap($s,$u,'canSupervise'),'Only the handoff owner or authorized registry personnel can send this document outside HRMDO.',403);
+        $handoff=$args[1]??[]; fail_unless(is_array($handoff),'External handoff details are required.');
+        $destination=required($handoff,'destinationOffice');
+        if (($step['externalDestinationMode']??'')==='FIXED_DESTINATION') fail_unless(strcasecmp($destination,(string)$step['externalDestinationOffice'])===0,'Use the fixed destination configured for this workflow stage.');
+        $purpose=choice($handoff['purpose']??($step['externalPurpose']??null),['Approval','Comments','Signature','Review','Recommendation','Certification','Other'],'external purpose');
+        $sentAt=now(); $files=$handoff['files']??[]; fail_unless(is_array($files),'Invalid handoff attachments.');
+        if ($files) $doc['attachments']=array_merge($doc['attachments'],attach_files($pdo,$u,$files,$doc['id'],$n+1));
+        $expectedReturn=isset($handoff['expectedReturn'])?trim((string)$handoff['expectedReturn']):'';
+        if ($expectedReturn==='' && !empty($step['expectedTurnaroundHours'])) $expectedReturn=gmdate('Y-m-d\\TH:i:s\\Z',time()+(int)round($step['expectedTurnaroundHours']*3600));
+        $step['externalStatus']='OUTSIDE_HRMDO'; $step['externalHandoff']=['destinationOffice'=>$destination,'purpose'=>$purpose,'handedTo'=>required($handoff,'handedTo'),'representative'=>isset($handoff['representative'])?trim((string)$handoff['representative']):'','remarks'=>isset($handoff['remarks'])?trim((string)$handoff['remarks']):'','expectedReturn'=>$expectedReturn,'sentAt'=>$sentAt,'sentBy'=>['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']]];
+        $doc['currentLocation']=$destination; $doc['status']='Awaiting_External_Return';
+        $doc['custodyHistory'][]=['id'=>uid('custody'),'movementType'=>'EXTERNAL_HANDOFF','fromLocation'=>'HRMDO','toLocation'=>$destination,'timestamp'=>$sentAt,'stageNumber'=>$n+1,'purpose'=>$purpose,'remarks'=>$step['externalHandoff']['remarks'],'actorId'=>$u['id'],'actorName'=>$u['name'],'representative'=>$step['externalHandoff']['handedTo']];
+        return $doc;
+    }
+    if ($action==='recordExternalReturn') {
+        fail_unless($isExternal && ($step['externalStatus']??null)==='OUTSIDE_HRMDO','This document is not currently outside HRMDO.',409);
+        $receiver=$step['returnReceiver']??[];
+        fail_unless(can_assign($s,$u,$receiver) || has_cap($s,$u,'canIntake'),'Only the configured return receiver or authorized registry personnel can record this return.',403);
+        $return=$args[1]??[]; fail_unless(is_array($return),'External return details are required.');
+        $returnedFrom=required($return,'returnedFrom'); $sentTo=$step['externalHandoff']['destinationOffice']??'';
+        fail_unless($sentTo==='' || strcasecmp($returnedFrom,$sentTo)===0,'The return office must match the recorded external destination.');
+        $result=$return['result']??'';
+        if (!empty($step['requiresExternalResult'])) $result=choice($result,['Approved','Approved with Comments','Returned with Comments','Signed','Reviewed','Disapproved','No Action','Other'],'external result');
+        elseif ($result!=='') $result=choice($result,['Approved','Approved with Comments','Returned with Comments','Signed','Reviewed','Disapproved','No Action','Other'],'external result');
+        $files=$return['files']??[]; fail_unless(is_array($files),'Invalid return attachments.');
+        fail_unless(empty($step['requiresReturnedAttachment']) || count($files)>0,'Attach the returned or signed document before confirming its return.');
+        if ($files) $doc['attachments']=array_merge($doc['attachments'],attach_files($pdo,$u,$files,$doc['id'],$n+1));
+        $returnedAt=now(); $step['externalStatus']='COMPLETED'; $step['status']='Completed'; $step['isCurrent']=false; $step['completedAt']=$returnedAt;
+        $step['completedBy']=['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']]; $step['actionTaken']='External return recorded'.($result?': '.$result:'');
+        $step['externalReturn']=['returnedFrom'=>$returnedFrom,'returnedBy'=>isset($return['returnedBy'])?trim((string)$return['returnedBy']):'','result'=>$result?:null,'remarks'=>isset($return['remarks'])?trim((string)$return['remarks']):'','returnedAt'=>$returnedAt,'receivedBy'=>['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']]];
+        $doc['currentLocation']='HRMDO'; $doc['custodyHistory'][]=['id'=>uid('custody'),'movementType'=>'RETURN_TO_HRMDO','fromLocation'=>$returnedFrom,'toLocation'=>'HRMDO','timestamp'=>$returnedAt,'stageNumber'=>$n+1,'purpose'=>$step['externalHandoff']['purpose']??$step['externalPurpose']??'','remarks'=>$step['externalReturn']['remarks'],'actorId'=>$u['id'],'actorName'=>$u['name'],'representative'=>$step['externalReturn']['returnedBy']];
+        if ($n+1<count($doc['workflowSteps'])) activate_document_step($doc,$n+1,$step['completedBy']); else $doc['status']='Ready_For_Release';
+        return $doc;
+    }
+    fail_unless(!$isExternal,'Use the external handoff and return actions for this workflow stage.',409);
+    if ($action==='reassignTask') require_cap($s,$u,'canSupervise');
+    elseif (!in_array($action,['addDocumentRemark','uploadSupportingFile'],true)) fail_unless(can_assign($s,$u,$step['assignedTo']) || ($action==='releaseDocument' && $doc['status']==='Ready_For_Release' && $step['status']==='Completed' && has_cap($s,$u,'canRelease')),'This task is assigned to another officer.',403);
+    else fail_unless(can_assign($s,$u,$step['assignedTo']) || $doc['encodedBy']['userId']===$u['id'],'Only the encoder or assigned officer can add supporting information.',403);
+    if ($action==='claimTask') {
+        fail_unless(empty($step['assignedTo']['userId']) || $step['assignedTo']['userId']===$u['id'],'Task has already been claimed.',409);
+        $step['assignedTo']['userId']=$u['id']; $step['assignedTo']['displayName']=$u['name'];
+    } elseif ($action==='reassignTask') {
+        required(['reason'=>$args[3]??''],'reason',2000); $target=$s['users'][index_of($s['users'],(string)$args[1])];
+        $step['assignedTo']=['type'=>'Person','userId'=>$target['id'],'displayName'=>$target['name']];
+    } elseif ($action==='addDocumentRemark') {
+        $remark=required(['remark'=>$args[1]??''],'remark',4000);
+        $doc['remarks'][]=['id'=>uid('remark'),'text'=>$remark,'authorId'=>$u['id'],'authorName'=>$u['name'],'timestamp'=>now()];
+    } elseif ($action==='uploadSupportingFile') {
+        $doc['attachments']=array_merge($doc['attachments'],attach_files($pdo,$u,[$args[1]],$doc['id'],$n+1));
+    } elseif ($action==='returnStep') {
+        fail_unless($n>0 && !empty($step['allowReturn']),'This step cannot be returned.');
+        $reason=required(['reason'=>$args[1]??''],'reason',4000);
+        for ($j=$n-1;$j<count($doc['workflowSteps']);$j++) {
+            $st=&$doc['workflowSteps'][$j]; $st['status']=$j===$n-1?'In_Progress':'Pending'; $st['isCurrent']=$j===$n-1;
+            unset($st['completedAt'],$st['completedBy'],$st['actionTaken']); $st['startedAt']=$j===$n-1?now():null;
+        } unset($st);
+        $doc['currentStepNumber']=$n; $doc['status']='Returned'; $doc['workflowSteps'][$n-1]['remarks']=$reason;
+    } elseif (in_array($action,['completeStep','approveDocument','releaseDocument'],true)) {
+        $required=$step['requiredAction']??'Verify & Process';
+        if ($action==='completeStep' && $doc['classification']==='Payroll' && $required==='Verify & Process') {
+            $singleItems=array_values(array_filter($s['payrollItems'],fn($item)=>($item['documentId']??null)===$doc['id'] && ($item['batchId']??null)==='SINGLE_ENTRY'));
+            if (count($singleItems)>0) fail_unless(payroll_item_is_ready($singleItems[0]),'Choose the employment classification before completing Initial Checking.');
+        }
+        fail_unless($step['status']!=='Completed' || ($action==='releaseDocument' && $doc['status']==='Ready_For_Release'),'Step was already completed.',409);
+        if ($required==='Approve & Sign' && $step['status']!=='Completed') { require_cap($s,$u,'canApprove'); fail_unless($action==='approveDocument','Use the approval action for this step.'); }
+        if ($action==='approveDocument') { require_cap($s,$u,'canApprove'); fail_unless($required==='Approve & Sign','The current step is not an approval step.'); }
+        if ($required==='Release & Archive') fail_unless($action==='releaseDocument','Use the release action and supply receipt details.');
+        if ($action==='releaseDocument') { require_cap($s,$u,'canRelease'); fail_unless($n===count($doc['workflowSteps'])-1,'Complete all preceding steps before release.'); }
+        if ($action==='completeStep' && !empty($args[3])) $doc['attachments']=array_merge($doc['attachments'],attach_files($pdo,$u,$args[3],$doc['id'],$n+1));
+        fail_unless(empty($step['requiresAttachment']) || count(array_filter($doc['attachments'],fn($f)=>($f['stepNumber']??0)===$n+1 && !empty($f['url'])))>0,'Upload a supporting file for this step before completing it.');
+        if ($step['status']!=='Completed') {
+            $step['status']='Completed'; $step['isCurrent']=false; $step['completedAt']=now();
+            $step['completedBy']=['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']];
+            $step['remarks']=is_string($args[1]??null)?$args[1]:''; $step['actionTaken']=$args[2]??$required;
+        }
+        if ($action==='releaseDocument') {
+            $details=$args[1]; required($details,'releasedTo'); choice($details['releaseMode']??null,['In-Person Pick-up','Official Courier','Electronic Copy','Internal Messenger'],'release mode');
+            $releasedAt=now(); $doc['releasedDetails']=array_merge($details,['releaseNumber'=>uid('release'),'releasedAt'=>$releasedAt,'releasedBy'=>$u['name']]); $doc['status']='Released';
+            $doc['custodyHistory'][]=['id'=>uid('custody'),'movementType'=>'FINAL_RELEASE','fromLocation'=>$doc['currentLocation']??'HRMDO','toLocation'=>$details['releasedTo'],'timestamp'=>$releasedAt,'stageNumber'=>$n+1,'remarks'=>$details['receiptRemarks']??'','actorId'=>$u['id'],'actorName'=>$u['name']];
+        } elseif ($n+1<count($doc['workflowSteps'])) {
+            activate_document_step($doc,$n+1,$step['completedBy']);
+        } else $doc['status']='Ready_For_Release';
+        foreach ($s['payrollItems'] as &$item) if (($item['documentId']??null)===$doc['id']) { $item['status']=$doc['status']==='Released'?'Completed':'In_Progress'; if ($required==='Verify & Process') $item['currentStage']='verification_signing'; if ($doc['status']==='Released') $item['currentStage']='completed'; $item['updatedAt']=now(); } unset($item);
+    }
+    return $doc;
+}

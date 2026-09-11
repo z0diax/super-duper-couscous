@@ -1,0 +1,258 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { startFixture, Client, testPassword } from './support.mjs';
+let fixture, admin, employee, processor, approver, releaser, workflow, doc, batch;
+const userData = (role) => ({name:`Test ${role}`,email:`${role}@example.test`,password:testPassword,role,roleTitle:role,office:'HRMDO',division:'Operations',position:'Officer'});
+const step = (n,role,action,extra={}) => ({stepNumber:n,name:`Step ${n}`,description:'Test routing',assigneeType:'Role',assigneeRole:role,assigneeName:role,slaHours:24,requiredAction:action,allowReturn:n>1,requiresAttachment:false,...extra});
+const documentData = (barcode) => ({title:'Integration document',subject:'Test subject',sourceType:'Internal',sourceOffice:'HRMDO',senderName:'Test Sender',classification:'Communication',documentType:'Office Order',priority:'Routine',description:'Test',barcode,files:[]});
+before(async()=>{ fixture=await startFixture(); admin=await new Client(fixture.base).login(); });
+after(async()=>{ await fixture?.stop(); });
+
+test('installer is repeatable and all collections are available',async()=>{
+  assert.equal(admin.state.classifications.length,4); assert.equal(admin.state.systemRoles.length,8); assert.equal(admin.state.documents.length,0);
+  const previous=JSON.stringify(admin.state); fixture.run(['scripts/install.php']); await admin.refresh(); assert.equal(JSON.stringify(admin.state),previous);
+});
+test('authentication, CSRF and whole-state writes are enforced',async()=>{
+  const anonymous=new Client(fixture.base); await anonymous.request('state.php','GET',undefined,401);
+  await anonymous.request('auth.php'); await anonymous.request('auth.php','POST',{email:'admin@example.test',password:'wrong'},401);
+  await admin.request('state.php','PUT',{state:{users:[]}},405);
+  await admin.request('state.php','POST',{action:'runMigrationCheck',args:[],revision:admin.revision},403,{'X-CSRF-Token':'invalid'});
+});
+test('user accounts can sign in; non-admin accounts cannot alter configuration',async()=>{
+  for(const role of ['employee','processor','approver','releasing_officer']) await admin.action('addUser',[userData(role)]);
+  employee=await new Client(fixture.base).login('employee@example.test'); processor=await new Client(fixture.base).login('processor@example.test');
+  approver=await new Client(fixture.base).login('approver@example.test'); releaser=await new Client(fixture.base).login('releasing_officer@example.test');
+  await employee.action('addUser',[userData('admin')],403);
+  await admin.action('addUser',[userData('processor')],409);
+  await admin.action('deleteUser',[admin.state.users.find(u=>u.role==='admin').id],422);
+  assert(!JSON.stringify(admin.state).includes(testPassword)); assert(!JSON.stringify(admin.state).includes('password_hash'));
+});
+test('catalogue create/edit/toggle and routing validation persist',async()=>{
+  const category=admin.state.classifications.find(c=>c.classification==='Communication');
+  const added=(await admin.action('addClassificationType',[category.id,{name:'Special Letter',description:'Test',defaultSlaHours:12}])).result;
+  await admin.action('addClassificationType',[category.id,{name:'special letter',description:'Duplicate',defaultSlaHours:12}],409);
+  await admin.action('updateClassificationType',[category.id,{...added,description:'Updated'}]);
+  await admin.action('toggleClassificationType',[category.id,added.id]);
+  await admin.action('registerDocument',[{...documentData('BLOCKED'),documentType:'Special Letter'}],422);
+  await admin.action('deleteClassificationType',[category.id,added.id]);
+  assert(!admin.state.classifications.find(c=>c.id===category.id).types.some(t=>t.id===added.id));
+  await admin.action('createWorkflowTemplate',[{title:'Invalid',classification:'Communication',documentType:'Office Order',isActive:true,steps:[]}],422);
+  workflow=(await admin.action('createWorkflowTemplate',[{title:'Communication approval',description:'Full lifecycle',classification:'Communication',documentType:'Office Order',isActive:true,steps:[step(1,'processor','Verify & Process'),step(2,'approver','Approve & Sign',{requiresAttachment:true}),step(3,'releasing_officer','Release & Archive')]}])).result;
+  const multi=(await admin.action('createWorkflowTemplate',[{title:'Shared communication route',description:'One route for several types',classification:'Communication',documentType:'Memorandum',documentTypes:['Memorandum','Letter'],isActive:true,steps:[step(1,'processor','Verify & Process')]}])).result;
+  assert.deepEqual(multi.documentTypes,['Memorandum','Letter']);
+  assert.equal((await admin.action('registerDocument',[{...documentData('MULTI-MEMO'),documentType:'Memorandum'}])).result.workflowTemplateId,multi.id);
+  assert.equal((await admin.action('registerDocument',[{...documentData('MULTI-LETTER'),documentType:'Letter'}])).result.workflowTemplateId,multi.id);
+  const letter=admin.state.classifications.find(c=>c.id===category.id).types.find(t=>t.name==='Letter');
+  await admin.action('deleteClassificationType',[category.id,letter.id],422);
+});
+test('document creation is atomic, unique, and retains a workflow snapshot',async()=>{
+  await employee.action('registerDocument',[documentData('FORBIDDEN')],403);
+  doc=(await admin.action('registerDocument',[documentData('DOC-TEST-001')])).result;
+  assert.equal(doc.workflowSteps.length,3); const revision=admin.revision;
+  await admin.action('registerDocument',[documentData('doc-test-001')],409); assert.equal(admin.revision,revision);
+  await admin.action('updateWorkflowTemplate',[{...workflow,title:'Updated workflow',steps:workflow.steps.map(s=>({...s,slaHours:36}))}]);
+  assert.equal(admin.state.documents.find(d=>d.id===doc.id).workflowSteps[0].slaHours,24);
+  await admin.action('deleteWorkflowTemplate',[workflow.id],422);
+  await employee.action('completeStep',[doc.id,'Forged completion'],403);
+});
+test('stale sessions cannot overwrite changes or complete the next step accidentally',async()=>{
+  const other=await new Client(fixture.base).login(); await admin.refresh(); const stale=other.revision;
+  await admin.action('addDocumentRemark',[doc.id,'First update'],200,{refresh:false});
+  await other.request('state.php','POST',{action:'addDocumentRemark',args:[doc.id,'Stale update'],revision:stale},409);
+  await other.refresh(); assert.equal(other.state.documents.find(d=>d.id===doc.id).remarks.length,1);
+});
+test('claim, return, required uploads, approval, release, and read-only history',async()=>{
+  await processor.action('claimTask',[doc.id]); await processor.action('completeStep',[doc.id,'Verified']);
+  await approver.action('approveDocument',[doc.id,'Approve without attachment'],422);
+  await approver.action('returnStep',[doc.id,'Correct supporting records']);
+  await processor.action('completeStep',[doc.id,'Corrections verified']);
+  await approver.action('completeStep',[doc.id,'Bypass approval'],422);
+  const body=new FormData(); body.append('file',new Blob(['%PDF-1.4\nIntegration evidence\n%%EOF'],{type:'application/pdf'}),'evidence.pdf');
+  const file=(await approver.request('files.php','POST',body,201)).file;
+  await employee.action('uploadSupportingFile',[doc.id,file],403);
+  await approver.action('uploadSupportingFile',[doc.id,file]);
+  await approver.action('approveDocument',[doc.id,'Approved']);
+  await processor.action('releaseDocument',[doc.id,{releasedTo:'Office',releaseMode:'Electronic Copy'}],403);
+  await releaser.action('releaseDocument',[doc.id,{releasedTo:'Office',releaseMode:'Electronic Copy'}]);
+  await admin.refresh(); const saved=admin.state.documents.find(d=>d.id===doc.id); assert.equal(saved.status,'Released'); assert(saved.workflowSteps.every(s=>s.status==='Completed'));
+  await admin.action('addDocumentRemark',[doc.id,'Cannot edit released record'],409);
+  const response=await fetch(`${fixture.base}/api/files.php?id=${file.id}`,{headers:{Cookie:admin.cookie}}); assert.equal(response.status,200); assert.match(await response.text(),/Integration evidence/);
+  const anonymous=await fetch(`${fixture.base}/api/files.php?id=${file.id}`); assert.equal(anonymous.status,401);
+  const unsafe=new FormData(); unsafe.append('file',new Blob(['<?php echo 1; ?>']),'shell.php'); await admin.request('files.php','POST',unsafe,422);
+  assert(admin.state.auditLogs.some(a=>a.documentId===doc.id && a.actionType==='DOCUMENT_APPROVED' && a.actorId===approver.state.users.find(u=>u.role==='approver').id));
+});
+test('payroll batch checking, exceptions, routing, processing and release',async()=>{
+  await admin.refresh(); const processingUser=admin.state.users.find(u=>u.role==='processor');
+  const reviewOnlyUser=admin.state.users.find(u=>u.role==='approver'); const firstRule=admin.state.employmentRoutingRules[0];
+  const assignedReviewOfficer=(await admin.action('updateEmploymentRoutingRule',[{...firstRule,primaryProcessorId:reviewOnlyUser.id}])).result;
+  assert.equal(assignedReviewOfficer.primaryProcessorId,reviewOnlyUser.id);
+  for(const rule of admin.state.employmentRoutingRules) await admin.action('updateEmploymentRoutingRule',[{...rule,primaryProcessorId:processingUser.id}]);
+  batch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'BATCH-001',items:[{title:'Regular payroll',barcode:'PAY-001'},{title:'Casual payroll',barcode:'PAY-002'}],files:[]}])).result;
+  await admin.action('completeInitialCheckingAndRoute',[batch.id],422);
+  await admin.action('updatePayrollItemClassification',[batch.itemIds[0],'Regular']);
+  await admin.action('markPayrollItemException',[batch.itemIds[1],'Missing DTR']);
+  await admin.action('completeInitialCheckingAndRoute',[batch.id]);
+  assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[0]).currentStage,'verification_signing');
+  assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[1]).currentStage,'initial_checking');
+  assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[1]).status,'On_Hold');
+  let groups=admin.state.workGroups.filter(g=>g.batchId===batch.id); assert.equal(groups.length,1);
+  await releaser.action('releasePayrollBatch',[batch.id,{releasedTo:'Office',releaseMode:'Electronic Copy'}],409);
+  await employee.action('processWorkGroupItems',[groups[0].id,groups[0].itemIds,'complete'],403);
+  await processor.action('processWorkGroupItems',[groups[0].id,groups[0].itemIds,'complete']);
+  assert.equal(processor.state.payrollItems.find(item=>item.id===batch.itemIds[0]).status,'Ready_For_Release');
+  assert(processor.state.payrollItems.find(item=>item.id===batch.itemIds[0]).auditHistory.some(event=>event.action==='PAYROLL_AUTO_ROUTED_TO_RELEASE'));
+  await releaser.action('releasePayrollBatch',[batch.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
+  assert.equal(releaser.state.payrollItems.find(item=>item.id===batch.itemIds[0]).status,'Released');
+  assert.equal(releaser.state.payrollItems.find(item=>item.id===batch.itemIds[1]).status,'On_Hold');
+  assert.equal(releaser.state.payrollBatches.find(b=>b.id===batch.id).status,'Active');
+  await admin.action('clearPayrollItemException',[batch.itemIds[1]]);
+  assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[1]).verificationStatus,'Pending');
+  await admin.action('bulkClassifyPayrollItems',[[batch.itemIds[1]],'Casual',true]);
+  await admin.action('completeInitialCheckingAndRoute',[batch.id]); await admin.action('completeInitialCheckingAndRoute',[batch.id],409);
+  groups=admin.state.workGroups.filter(g=>g.batchId===batch.id); assert.equal(groups.length,2);
+  const resumedGroup=groups.find(group=>group.status==='In_Progress');
+  await processor.action('processWorkGroupItems',[resumedGroup.id,resumedGroup.itemIds,'complete']);
+  await releaser.action('releasePayrollBatch',[batch.id,{releasedTo:'Payroll liaison',releaseMode:'In-Person Pick-up'}]);
+  assert.equal(releaser.state.payrollBatches.find(b=>b.id===batch.id).status,'Completed');
+
+  // A partial release must not lock a held item in Stage 2.  The four released
+  // items remain released while the repaired item is routed and released later.
+  const partial=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'BATCH-PARTIAL-001',items:[1,2,3,4,5].map(n=>({title:`Partial payroll ${n}`,barcode:`PARTIAL-PAY-${n}`})),files:[]}])).result;
+  for (const id of partial.itemIds.slice(0,4)) await admin.action('updatePayrollItemClassification',[id,'Regular']);
+  await admin.action('updatePayrollItemClassification',[partial.itemIds[4],'Casual']);
+  await admin.action('markPayrollItemException',[partial.itemIds[4],'Missing DTR']);
+  await admin.action('completeInitialCheckingAndRoute',[partial.id]);
+  const partialGroup=admin.state.workGroups.find(group=>group.batchId===partial.id && group.status==='In_Progress');
+  assert.equal(partialGroup.itemIds.length,4);
+  await processor.action('processWorkGroupItems',[partialGroup.id,partialGroup.itemIds,'complete']);
+  await releaser.action('releasePayrollBatch',[partial.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
+  assert.equal(releaser.state.payrollItems.filter(item=>item.batchId===partial.id && item.status==='Released').length,4);
+  assert.equal(releaser.state.payrollItems.find(item=>item.id===partial.itemIds[4]).status,'On_Hold');
+  await admin.action('clearPayrollItemException',[partial.itemIds[4]]);
+  assert.equal(admin.state.payrollItems.find(item=>item.id===partial.itemIds[4]).status,'Ready');
+  assert.equal(admin.state.payrollItems.find(item=>item.id===partial.itemIds[4]).verificationStatus,'Passed');
+  await admin.action('completeInitialCheckingAndRoute',[partial.id]);
+  const recoveredGroup=admin.state.workGroups.find(group=>group.batchId===partial.id && group.status==='In_Progress');
+  assert.equal(recoveredGroup.itemIds.includes(partial.itemIds[4]),true);
+  await processor.action('processWorkGroupItems',[recoveredGroup.id,[partial.itemIds[4]],'complete']);
+  await releaser.action('releasePayrollBatch',[partial.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
+  assert.equal(releaser.state.payrollBatches.find(item=>item.id===partial.id).status,'Completed');
+  await admin.action('deletePayrollBatch',[partial.id]);
+  assert.equal(admin.state.payrollBatches.some(item=>item.id===partial.id),false);
+  assert.equal(admin.state.workGroups.some(item=>item.batchId===partial.id),false);
+  await admin.action('deleteUser',[processingUser.id],422);
+});
+test('unrouted payroll batches can be edited and deleted from payroll management',async()=>{
+  const batch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'EDITABLE-BATCH-001',payrollPeriod:'First period',receivedFromLiaison:'Original liaison',remarks:'Original remarks',items:[{title:'Original payroll',barcode:'EDITABLE-PAY-001',office:'HRMDO',classificationType:'Salary'}],files:[]}])).result;
+  const updated=(await admin.action('updatePayrollBatch',[{id:batch.id,batchBarcode:'EDITABLE-BATCH-002',office:'CMO',payrollType:'Voucher',payrollPeriod:'September 2026',receivedFromLiaison:'Updated liaison',remarks:'Updated remarks',items:[{id:batch.itemIds[0],barcode:'EDITABLE-PAY-002',title:'Corrected payroll',office:'CMO',classificationType:'Voucher'}]}])).result;
+  assert.equal(updated.batchNumber,'EDITABLE-BATCH-002');
+  assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[0]).title,'Corrected payroll');
+  assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[0]).barcode,'EDITABLE-PAY-002');
+  await admin.action('deletePayrollBatch',[batch.id]);
+  assert.equal(admin.state.payrollBatches.some(item=>item.id===batch.id),false);
+  assert.equal(admin.state.payrollItems.some(item=>item.batchId===batch.id),false);
+});
+test('single payroll follows configured workflow and synchronizes its item on release',async()=>{
+  const template=(await admin.action('createWorkflowTemplate',[{title:'Single payroll release',description:'Test',classification:'Payroll',documentType:'Salary',employmentClassification:'All',isActive:true,steps:[step(1,'processor','Verify & Process'),step(2,'releasing_officer','Release & Archive')]}])).result;
+  const single=(await admin.action('registerSinglePayroll',[{office:'HRMDO',payrollType:'Salary',classificationType:'Salary',title:'Single salary',barcode:'SINGLE-001',files:[]}])).result;
+  assert.equal(single.workflowTemplateId,template.id);
+  const item=admin.state.payrollItems.find(i=>i.documentId===single.id);
+  assert.equal(item.employmentClassification,null);
+  await processor.refresh();
+  await processor.action('completeStep',[single.id,'Checked without classification'],422);
+  await processor.action('updatePayrollItemClassification',[item.id,'Regular']);
+  assert.equal(processor.state.documents.find(d=>d.id===single.id).employmentClassification,'Regular');
+  await processor.action('completeStep',[single.id,'Classified and verified']);
+  await releaser.refresh();
+  await releaser.action('releaseDocument',[single.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
+  assert.equal(releaser.state.payrollItems.find(i=>i.documentId===single.id).status,'Completed');
+  await admin.action('deleteDocument',[single.id]);
+  assert.equal(admin.state.documents.some(record=>record.id===single.id),false);
+  assert.equal(admin.state.payrollItems.some(record=>record.documentId===single.id),false);
+});
+test('only the system administrator can delete an ordinary document',async()=>{
+  const record=(await admin.action('registerDocument',[documentData('DELETE-DOCUMENT-001')])).result;
+  await employee.action('deleteDocument',[record.id],403);
+  await admin.action('deleteDocument',[record.id]);
+  assert.equal(admin.state.documents.some(document=>document.id===record.id),false);
+});
+test('leave validation, privacy and approval are stored with audit evidence',async()=>{
+  const data={leaveType:'Vacation Leave',startDate:'2026-10-01',endDate:'2026-10-02',workingDaysNumber:2,commutation:'Not Requested'};
+  await employee.action('fileLeaveApplication',[{...data,endDate:'2026-09-01'}],422);
+  const leave=(await employee.action('fileLeaveApplication',[data])).result;
+  await employee.action('approveLeaveApplication',[leave.id],403); await processor.refresh(); assert.equal(processor.state.leaveApplications.length,0);
+  await approver.action('approveLeaveApplication',[leave.id]); await employee.refresh(); assert.equal(employee.state.leaveApplications[0].status,'Approved');
+  const own=(await approver.action('fileLeaveApplication',[data])).result; await approver.action('approveLeaveApplication',[own.id],422);
+});
+test('role and designation management, migration checks and password revocation',async()=>{
+  const role=(await admin.action('addSystemRole',[{id:'custom_role',name:'Custom role',code:'CUSTOM',description:'Test',badgeClass:'bg-blue-100',canProcess:true}])).result;
+  await admin.action('updateSystemRole',[{...role,name:'Updated role'}]);
+  const designation=(await admin.action('addAssigneeDesignation',[{category:'Role',title:'Custom desk',baseRole:role.id}])).result;
+  const reconciled=(await admin.action('updateSystemRole',[{...role,id:'renamed_role_key',name:'Reconciled role'},{id:role.id,code:role.code,name:'Updated role'}])).result;
+  assert.equal(reconciled.id,'renamed_role_key'); assert.equal(reconciled.name,'Reconciled role');
+  assert.equal(admin.state.assigneeDesignations.find(item=>item.id===designation.id).baseRole,reconciled.id);
+  await admin.action('deleteSystemRole',['admin'],422);
+  await admin.action('deleteSystemRole',['processor'],422);
+  await admin.action('deleteSystemRole',[reconciled.id]);
+  assert(!admin.state.systemRoles.some(item=>item.id===reconciled.id));
+  assert(!admin.state.assigneeDesignations.some(item=>item.id===designation.id));
+  const migration=(await admin.action('runMigrationCheck',[])).result; assert.equal(migration.totalV1Records,0); assert.equal(migration.status,'Not Required');
+  const oldSession=await new Client(fixture.base).login('employee@example.test');
+  await employee.action('changePassword',[{currentPassword:testPassword,newPassword:'Another-Password-2026!'}]);
+  await oldSession.request('state.php','GET',undefined,401);
+  assert(!JSON.stringify(employee.state.auditLogs).includes('Another-Password'));
+  await employee.request('auth.php','DELETE'); await employee.request('state.php','GET',undefined,401);
+});
+test('Office uploads are real ZIP documents and database backup restores intact',async()=>{
+  const officePath=path.resolve(fixture.env.HRMDO_UPLOAD_DIRECTORY,'test-office.zip');
+  fixture.run(['tests/office-fixture.php',officePath]);
+  const form=new FormData(); form.append('file',new Blob([fs.readFileSync(officePath)]),'test.docx');
+  const uploaded=await admin.request('files.php','POST',form,201); assert.equal(uploaded.file.name,'test.docx');
+  const output=fixture.run(['scripts/backup.php']); const backup=output.match(/Database backup: (.+)/)[1].trim();
+  const recovery=`hrmdo_test_${Date.now()}_abcdef`;
+  try {
+    fixture.run(['scripts/restore.php',backup],{HRMDO_DATABASE:recovery});
+    const count=fixture.run(['-r',"require 'api/db.php'; echo database()->query('SELECT COUNT(*) FROM app_records')->fetchColumn();"],{HRMDO_DATABASE:recovery}); assert(Number(count)>10);
+  } finally {
+    fixture.run(['-r',"require 'api/db.php'; $name=app_config()['database']; if (!preg_match('/^hrmdo_test_[0-9]+_[a-f0-9]+$/',$name)) exit(2); database(false)->exec('DROP DATABASE IF EXISTS `'.$name.'`');"],{HRMDO_DATABASE:recovery});
+    assert(path.resolve(backup).startsWith(path.resolve('storage/backups')+path.sep)); fs.unlinkSync(backup);
+  }
+});
+test('release after a terminal approval preserves the approving officer',async()=>{
+  await admin.action('createWorkflowTemplate',[{title:'Terminal approval',description:'Test',classification:'Request',documentType:'Certification',isActive:true,steps:[step(1,'approver','Approve & Sign')]}]);
+  const record=(await admin.action('registerDocument',[{...documentData('TERMINAL-APPROVAL'),classification:'Request',documentType:'Certification'}])).result;
+  await approver.action('approveDocument',[record.id,'Approved for release']);
+  const approval=approver.state.documents.find(d=>d.id===record.id).workflowSteps[0].completedBy;
+  await releaser.action('releaseDocument',[record.id,{releasedTo:'Records recipient',releaseMode:'Electronic Copy'}]);
+  assert.deepEqual(releaser.state.documents.find(d=>d.id===record.id).workflowSteps[0].completedBy,approval);
+});
+test('external handoff preserves custody, waits for return, and activates the next internal stage',async()=>{
+  const externalWorkflow=(await admin.action('createWorkflowTemplate',[{title:'External service record review',description:'Send service records outside HRMDO and continue on return',classification:'Request',documentType:'Service Record',isActive:true,steps:[
+    step(1,'receiving_officer','Receive'),
+    {stepNumber:2,name:'City Mayor external approval',description:'Await the Mayor Office action.',stageType:'EXTERNAL_HANDOFF_REVIEW',assigneeType:'System',assigneeName:'System / awaiting HRMDO handoff',slaHours:48,requiredAction:'External Handoff',allowReturn:false,requiresAttachment:false,externalPurpose:'Approval',externalDestinationMode:'FIXED_DESTINATION',externalDestinationOffice:"City Mayor's Office",returnReceiverType:'Role',returnReceiverRole:'receiving_officer',returnReceiverName:'Receiving Officer',expectedTurnaroundHours:48,requiresReturnedAttachment:false,requiresExternalResult:true},
+    step(3,'processor','Verify & Process')
+  ]}])).result;
+  const record=(await admin.action('registerDocument',[{...documentData('EXTERNAL-RETURN-001'),classification:'Request',documentType:'Service Record'}])).result;
+  assert.equal(record.workflowTemplateId,externalWorkflow.id); assert.equal(record.currentLocation,'HRMDO');
+  let active=admin.state.documents.find(d=>d.id===record.id); assert.equal(active.status,'Awaiting_External_Handoff'); assert.equal(active.currentStepNumber,2); assert.equal(active.workflowSteps[0].status,'Completed'); assert.equal(active.workflowSteps[1].externalStatus,'PENDING_HANDOFF');
+  await admin.action('completeStep',[record.id,'Attempt to bypass return','Verify & Process'],409);
+  await admin.action('recordExternalHandoff',[record.id,{destinationOffice:"City Mayor's Office",purpose:'Approval',handedTo:'Office Records Clerk',representative:'Mayor Office liaison',expectedReturn:'2026-09-12T10:00',remarks:'For approval',files:[]}]);
+  active=admin.state.documents.find(d=>d.id===record.id); assert.equal(active.status,'Awaiting_External_Return'); assert.equal(active.currentLocation,"City Mayor's Office"); assert.equal(active.workflowSteps[1].externalStatus,'OUTSIDE_HRMDO');
+  await processor.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",result:'Approved',files:[]}],403);
+  await admin.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",returnedBy:'Mayor Office liaison',result:'Approved',remarks:'Approved and returned',files:[]}]);
+  active=admin.state.documents.find(d=>d.id===record.id); assert.equal(active.id,record.id); assert.equal(active.trackingNumber,'EXTERNAL-RETURN-001'); assert.equal(active.currentLocation,'HRMDO'); assert.equal(active.workflowSteps[1].externalStatus,'COMPLETED'); assert.equal(active.currentStepNumber,3); assert.equal(active.workflowSteps[2].status,'In_Progress'); assert.equal(active.custodyHistory.filter(event=>event.movementType==='EXTERNAL_HANDOFF' || event.movementType==='RETURN_TO_HRMDO').length,2);
+});
+test('renaming a catalogue type updates future routing while preserving document history',async()=>{
+  await admin.refresh();
+  const category=admin.state.classifications.find(c=>c.classification==='Communication'); const type=category.types.find(t=>t.name==='Office Order');
+  await admin.action('updateClassificationType',[category.id,{...type,name:'Office Instruction'}]);
+  assert.equal(admin.state.workflowTemplates.find(w=>w.id===workflow.id).documentType,'Office Instruction');
+  assert.equal(admin.state.documents.find(d=>d.id===doc.id).documentType,'Office Order');
+  const record=(await admin.action('registerDocument',[{...documentData('RENAMED-TYPE'),documentType:'Office Instruction'}])).result;
+  assert.equal(record.workflowTemplateId,workflow.id);
+});
+test('successful sign-ins do not exhaust the shared-office failure limit',async()=>{
+  for (let i=0;i<22;i++) await new Client(fixture.base).login();
+});

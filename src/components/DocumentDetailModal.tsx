@@ -1,0 +1,118 @@
+import React, { useMemo, useState } from 'react';
+import { Check, CheckCircle2, Download, FileText, Paperclip, Printer, RotateCcw, Send, Upload, UserCheck, X } from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { OFFICE_OPTIONS } from '../data/offices';
+
+type Tab = 'workflow' | 'details' | 'attachments' | 'audit' | 'slip';
+type Dialog = 'complete' | 'return' | 'approve' | 'release' | 'reassign' | 'remark' | null;
+
+export const DocumentDetailModal: React.FC = () => {
+  const {
+    selectedDocument: doc, setSelectedDocument, currentUser, users, payrollItems, auditLogs, can,
+    claimTask, completeStep, returnStep, reassignTask, approveDocument, releaseDocument,
+    addDocumentRemark, uploadSupportingFile, updatePayrollItemClassification,
+    recordExternalHandoff, recordExternalReturn,
+  } = useApp();
+  const [tab, setTab] = useState<Tab>('workflow');
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [remarks, setRemarks] = useState('');
+  const [actionTaken, setActionTaken] = useState('');
+  const [returnReason, setReturnReason] = useState('');
+  const [releasedTo, setReleasedTo] = useState('');
+  const [releaseMode, setReleaseMode] = useState<'In-Person Pick-up' | 'Official Courier' | 'Electronic Copy' | 'Internal Messenger'>('Electronic Copy');
+  const [reassignUserId, setReassignUserId] = useState('');
+  const [reassignReason, setReassignReason] = useState('');
+  const [handoffDestination, setHandoffDestination] = useState('');
+  const [handoffTo, setHandoffTo] = useState('');
+  const [returnedBy, setReturnedBy] = useState('');
+  const [externalResult, setExternalResult] = useState('');
+  const [handoffFile, setHandoffFile] = useState<File | null>(null);
+  const [returnFile, setReturnFile] = useState<File | null>(null);
+
+  const current = doc?.workflowSteps.find(step => step.stepNumber === doc.currentStepNumber);
+  const isExternal = current?.stageType === 'EXTERNAL_HANDOFF_REVIEW';
+  const isAssigned = !!current && (current.assignedTo.userId === currentUser.id || (!current.assignedTo.userId && current.assignedTo.role === currentUser.role));
+  const isAdmin = currentUser.role === 'admin' || can('canAdmin');
+  const canProcess = isAssigned;
+  const canClaim = !!current && !doc?.isLegacyV1 && !current.assignedTo.userId && !isAssigned && current.status !== 'Completed' && ((current.assignedTo.type === 'Team' && !!current.assignedTo.team && [currentUser.division, currentUser.office].includes(current.assignedTo.team)) || current.assignedTo.role === currentUser.role);
+  const canManage = canProcess && !isExternal && can('canSupervise');
+  const canExternal = !!isExternal && (current?.handoffOwner?.userId === currentUser.id || can('canIntake') || can('canSupervise') || isAdmin);
+  const canSeeControls = canProcess || canClaim || canManage || canExternal;
+  const audit = useMemo(() => doc ? auditLogs.filter(event => event.documentId === doc.id) : [], [auditLogs, doc]);
+  const payrollItem = doc ? payrollItems.find(item => item.documentId === doc.id) : undefined;
+
+  if (!doc || !current) return null;
+
+  const close = () => { setDialog(null); setSelectedDocument(null); };
+  const resetDialog = () => { setDialog(null); setRemarks(''); setActionTaken(''); setReturnReason(''); setReleasedTo(''); setReassignUserId(''); setReassignReason(''); };
+  const saved = async (operation: () => Promise<unknown>) => { const result = await operation(); if (result) resetDialog(); };
+  const phaseLabel = `Phase ${doc.currentStepNumber}`;
+  const execute = () => void saved(() => completeStep(doc.id, remarks, actionTaken.trim() || current.requiredAction || 'Processed'));
+  const printSlip = () => window.print();
+
+  const navTabs: Array<[Tab, string]> = [
+    ['workflow', 'Workflow Phases & Actions'], ['details', 'Document Details'], ['attachments', `Attachments (${doc.attachments.length})`], ['audit', `Audit Trail (${audit.length})`], ['slip', 'Official Routing Slip'],
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
+      <section className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <header className="bg-slate-900 px-5 py-4 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300"><span className="rounded bg-blue-700 px-2 py-1 font-mono font-bold text-blue-100">{doc.trackingNumber}</span><span>{doc.classification} / {doc.documentType}</span></div>
+              <h2 className="mt-2 truncate text-lg font-bold">{doc.title}</h2>
+              <p className="mt-1 text-xs text-slate-300">Current phase: <strong className="text-white">{phaseLabel} - {current.name}</strong></p>
+            </div>
+            <div className="flex items-center gap-1"><button type="button" onClick={printSlip} className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-white" aria-label="Print routing slip" title="Print routing slip"><Printer className="h-5 w-5" /></button><button id="btn-close-detail-modal" type="button" onClick={close} className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white" aria-label="Close document"><X className="h-5 w-5" /></button></div>
+          </div>
+        </header>
+
+        <nav className="flex shrink-0 overflow-x-auto border-b border-slate-200 bg-slate-50 px-4">
+          {navTabs.map(([value, label]) => <button key={value} type="button" onClick={() => setTab(value)} className={`whitespace-nowrap border-b-2 px-3 py-3 text-xs font-semibold ${tab === value ? 'border-blue-600 bg-white text-blue-700' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>{label}</button>)}
+        </nav>
+
+        <main className="flex-1 overflow-y-auto p-5">
+          {tab === 'workflow' && <div className="space-y-5">
+            {isExternal && <div className={`rounded-xl border p-4 text-sm ${current.externalStatus === 'OUTSIDE_HRMDO' ? 'border-amber-300 bg-amber-50 text-amber-950' : 'border-blue-200 bg-blue-50 text-blue-950'}`}><strong>{current.externalStatus === 'OUTSIDE_HRMDO' ? 'Outside HRMDO - awaiting return' : 'External handoff pending'}</strong><p className="mt-1 text-xs">Current location: {doc.currentLocation || 'HRMDO'}{current.externalHandoff ? ` - Sent to ${current.externalHandoff.destinationOffice}` : ''}</p></div>}
+            <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-3 flex items-center justify-between"><h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Ordered workflow progress</h3><span className="text-xs text-slate-500">{doc.currentStepNumber} of {doc.totalSteps} phases</span></div>
+              <div className="space-y-3">{doc.workflowSteps.map(step => {
+                const active = step.isCurrent;
+                const completed = step.status === 'Completed';
+                return <div key={step.stepNumber} className={`flex gap-3 rounded-xl border p-3 ${active ? 'border-blue-400 bg-white ring-2 ring-blue-100' : completed ? 'border-emerald-200 bg-emerald-50/40' : 'border-slate-200 bg-white/70'}`}>
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${completed ? 'bg-emerald-600 text-white' : active ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{completed ? <Check className="h-4 w-4" /> : step.stepNumber}</div>
+                  <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className="text-sm text-slate-900">{step.name}</strong>{active && <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-800">CURRENT ACTIVE PHASE</span>}</div><p className="mt-1 text-xs text-slate-600">{step.stageType === 'EXTERNAL_HANDOFF_REVIEW' ? `External custody: ${step.externalHandoff?.destinationOffice || step.externalDestinationOffice || 'Destination chosen at handoff'}` : `Assigned to: ${step.assignedTo.displayName}`}</p>{step.actionTaken && <p className="mt-1 text-xs text-slate-600">Action: {step.actionTaken}</p>}</div>
+                </div>;
+              })}</div>
+            </section>
+
+            {!doc.isLegacyV1 && doc.status !== 'Released' && canSeeControls && <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div><h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Workflow actions</h3><p className="mt-1 text-xs text-slate-500">Actions available for {phaseLabel} ({current.name})</p></div>
+              {payrollItem && doc.classification === 'Payroll' && current.requiredAction === 'Verify & Process' && <label className="mt-4 block max-w-sm text-xs font-semibold text-slate-700">Employment Classification<select value={payrollItem.employmentClassification || ''} disabled={!canProcess} onChange={e => { if (e.target.value) void updatePayrollItemClassification(payrollItem.id, e.target.value); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2"><option value="">Select employment classification</option><option value="JOW/COS">Job Order (JOW) / COS</option><option value="Casual">Casual Personnel</option><option value="Regular">Regular Plantilla</option></select></label>}
+              <div className="mt-4 flex flex-wrap gap-2">
+                {canClaim && <button type="button" onClick={() => void claimTask(doc.id)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Claim task</button>}
+                {canProcess && !isExternal && current.status !== 'Completed' && current.requiredAction !== 'Approve & Sign' && current.requiredAction !== 'Release & Archive' && <button type="button" onClick={() => setDialog('complete')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"><CheckCircle2 className="h-4 w-4" />Complete and advance</button>}
+                {canProcess && !isExternal && current.requiredAction === 'Approve & Sign' && <button type="button" onClick={() => setDialog('approve')} className="rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white">Approve and sign</button>}
+                {canProcess && !isExternal && current.requiredAction === 'Release & Archive' && <button type="button" onClick={() => setDialog('release')} className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold text-white">Release document</button>}
+                {canProcess && !isExternal && current.allowReturn && doc.currentStepNumber > 1 && <button type="button" onClick={() => setDialog('return')} className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"><RotateCcw className="h-4 w-4" />Return for rework</button>}
+                {(canProcess || doc.encodedBy.userId === currentUser.id) && <button type="button" onClick={() => setDialog('remark')} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700">Add remark</button>}
+                {(canProcess || doc.encodedBy.userId === currentUser.id) && <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700"><Upload className="h-4 w-4" />Upload file<input className="hidden" type="file" onChange={e => { const file = e.target.files?.[0]; if (file) void uploadSupportingFile(doc.id, file); e.currentTarget.value = ''; }} /></label>}
+                {canManage && <button type="button" onClick={() => setDialog('reassign')} className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700"><UserCheck className="h-4 w-4" />Reassign</button>}
+              </div>
+              {isExternal && current.externalStatus === 'PENDING_HANDOFF' && canExternal && <div className="mt-4 grid gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 sm:grid-cols-2"><select aria-label="External destination office" value={handoffDestination || current.externalDestinationOffice || ''} onChange={e => setHandoffDestination(e.target.value)} disabled={current.externalDestinationMode === 'FIXED_DESTINATION'} className="rounded-lg border border-amber-300 bg-white p-2 text-xs"><option value="">Select destination office</option>{OFFICE_OPTIONS.map(office => <option key={office} value={office}>{office}</option>)}</select><input value={handoffTo} onChange={e => setHandoffTo(e.target.value)} placeholder="Handed over to" className="rounded-lg border border-amber-300 p-2 text-xs" /><label className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white p-2 text-xs text-slate-700"><Paperclip className="h-4 w-4" />Attach file (optional)<input className="hidden" type="file" onChange={e => setHandoffFile(e.target.files?.[0] || null)} /></label><button type="button" disabled={!handoffTo || !(handoffDestination || current.externalDestinationOffice)} onClick={() => void recordExternalHandoff(doc.id, { destinationOffice: handoffDestination || current.externalDestinationOffice, purpose: current.externalPurpose || 'Approval', handedTo: handoffTo, files: handoffFile ? [handoffFile] : [] })} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">Confirm external handoff</button></div>}
+              {isExternal && current.externalStatus === 'OUTSIDE_HRMDO' && canExternal && <div className="mt-4 grid gap-2 rounded-lg border border-blue-200 bg-blue-50 p-3 sm:grid-cols-2"><input value={returnedBy} onChange={e => setReturnedBy(e.target.value)} placeholder="Returned by / representative" className="rounded-lg border border-blue-300 p-2 text-xs" /><select value={externalResult} onChange={e => setExternalResult(e.target.value)} className="rounded-lg border border-blue-300 bg-white p-2 text-xs"><option value="">Select result</option>{['Approved','Approved with Comments','Returned with Comments','Signed','Reviewed','Disapproved','No Action','Other'].map(value => <option key={value}>{value}</option>)}</select><label className="inline-flex items-center gap-2 rounded-lg border border-blue-300 bg-white p-2 text-xs text-slate-700"><Paperclip className="h-4 w-4" />Attach returned file<input className="hidden" type="file" onChange={e => setReturnFile(e.target.files?.[0] || null)} /></label><button type="button" onClick={() => void recordExternalReturn(doc.id, { returnedFrom: current.externalHandoff?.destinationOffice || '', returnedBy, result: externalResult, files: returnFile ? [returnFile] : [] })} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Record return to HRMDO</button></div>}
+            </section>}
+          </div>}
+
+          {tab === 'details' && <section className="grid gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2"><p><span className="text-slate-500">Tracking number</span><br /><strong>{doc.trackingNumber}</strong></p><p><span className="text-slate-500">Source office</span><br /><strong>{doc.sourceOffice}</strong></p><p><span className="text-slate-500">Sender</span><br /><strong>{doc.senderName}</strong></p><p><span className="text-slate-500">Received</span><br /><strong>{new Date(doc.dateReceived).toLocaleString()}</strong></p><p className="sm:col-span-2"><span className="text-slate-500">Subject</span><br /><strong>{doc.subject}</strong></p><p className="sm:col-span-2"><span className="text-slate-500">Current location</span><br /><strong>{doc.currentLocation || 'HRMDO'}</strong></p>{doc.description && <p className="sm:col-span-2"><span className="text-slate-500">Description</span><br />{doc.description}</p>}</section>}
+          {tab === 'attachments' && <section className="space-y-2">{doc.attachments.length ? doc.attachments.map(file => <a key={file.id} href={file.url} target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-lg border border-slate-200 p-3 text-sm text-blue-700 hover:bg-slate-50"><span><Paperclip className="mr-2 inline h-4 w-4" />{file.name}</span><Download className="h-4 w-4" /></a>) : <p className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">No attachments.</p>}</section>}
+          {tab === 'audit' && <section className="space-y-2">{audit.length ? audit.map(event => <div key={event.id} className="rounded-lg border border-slate-200 p-3 text-xs"><strong>{event.summary}</strong><span className="ml-2 text-slate-500">{new Date(event.timestamp).toLocaleString()} - {event.actorName}</span>{event.details && <p className="mt-1 text-slate-600">{event.details}</p>}</div>) : <p className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">No audit events.</p>}</section>}
+          {tab === 'slip' && <section className="rounded-xl border-2 border-slate-700 p-5"><div className="flex justify-end"><button type="button" onClick={printSlip} className="inline-flex items-center gap-1 rounded border border-slate-300 px-2 py-1 text-xs"><Printer className="h-4 w-4" />Print slip</button></div><h3 className="text-center text-base font-bold">OFFICIAL ROUTING SLIP</h3><p className="mt-1 text-center text-xs">{doc.trackingNumber} - {doc.title}</p><table className="mt-4 w-full border-collapse text-xs"><thead><tr><th className="border border-slate-700 p-2">Phase</th><th className="border border-slate-700 p-2">Action / assignee</th><th className="border border-slate-700 p-2">Status</th></tr></thead><tbody>{doc.workflowSteps.map(step => <tr key={step.stepNumber}><td className="border border-slate-700 p-2">{step.stepNumber}</td><td className="border border-slate-700 p-2">{step.name}<br />{step.assignedTo.displayName}</td><td className="border border-slate-700 p-2">{step.status}</td></tr>)}</tbody></table></section>}
+        </main>
+      </section>
+
+      {dialog && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4"><form onSubmit={event => { event.preventDefault(); if (dialog === 'complete') execute(); if (dialog === 'return' && returnReason.trim()) void saved(() => returnStep(doc.id, returnReason)); if (dialog === 'approve') void saved(() => approveDocument(doc.id, remarks || 'Approved')); if (dialog === 'release' && releasedTo.trim()) void saved(() => releaseDocument(doc.id, { releasedTo, releaseMode, receiptRemarks: remarks })); if (dialog === 'reassign' && reassignUserId) void saved(() => reassignTask(doc.id, reassignUserId, '', reassignReason || 'Administrative reassignment')); if (dialog === 'remark' && remarks.trim()) void saved(() => addDocumentRemark(doc.id, remarks)); }} className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl"><div className="flex items-start justify-between gap-4"><div><h3 className="text-base font-bold text-slate-900">{dialog === 'complete' ? 'Complete and advance' : dialog === 'return' ? 'Return for rework' : dialog === 'approve' ? 'Approve and sign' : dialog === 'release' ? 'Release document' : dialog === 'reassign' ? 'Reassign task' : 'Add remark'}</h3><p className="mt-1 text-xs text-slate-500">{phaseLabel}: {current.name}</p></div><button type="button" onClick={resetDialog} className="text-slate-400 hover:text-slate-700" aria-label="Close action dialog"><X className="h-5 w-5" /></button></div><div className="mt-4 space-y-3">{dialog === 'complete' && <><input autoFocus value={actionTaken} onChange={e => setActionTaken(e.target.value)} placeholder={`Action taken (defaults to ${current.requiredAction || 'complete'})`} className="w-full rounded-lg border border-slate-300 p-2 text-sm" /><textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Remarks (optional)" className="min-h-24 w-full rounded-lg border border-slate-300 p-2 text-sm" /></>}{dialog === 'return' && <textarea autoFocus required value={returnReason} onChange={e => setReturnReason(e.target.value)} placeholder="Reason for return" className="min-h-24 w-full rounded-lg border border-rose-300 p-2 text-sm" />}{dialog === 'approve' && <textarea autoFocus value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Approval remarks" className="min-h-24 w-full rounded-lg border border-slate-300 p-2 text-sm" />}{dialog === 'release' && <><input autoFocus required value={releasedTo} onChange={e => setReleasedTo(e.target.value)} placeholder="Released to" className="w-full rounded-lg border border-slate-300 p-2 text-sm" /><select value={releaseMode} onChange={e => setReleaseMode(e.target.value as typeof releaseMode)} className="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm">{['In-Person Pick-up','Official Courier','Electronic Copy','Internal Messenger'].map(option => <option key={option}>{option}</option>)}</select><textarea value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Receipt remarks (optional)" className="min-h-20 w-full rounded-lg border border-slate-300 p-2 text-sm" /></>}{dialog === 'reassign' && <><select autoFocus required value={reassignUserId} onChange={e => setReassignUserId(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm"><option value="">Select new assignee</option>{users.filter(user => user.id !== currentUser.id).map(user => <option key={user.id} value={user.id}>{user.name} - {user.roleTitle}</option>)}</select><textarea value={reassignReason} onChange={e => setReassignReason(e.target.value)} placeholder="Reason for reassignment" className="min-h-20 w-full rounded-lg border border-slate-300 p-2 text-sm" /></>}{dialog === 'remark' && <textarea autoFocus required value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Add a document remark" className="min-h-24 w-full rounded-lg border border-slate-300 p-2 text-sm" />}</div><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={resetDialog} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button><button type="submit" className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white"><Send className="h-4 w-4" />Save action</button></div></form></div>}
+    </div>
+  );
+};

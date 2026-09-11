@@ -1,0 +1,6 @@
+{
+  "name": "HRMDO Document Tracking System V2",
+  "description": "Paperless document processing, step-based workflow routing, role-based queues, unified single and batch payroll intake, leave continuity, and historical V1 migration for HRMDO.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

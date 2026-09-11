@@ -1,0 +1,4 @@
+Options -Indexes
+<FilesMatch "^(?!auth\.php$|state\.php$|files\.php$).+">
+  Require all denied
+</FilesMatch>
