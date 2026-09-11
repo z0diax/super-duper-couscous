@@ -177,19 +177,23 @@ function validated_workflow(array $s,array $d): array {
     $d['isActive']=(bool)($d['isActive']??false); return $d;
 }
 function resolve_workflow(array $s,array $d): array {
-    $matches=[];
+    $matches=[]; $payrollIntakeWithoutEmployment=($d['classification']??null)==='Payroll' && empty($d['employmentClassification']);
     foreach ($s['workflowTemplates'] as $wf) {
         if (empty($wf['isActive']) || empty($wf['steps']) || $wf['classification']!==$d['classification']) continue;
         $types=$wf['documentTypes']??[$wf['documentType']];
         $exact=count(array_filter($types,fn($type)=>strcasecmp($type,$d['documentType'])===0))>0;
         if (!$exact && count(array_filter($types,fn($type)=>in_array(strtolower($type),['all','default'],true)))===0) continue;
         $employment=$wf['employmentClassification']??'All';
-        if ($employment!=='All' && $employment!==($d['employmentClassification']??null)) continue;
-        $matches[]=['score'=>($exact?2:0)+($employment!=='All'?1:0),'workflow'=>$wf];
+        // Payroll employment classification is deliberately assigned in Phase 2.
+        // At intake, select the matching document-type workflow first; prefer an
+        // All-employment template, otherwise allow one unambiguous configured
+        // employment template to provide the initial routing snapshot.
+        if (!$payrollIntakeWithoutEmployment && $employment!=='All' && $employment!==($d['employmentClassification']??null)) continue;
+        $matches[]=['workflow'=>$wf,'typeScore'=>$exact?2:0,'employmentScore'=>$payrollIntakeWithoutEmployment ? ($employment==='All'?1:0) : ($employment!=='All'?1:0)];
     }
-    usort($matches,fn($a,$b)=>$b['score']<=>$a['score']);
+    usort($matches,fn($a,$b)=>($b['typeScore']<=>$a['typeScore']) ?: ($b['employmentScore']<=>$a['employmentScore']));
     fail_unless(count($matches)>0,'Configure an active workflow for this classification and document type first.');
-    fail_unless(count($matches)<2 || $matches[0]['score']!==$matches[1]['score'],'Multiple workflows match. Deactivate the duplicate routing configuration.');
+    fail_unless(count($matches)<2 || $matches[0]['typeScore']!==$matches[1]['typeScore'] || $matches[0]['employmentScore']!==$matches[1]['employmentScore'],'Multiple workflows match. Deactivate the duplicate routing configuration.');
     return $matches[0]['workflow'];
 }
 function attach_files(PDO $pdo,array $u,array $files,string $owner,int $step=1): array {

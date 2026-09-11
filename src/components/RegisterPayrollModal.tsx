@@ -73,7 +73,8 @@ export const RegisterPayrollModal: React.FC<Props> = ({
     registerPayrollBatch, 
     documents,
     setSelectedDocument,
-    currentUser
+    currentUser,
+    workflowTemplates
   } = useApp();
 
   const configuredPayrollTypes = classifications.find(c => c.classification === 'Payroll')?.types.filter(t => t.isActive).map(t => t.name) || [];
@@ -105,6 +106,23 @@ export const RegisterPayrollModal: React.FC<Props> = ({
       classificationType: ''
     }
   ]);
+
+  // Phase 2 assigns employment classification, so intake selects the active
+  // Payroll workflow by document type. An All-employment template is preferred.
+  const singleWorkflowMatches = workflowTemplates
+    .filter(workflow => {
+      if (!workflow.isActive || workflow.classification !== 'Payroll') return false;
+      const types = workflow.documentTypes || [workflow.documentType];
+      return types.some(type => type === singleClassificationType || ['All', 'Default'].includes(type));
+    })
+    .sort((a, b) => {
+      const score = (workflow: typeof a) => {
+        const types = workflow.documentTypes || [workflow.documentType];
+        return (types.includes(singleClassificationType) ? 2 : 0) + (workflow.employmentClassification === 'All' ? 1 : 0);
+      };
+      return score(b) - score(a);
+    });
+  const selectedSingleWorkflow = singleWorkflowMatches[0];
 
   useEffect(() => {
     writeWorkspaceValue(currentUser.id, 'draft.register-payroll', { mode, singleOffice, singleClassificationType, singleTitle, singleBarcode, singleRemarks, batchOffice, batchPayrollType, batchPeriod, batchLiaison, batchBarcode, batchRemarks, items });
@@ -433,30 +451,27 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                 )}
               </div>
 
-              {/* Sequential 5-Step Workflow Roadmap */}
+              {/* Configured workflow preview */}
               <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/80">
                 <div className="text-xs font-bold text-slate-800 mb-3 flex items-center justify-between">
-                  <span>Prescribed Single Payroll 5-Phase Pipeline</span>
-                  <span className="text-[11px] font-normal text-slate-500">Live Stage Preview</span>
+                  <span>{selectedSingleWorkflow ? `${selectedSingleWorkflow.title} workflow` : 'No matching Payroll workflow'}</span>
+                  <span className="text-[11px] font-normal text-slate-500">Configured phase preview</span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
-                  {[
-                    { step: '1', name: 'Intake Docketing', role: 'Receiving Desk', state: 'Complete on Submit' },
-                    { step: '2', name: 'Verification & Signing', role: 'Assigned Personnel', state: 'Classify during checking', highlight: true },
-                    { step: '3', name: 'Chief Review', role: 'Atty. Bautista', state: 'Queue 3' },
-                    { step: '4', name: 'Director Approval', role: 'Dr. Mendoza', state: 'Queue 4' },
-                    { step: '5', name: 'Release & Archive', role: 'Records Custodian', state: 'Queue 5' },
-                  ].map((s, idx) => (
-                    <div key={idx} className={`p-2.5 rounded-lg border text-left ${s.highlight ? 'bg-blue-50/90 border-blue-200' : 'bg-white border-slate-200'}`}>
+                {selectedSingleWorkflow ? <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                  {selectedSingleWorkflow.steps.map((phase, idx) => {
+                    const intakeCompletesOnSubmit = idx === 0 && phase.requiredAction === 'Receive';
+                    const activeAfterSubmit = intakeCompletesOnSubmit ? false : idx === (selectedSingleWorkflow.steps[0]?.requiredAction === 'Receive' ? 1 : 0);
+                    return <div key={phase.stepNumber} className={`p-2.5 rounded-lg border text-left ${activeAfterSubmit ? 'bg-blue-50/90 border-blue-200' : 'bg-white border-slate-200'}`}>
                       <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                        <span>PHASE {s.step}</span>
-                        {s.highlight && <span className="text-blue-600 font-bold">&bull; Next</span>}
+                        <span>PHASE {phase.stepNumber}</span>
+                        {intakeCompletesOnSubmit && <span className="text-emerald-600 font-bold">&bull; Intake</span>}
+                        {activeAfterSubmit && <span className="text-blue-600 font-bold">&bull; Next</span>}
                       </div>
-                      <div className="text-xs font-bold text-slate-800 mt-0.5 line-clamp-1">{s.name}</div>
-                      <div className="text-[11px] text-slate-500 line-clamp-1">{s.role}</div>
-                    </div>
-                  ))}
-                </div>
+                      <div className="text-xs font-bold text-slate-800 mt-0.5 line-clamp-1">{phase.name}</div>
+                      <div className="text-[11px] text-slate-500 line-clamp-1">{phase.assigneeName}</div>
+                    </div>;
+                  })}
+                </div> : <p className="text-xs text-amber-700">Create one active Payroll workflow for {singleClassificationType || 'the selected document type'} before registering this entry.</p>}
               </div>
             </form>
           ) : (

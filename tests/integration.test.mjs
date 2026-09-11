@@ -282,7 +282,7 @@ test('unrouted payroll batches can be edited and deleted from payroll management
 });
 test('single payroll follows configured workflow and synchronizes its item on release',async()=>{
   await admin.action('updateWorkflowTemplate',[{...payrollWorkflow,isActive:false}]);
-  const template=(await admin.action('createWorkflowTemplate',[{title:'Single payroll release',description:'Test',classification:'Payroll',documentType:'Salary',employmentClassification:'All',isActive:true,steps:[step(1,'processor','Verify & Process'),step(2,'releasing_officer','Release & Archive')]}])).result;
+  const template=(await admin.action('createWorkflowTemplate',[{title:'Single payroll release',description:'Test',classification:'Payroll',documentType:'Salary',employmentClassification:'Job Order (JOW)',isActive:true,steps:[step(1,'processor','Verify & Process'),step(2,'releasing_officer','Release & Archive')]}])).result;
   const single=(await admin.action('registerSinglePayroll',[{office:'HRMDO',payrollType:'Salary',classificationType:'Salary',title:'Single salary',barcode:'SINGLE-001',files:[]}])).result;
   assert.equal(single.workflowTemplateId,template.id);
   const item=admin.state.payrollItems.find(i=>i.documentId===single.id);
