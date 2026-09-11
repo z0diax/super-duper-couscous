@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export const MyTasksQueue: React.FC = () => {
-  const { documents, currentUser, can, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, setActiveTab, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
+  const { documents, currentUser, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
 
   const [activeQueue, setActiveQueue] = useState<'my_tasks' | 'team_queue' | 'returned' | 'waiting' | 'ready_for_release' | 'completed'>('my_tasks');
   const [filterPriority, setFilterPriority] = useState<string>('all');
@@ -26,11 +26,16 @@ export const MyTasksQueue: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [complianceRemarks, setComplianceRemarks] = useState<Record<string, string>>({});
 
+  const isAssignedDesk = (desk: { userId?: string; assignmentType?: string; roleId?: string; team?: string }) => {
+    if (desk.userId) return desk.userId === currentUser.id;
+    if (desk.assignmentType === 'Role') return desk.roleId === currentUser.role;
+    return desk.assignmentType === 'Team' && !!desk.team && [currentUser.division, currentUser.office].includes(desk.team);
+  };
   const isInitialCheckingAssignee = (batchId: string) => {
     const batch = payrollBatches.find(item => item.id === batchId);
     if (!batch) return false;
     const desk = batch.initialCheckingDesk || batch.assignedDesk;
-    return can('canSupervise') || (desk.userId ? desk.userId === currentUser.id : desk.assignmentType === 'Role' ? desk.roleId === currentUser.role : desk.assignmentType === 'Team' && !!desk.team && [currentUser.division, currentUser.office].includes(desk.team));
+    return isAssignedDesk(desk);
   };
   const heldPayrollItems = payrollItems.filter(item => item.batchId !== 'SINGLE_ENTRY' && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking' && (['On_Hold', 'Ready_For_Recheck'].includes(item.status) || (item.status === 'Ready' && !!item.holdResolvedAt)) && isInitialCheckingAssignee(item.batchId));
 
@@ -39,11 +44,12 @@ export const MyTasksQueue: React.FC = () => {
     if (b.progress.derivedStatus === 'COMPLETED') return false;
     const hasInitialItems = payrollItems.some(item => item.batchId === b.id && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
     const initialDesk = b.initialCheckingDesk || b.assignedDesk;
-    const assignedToInitialChecking = can('canSupervise') || (initialDesk.userId ? initialDesk.userId === currentUser.id : initialDesk.assignmentType === 'Role' ? initialDesk.roleId === currentUser.role : initialDesk.assignmentType === 'Team' && !!initialDesk.team && [currentUser.division, currentUser.office].includes(initialDesk.team));
+    const assignedToInitialChecking = isAssignedDesk(initialDesk);
     if (hasInitialItems && assignedToInitialChecking) return true;
     const myWorkGroup = workGroups.find(w => w.batchId === b.id && w.assignedProcessorId === currentUser.id && w.status === 'In_Progress');
-    if (myWorkGroup || (currentUser.role === 'admin' && workGroups.some(w => w.batchId === b.id && w.status === 'In_Progress'))) return true;
-    if (payrollItems.some(item => item.batchId === b.id && item.status === 'Ready_For_Release') && can('canRelease')) return true;
+    if (myWorkGroup) return true;
+    const releaseDesk = b.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
+    if (payrollItems.some(item => item.batchId === b.id && item.status === 'Ready_For_Release') && releaseDesk && isAssignedDesk(releaseDesk)) return true;
     return false;
   });
 
@@ -195,18 +201,9 @@ export const MyTasksQueue: React.FC = () => {
                   {myPayrollBatches.length} {myPayrollBatches.length === 1 ? 'batch' : 'batches'}
                 </span>
               </div>
-              <p className="text-xs text-blue-700 mt-0.5">
-                Your desk has active payroll batches in Initial Checking or Parallel Work Groups.
-              </p>
+              <p className="text-xs text-blue-700 mt-0.5">Open the assigned task below to process its active phase.</p>
             </div>
           </div>
-          <button
-            onClick={() => setActiveTab('payroll')}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 shadow-2xs transition-colors shrink-0"
-          >
-            <span>Open Payroll Workspace</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
         </div>
       )}
 
@@ -345,7 +342,7 @@ export const MyTasksQueue: React.FC = () => {
         ) : (
           <>
           {filteredPayrollTasks.length > 0 && (
-            <div className="border-b border-slate-200 bg-blue-50/40 p-4">
+            <div id="payroll-tasks" className="border-b border-slate-200 bg-blue-50/40 p-4">
               <div className="mb-3 flex items-center gap-2">
                 <Layers className="h-4 w-4 text-blue-600" />
                 <h2 className="text-sm font-bold text-slate-900">Payroll tasks</h2>
@@ -356,10 +353,12 @@ export const MyTasksQueue: React.FC = () => {
                   const initialDesk = batch.initialCheckingDesk || batch.assignedDesk;
                   const initialItems = payrollItems.filter(item => item.batchId === batch.id && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
                   const assignedGroup = workGroups.find(group => group.batchId === batch.id && group.assignedProcessorId === currentUser.id && group.status === 'In_Progress');
+                  const releaseDesk = batch.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
                   const phaseLabel = initialItems.length > 0 && isInitialCheckingAssignee(batch.id)
                     ? `Phase 2: ${batch.workflowStages?.find(stage => stage.stageNumber === 2)?.name || 'Initial Checking'}`
                     : assignedGroup ? `Phase 3: ${assignedGroup.classification} Work Group` : batch.progress.release.ready > 0 ? 'Phase 4: Release' : batch.progress.displayStatus;
-                  const assignee = assignedGroup?.assignedProcessorName || initialDesk.userName || initialDesk.roleTitle || 'Configured desk';
+                  const activeDesk = assignedGroup ? undefined : batch.progress.release.ready > 0 ? releaseDesk : initialDesk;
+                  const assignee = assignedGroup?.assignedProcessorName || activeDesk?.userName || activeDesk?.roleTitle || 'Configured desk';
                   return <div key={batch.id} className="flex flex-col gap-3 rounded-lg border border-blue-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <p className="font-mono text-xs font-bold text-blue-700">{batch.batchNumber}</p>

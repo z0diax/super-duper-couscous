@@ -36,24 +36,31 @@ interface NavItem {
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegisterModal, onOpenPayrollModal }) => {
   const { activeTab, setActiveTab, documents, currentUser, payrollBatches, payrollItems, workGroups, can } = useApp();
 
-  // Count active tasks for current user desk
-  const myTasksCount = documents.filter(doc => {
+  const isAssignedDesk = (desk: { userId?: string; assignmentType?: string; roleId?: string; team?: string }) => {
+    if (desk.userId) return desk.userId === currentUser.id;
+    if (desk.assignmentType === 'Role') return desk.roleId === currentUser.role;
+    return desk.assignmentType === 'Team' && !!desk.team && [currentUser.division, currentUser.office].includes(desk.team);
+  };
+
+  // A phase becomes a task for its configured person, role, or team as soon as
+  // it is active. Payroll tasks follow this exact rule just like documents.
+  const documentTaskCount = documents.filter(doc => {
     if (doc.status === 'Released' || doc.status === 'Archived') return false;
     const step = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
     if (!step) return false;
-    return step.assignedTo.userId === currentUser.id || step.assignedTo.role === currentUser.role;
+    return step.assignedTo.userId === currentUser.id || (!step.assignedTo.userId && step.assignedTo.role === currentUser.role);
   }).length;
 
-  // Active payroll batches relevant to user
-  const activePayrollCount = payrollBatches.filter(b => {
+  const payrollTaskCount = payrollBatches.filter(b => {
     if (b.progress.derivedStatus === 'COMPLETED') return false;
     const hasInitialItems = payrollItems.some(item => item.batchId === b.id && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
     const initialDesk = b.initialCheckingDesk || b.assignedDesk;
-    const assignedToInitialChecking = can('canSupervise') || (initialDesk.userId ? initialDesk.userId === currentUser.id : initialDesk.assignmentType === 'Role' ? initialDesk.roleId === currentUser.role : initialDesk.assignmentType === 'Team' && !!initialDesk.team && [currentUser.division, currentUser.office].includes(initialDesk.team));
+    const assignedToInitialChecking = isAssignedDesk(initialDesk);
     if (hasInitialItems && assignedToInitialChecking) return true;
     const myGroup = workGroups.find(w => w.batchId === b.id && w.assignedProcessorId === currentUser.id && w.status === 'In_Progress');
-    if (myGroup || (currentUser.role === 'admin' && workGroups.some(w => w.batchId === b.id && w.status === 'In_Progress'))) return true;
-    if (payrollItems.some(item => item.batchId === b.id && item.status === 'Ready_For_Release') && can('canRelease')) return true;
+    if (myGroup) return true;
+    const releaseDesk = b.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
+    if (payrollItems.some(item => item.batchId === b.id && item.status === 'Ready_For_Release') && releaseDesk && isAssignedDesk(releaseDesk)) return true;
     return false;
   }).length;
 
@@ -63,14 +70,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
       id: 'queues', 
       label: 'My Tasks & Queues', 
       icon: Inbox, 
-      badge: myTasksCount > 0 ? myTasksCount : undefined,
+      badge: documentTaskCount + payrollTaskCount > 0 ? documentTaskCount + payrollTaskCount : undefined,
       section: 'Core Operations'
     },
     { 
       id: 'payroll', 
       label: 'Payroll Management', 
       icon: Layers, 
-      badge: activePayrollCount > 0 ? activePayrollCount : undefined,
       section: 'Core Operations' 
     },
     { id: 'registry', label: 'Document Registry', icon: FileStack, section: 'Core Operations' },

@@ -329,7 +329,9 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
         payroll_refresh_batch_aggregate($s,$batch); return true;
     }
     if ($action==='releasePayrollBatch') {
-        require_cap($s,$u,'canRelease'); $i=index_of($s['payrollBatches'],(string)$d); $batch=&$s['payrollBatches'][$i];
+        $i=index_of($s['payrollBatches'],(string)$d); $batch=&$s['payrollBatches'][$i];
+        $releaseDesk=null; foreach ($batch['workflowStages']??[] as $stage) if (($stage['stageNumber']??0)===4) { $releaseDesk=$stage['assignedTo']??null; break; }
+        fail_unless(is_array($releaseDesk) && payroll_desk_matches_user($s,$u,$releaseDesk),'This batch is assigned to another officer.',403);
         $ready=array_values(array_filter($s['payrollItems'],fn($item)=>$item['batchId']===$batch['id'] && $item['status']==='Ready_For_Release'));
         fail_unless(count($ready)>0,'No payroll items are ready for release.',409);
         $details=$args[1]; required($details,'releasedTo'); choice($details['releaseMode']??null,['In-Person Pick-up','Official Courier','Electronic Copy','Internal Messenger'],'release mode');
