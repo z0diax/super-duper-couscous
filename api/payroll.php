@@ -15,8 +15,57 @@ function payroll_item_is_held(array $item): bool { return ($item['status']??'')=
 function payroll_item_is_ready(array $item): bool {
     return !payroll_item_is_held($item) && ($item['verificationStatus']??'')==='Passed' && in_array($item['employmentClassification']??null,['JOW/COS','Job Order (JOW)','Casual','Regular'],true);
 }
+function payroll_batch_workflow(array $s,string $documentType): array {
+    try {
+        $workflow=resolve_workflow($s,['classification'=>'Payroll','documentType'=>$documentType,'employmentClassification'=>null]);
+    } catch (ApiError $error) {
+        throw new ApiError('Configure one active Payroll workflow for '.$documentType.' with Docketing and Initial Checking phases.',422);
+    }
+    fail_unless(count($workflow['steps']??[])>=2,'The Payroll workflow must define Phase 1 Docketing and Phase 2 Initial Checking.',422);
+    $docketing=$workflow['steps'][0]; $initialChecking=$workflow['steps'][1];
+    fail_unless(($docketing['stageType']??'INTERNAL_PROCESSING')==='INTERNAL_PROCESSING' && ($docketing['requiredAction']??'')==='Receive','Phase 1 of the Payroll workflow must be an internal Receive (Docketing) phase.',422);
+    fail_unless(($initialChecking['stageType']??'INTERNAL_PROCESSING')==='INTERNAL_PROCESSING' && ($initialChecking['requiredAction']??'')==='Verify & Process','Phase 2 of the Payroll workflow must be an internal Verify & Process (Initial Checking) phase.',422);
+    return $workflow;
+}
+function payroll_desk_from_workflow_step(array $s,array $step,string $stage): array {
+    $type=$step['assigneeType']??'';
+    fail_unless(in_array($type,['Person','Role','Team'],true),'The configured Payroll Initial Checking assignee is invalid.',422);
+    $desk=['stage'=>$stage,'assignmentType'=>$type,'userName'=>$step['assigneeName']??'','roleTitle'=>$step['assigneeName']??''];
+    if ($type==='Person') {
+        $user=$s['users'][index_of($s['users'],(string)($step['assigneeUserId']??''))];
+        $desk['userId']=$user['id']; $desk['userName']=$user['name']; $desk['roleTitle']=$user['roleTitle'];
+    } elseif ($type==='Role') {
+        $roleId=(string)($step['assigneeRole']??''); index_of($s['systemRoles'],$roleId);
+        $desk['roleId']=$roleId;
+    } else {
+        $desk['team']=(string)($step['assigneeTeam']??'');
+    }
+    return $desk;
+}
+function payroll_desk_matches_user(array $s,array $u,array $desk): bool {
+    if (has_cap($s,$u,'canSupervise')) return true;
+    if (!empty($desk['userId'])) return $desk['userId']===$u['id'];
+    if (($desk['assignmentType']??'')==='Role') return ($desk['roleId']??null)===$u['role'];
+    return ($desk['assignmentType']??'')==='Team' && !empty($desk['team']) && in_array($desk['team'],[$u['division'],$u['office']],true);
+}
+function payroll_initial_check_authorized(array $s,array $u,array $batch): bool {
+    // initialCheckingDesk is retained even while some items are in later parallel groups.
+    $desk=$batch['initialCheckingDesk']??$batch['assignedDesk']??[];
+    return payroll_desk_matches_user($s,$u,$desk);
+}
+function payroll_batch_stage_history(array $s,array $u,array $workflow,array $initialDesk): array {
+    $now=now(); $releaseStep=null;
+    foreach (array_slice($workflow['steps'],2) as $step) if (($step['requiredAction']??'')==='Release & Archive') { $releaseStep=$step; break; }
+    $releaseDesk=$releaseStep ? payroll_desk_from_workflow_step($s,$releaseStep,'release') : ['stage'=>'release','assignmentType'=>'Role','userName'=>'Releasing Officer','roleTitle'=>'Releasing Officer'];
+    return [
+        ['stageNumber'=>1,'name'=>$workflow['steps'][0]['name'],'status'=>'Completed','assignedTo'=>payroll_desk_from_workflow_step($s,$workflow['steps'][0],'receiving'),'completedBy'=>['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']],'completedAt'=>$now],
+        ['stageNumber'=>2,'name'=>$workflow['steps'][1]['name'],'status'=>'In_Progress','assignedTo'=>$initialDesk],
+        ['stageNumber'=>3,'name'=>'Parallel Groups','status'=>'Pending','assignedTo'=>['stage'=>'verification_signing','assignmentType'=>'Dynamic','userName'=>'Dynamic routing by employment classification','roleTitle'=>'Payroll processors'],'dynamic'=>true],
+        ['stageNumber'=>4,'name'=>$releaseStep['name']??'Release','status'=>'Pending','assignedTo'=>$releaseDesk],
+    ];
+}
 function editable_payroll_batch(array $s,array $u,array $batch): void {
-    fail_unless($batch['encodedBy']['userId']===$u['id'] || has_cap($s,$u,'canSupervise'),'This batch is assigned to another officer.',403);
+    fail_unless(payroll_initial_check_authorized($s,$u,$batch),'This batch is assigned to another officer.',403);
     $items=array_values(array_filter($s['payrollItems'],fn($item)=>$item['batchId']===$batch['id']));
     $hasStarted=array_filter($items,fn($item)=>($item['currentStage']??(empty($item['workGroupId'])?'initial_checking':'verification_signing'))!=='initial_checking');
     $hasWorkGroups=count(array_filter($s['workGroups'],fn($group)=>$group['batchId']===$batch['id']))>0;
@@ -44,6 +93,9 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
     if ($action==='registerPayrollBatch') {
         require_cap($s,$u,'canIntake'); $office=required($d,'office'); $type=required($d,'payrollType');
         fail_unless(is_array($d['items']??null) && count($d['items'])>0 && count($d['items'])<=500,'A batch needs between 1 and 500 items.');
+        $documentTypes=array_values(array_unique(array_map(fn($item)=>trim((string)($item['classificationType']??$type)),$d['items'])));
+        $workflow=payroll_batch_workflow($s,count($documentTypes)===1?$documentTypes[0]:'All');
+        $initialDesk=payroll_desk_from_workflow_step($s,$workflow['steps'][1],'initial_checking');
         $barcode=trim($d['batchBarcode']??'') ?: 'PB-'.date('Y').'-'.strtoupper(bin2hex(random_bytes(5))); assert_barcode($s,$barcode);
         $id=uid('batch'); $itemIds=[]; $codes=[$barcode];
         foreach ($d['items'] as $n=>$entry) {
@@ -51,7 +103,12 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
             $item=['id'=>uid('payroll'),'batchId'=>$id,'batchNumber'=>$barcode,'itemNumber'=>$n+1,'barcode'=>$code,'title'=>required($entry,'title',300),'office'=>$entry['office']??$office,'classificationType'=>$entry['classificationType']??$type,'employmentClassification'=>null,'currentStage'=>'initial_checking','verificationStatus'=>'Pending','status'=>'Pending','auditHistory'=>[],'createdAt'=>now(),'updatedAt'=>now()];
             payroll_item_audit($item,$u,'PAYROLL_ITEM_CREATED','Registered in '.$barcode); $itemIds[]=$item['id']; $s['payrollItems'][]=$item;
         }
-        $batch=['id'=>$id,'batchNumber'=>$barcode,'batchBarcode'=>$barcode,'classification'=>'Payroll','payrollType'=>$type,'office'=>$office,'payrollPeriod'=>$d['payrollPeriod']??'','receivedFromLiaison'=>$d['receivedFromLiaison']??'','remarks'=>$d['remarks']??'','dateReceived'=>now(),'dateEncoded'=>now(),'encodedBy'=>['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']],'currentStage'=>'initial_checking','currentStageName'=>'Initial Checking','assignedDesk'=>['stage'=>'initial_checking','userId'=>$u['id'],'userName'=>$u['name'],'roleTitle'=>$u['roleTitle']],'totalItemsCount'=>count($itemIds),'itemIds'=>$itemIds,'workGroupIds'=>[],'attachments'=>attach_files($pdo,$u,$d['files']??[],$id),'status'=>'Active','createdAt'=>now(),'updatedAt'=>now()];
+        $timestamp=now();
+        $batch=['id'=>$id,'batchNumber'=>$barcode,'batchBarcode'=>$barcode,'classification'=>'Payroll','payrollType'=>$type,'office'=>$office,'payrollPeriod'=>$d['payrollPeriod']??'','receivedFromLiaison'=>$d['receivedFromLiaison']??'','remarks'=>$d['remarks']??'','dateReceived'=>$timestamp,'dateEncoded'=>$timestamp,'encodedBy'=>['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']],'workflowTemplateId'=>$workflow['id'],'workflowVersion'=>$workflow['version'],'currentStage'=>'initial_checking','currentStageName'=>'Initial Checking','assignedDesk'=>$initialDesk,'initialCheckingDesk'=>$initialDesk,'workflowStages'=>payroll_batch_stage_history($s,$u,$workflow,$initialDesk),'workflowHistory'=>[
+            ['id'=>uid('event'),'timestamp'=>$timestamp,'actorId'=>$u['id'],'actorName'=>$u['name'],'actorRole'=>$u['roleTitle'],'action'=>'PAYROLL_BATCH_DOCKETED','details'=>'Payroll batch docketed by '.$u['name'].'.'],
+            ['id'=>uid('event'),'timestamp'=>$timestamp,'actorId'=>$u['id'],'actorName'=>$u['name'],'actorRole'=>$u['roleTitle'],'action'=>'WORKFLOW_STAGE_COMPLETED','details'=>'Stage 1 - '.$workflow['steps'][0]['name'].' completed by '.$u['name'].'.'],
+            ['id'=>uid('event'),'timestamp'=>$timestamp,'actorId'=>$u['id'],'actorName'=>$u['name'],'actorRole'=>$u['roleTitle'],'action'=>'WORKFLOW_STAGE_ASSIGNED','details'=>'Stage 2 - '.$workflow['steps'][1]['name'].' assigned to '.$initialDesk['userName'].'.'],
+        ],'totalItemsCount'=>count($itemIds),'itemIds'=>$itemIds,'workGroupIds'=>[],'attachments'=>attach_files($pdo,$u,$d['files']??[],$id),'status'=>'Active','createdAt'=>$timestamp,'updatedAt'=>$timestamp];
         $s['payrollBatches'][]=$batch; return $batch;
     }
     if ($action==='updatePayrollBatch') {
@@ -89,7 +146,7 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
                 fail_unless(can_assign($s,$u,$singleStep['assignedTo']),'This task is assigned to another officer.',403);
             } else {
                 $b=$s['payrollBatches'][index_of($s['payrollBatches'],$item['batchId'])];
-                fail_unless($b['encodedBy']['userId']===$u['id'] || has_cap($s,$u,'canSupervise'),'This batch is assigned to another officer.',403);
+                fail_unless(payroll_initial_check_authorized($s,$u,$b),'This batch is assigned to another officer.',403);
             }
             if ($action==='markPayrollItemException') { $item['verificationStatus']='Exception'; $item['status']='On_Hold'; $item['exceptionReason']=required(['reason'=>$args[1]??''],'reason',2000); $item['exceptionNotes']=$args[2]??''; }
             elseif ($action==='clearPayrollItemException') {
@@ -109,7 +166,7 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
     if ($action==='completeInitialCheckingAndRoute') {
         $i=index_of($s['payrollBatches'],(string)$d); $batch=&$s['payrollBatches'][$i];
         fail_unless(!in_array($batch['currentStage'],['release','completed'],true),'Batch can no longer accept Initial Checking items.',409);
-        fail_unless($batch['encodedBy']['userId']===$u['id'] || has_cap($s,$u,'canSupervise'),'This batch is assigned to another officer.',403);
+        fail_unless(payroll_initial_check_authorized($s,$u,$batch),'This batch is assigned to another officer.',403);
         $initialItems=array_values(array_filter($s['payrollItems'],fn($item)=>in_array($item['id'],$batch['itemIds'],true) && ($item['currentStage']??(empty($item['workGroupId'])?'initial_checking':'verification_signing'))==='initial_checking'));
         $unresolved=array_values(array_filter($initialItems,fn($item)=>!payroll_item_is_held($item) && !payroll_item_is_ready($item)));
         fail_unless(count($unresolved)===0,count($unresolved).' payroll item'.(count($unresolved)===1?' is':'s are').' still pending verification or classification.');
@@ -130,7 +187,12 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
         }
         foreach ($heldItems as $held) { $j=index_of($s['payrollItems'],$held['id']); payroll_item_audit($s['payrollItems'][$j],$u,'PAYROLL_ITEM_RETAINED_ON_HOLD',count($readyItems).' other payroll(s) routed; this item remains in Initial Checking.'); }
         foreach ($groups as $group) { $existing=$group['_index']??null; unset($group['_index']); $group['updatedAt']=now(); if ($existing===null) { $s['workGroups'][]=$group; $batch['workGroupIds'][]=$group['id']; } else $s['workGroups'][$existing]=$group; }
-        $batch['currentStage']='verification_signing'; $batch['currentStageName']=count($heldItems)?'Processing with Initial Holds':'Verification & Signing'; $batch['assignedDesk']=['stage'=>'verification_signing','userName'=>'Assigned work groups','roleTitle'=>'Payroll processors']; $batch['updatedAt']=now(); return true;
+        $routedAt=now();
+        if (empty($heldItems)) {
+            foreach ($batch['workflowStages']??[] as &$stage) if (($stage['stageNumber']??0)===2) { $stage['status']='Completed'; $stage['completedAt']=$routedAt; $stage['completedBy']=['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']]; } elseif (($stage['stageNumber']??0)===3) $stage['status']='In_Progress'; unset($stage);
+            $batch['workflowHistory'][]=['id'=>uid('event'),'timestamp'=>$routedAt,'actorId'=>$u['id'],'actorName'=>$u['name'],'actorRole'=>$u['roleTitle'],'action'=>'WORKFLOW_STAGE_COMPLETED','details'=>'Stage 2 - Initial Checking completed by '.$u['name'].'. Eligible payroll items were routed to Parallel Groups.'];
+        } else foreach ($batch['workflowStages']??[] as &$stage) if (($stage['stageNumber']??0)===3) $stage['status']='In_Progress'; unset($stage);
+        $batch['currentStage']='verification_signing'; $batch['currentStageName']=count($heldItems)?'Processing with Initial Holds':'Verification & Signing'; $batch['assignedDesk']=['stage'=>'verification_signing','assignmentType'=>'Dynamic','userName'=>'Assigned work groups','roleTitle'=>'Payroll processors']; $batch['updatedAt']=$routedAt; return true;
     }
     if ($action==='processWorkGroupItems') {
         $g=index_of($s['workGroups'],(string)$d); $group=&$s['workGroups'][$g];
@@ -171,7 +233,7 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
         $remaining=array_values(array_filter($s['payrollItems'],fn($item)=>$item['batchId']===$batch['id'] && $item['status']!=='Released'));
         if (!$remaining) { $batch['currentStage']='completed'; $batch['currentStageName']='Completed'; $batch['status']='Completed'; }
         elseif (array_filter($remaining,fn($item)=>$item['status']==='In_Progress')) { $batch['currentStage']='verification_signing'; $batch['currentStageName']='Processing with Partial Release'; }
-        else { $batch['currentStage']='initial_checking'; $batch['currentStageName']='Released with Initial Holds'; $batch['assignedDesk']=['stage'=>'initial_checking','userId'=>$batch['encodedBy']['userId'],'userName'=>$batch['encodedBy']['userName'],'roleTitle'=>$batch['encodedBy']['userRole']]; }
+        else { $batch['currentStage']='initial_checking'; $batch['currentStageName']='Released with Initial Holds'; $batch['assignedDesk']=$batch['initialCheckingDesk']??$batch['assignedDesk']; }
         $batch['updatedAt']=now(); return $batch;
     }
     throw new ApiError('Unknown payroll operation.',404);

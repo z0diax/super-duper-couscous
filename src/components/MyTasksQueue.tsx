@@ -29,8 +29,9 @@ export const MyTasksQueue: React.FC = () => {
   const myPayrollBatches = payrollBatches.filter(b => {
     if (b.status !== 'Active') return false;
     const hasInitialItems = payrollItems.some(item => item.batchId === b.id && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
-    if (hasInitialItems && (b.encodedBy.userId === currentUser.id || can('canSupervise'))) return true;
-    if (b.currentStage === 'initial_checking' && (b.assignedDesk.userId === currentUser.id || can('canSupervise'))) return true;
+    const initialDesk = b.initialCheckingDesk || b.assignedDesk;
+    const assignedToInitialChecking = can('canSupervise') || (initialDesk.userId ? initialDesk.userId === currentUser.id : initialDesk.assignmentType === 'Role' ? initialDesk.roleId === currentUser.role : initialDesk.assignmentType === 'Team' && !!initialDesk.team && [currentUser.division, currentUser.office].includes(initialDesk.team));
+    if (hasInitialItems && assignedToInitialChecking) return true;
     const myWorkGroup = workGroups.find(w => w.batchId === b.id && w.assignedProcessorId === currentUser.id && w.status === 'In_Progress');
     if (myWorkGroup || (currentUser.role === 'admin' && workGroups.some(w => w.batchId === b.id && w.status === 'In_Progress'))) return true;
     if (payrollItems.some(item => item.batchId === b.id && item.status === 'Ready_For_Release') && can('canRelease')) return true;

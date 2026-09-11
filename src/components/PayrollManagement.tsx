@@ -76,7 +76,9 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     const batchItems = payrollItems.filter(item => item.batchId === batch.id);
     const hasStarted = batchItems.some(item => (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) !== 'initial_checking');
     const hasWorkGroups = workGroups.some(group => group.batchId === batch.id);
-    return batch.status === 'Active' && !hasStarted && !hasWorkGroups && (batch.encodedBy.userId === currentUser.id || can('canSupervise'));
+    const initialDesk = batch.initialCheckingDesk || batch.assignedDesk;
+    const assignedToInitialChecking = can('canSupervise') || (initialDesk.userId ? initialDesk.userId === currentUser.id : initialDesk.assignmentType === 'Role' ? initialDesk.roleId === currentUser.role : initialDesk.assignmentType === 'Team' && !!initialDesk.team && [currentUser.division, currentUser.office].includes(initialDesk.team));
+    return batch.status === 'Active' && !hasStarted && !hasWorkGroups && assignedToInitialChecking;
   };
 
   const handleDeleteBatch = async (batch: PayrollBatch) => {

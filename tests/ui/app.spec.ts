@@ -110,6 +110,16 @@ test('user creation creates a usable login with the selected permissions', async
 });
 test('payroll batch intake saves its items and a downloadable attachment', async ({ page }) => {
   await page.goto(`${fixture.base}/`); await page.getByLabel('Email address').fill('admin@example.test'); await page.getByLabel('Password', { exact: true }).fill(testPassword); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  const setup = await new Client(fixture.base).login();
+  const adminUser = setup.state.users.find((user:any) => user.role === 'admin');
+  const payrollStep = (stepNumber:number, name:string, requiredAction:string, assigneeType:string, extra:any = {}) => ({ stepNumber, name, description:'Browser batch workflow', assigneeType, assigneeName:adminUser.name, slaHours:24, requiredAction, allowReturn:false, requiresAttachment:false, ...extra });
+  await setup.action('createWorkflowTemplate',[{ title:'Browser payroll batch workflow', description:'Docket then assign Initial Checking', classification:'Payroll', documentType:'Salary', employmentClassification:'All', isActive:true, steps:[
+    payrollStep(1,'Docketing','Receive','Person',{assigneeUserId:adminUser.id}),
+    payrollStep(2,'Initial Checking','Verify & Process','Person',{assigneeUserId:adminUser.id}),
+    payrollStep(3,'Parallel Groups','Verify & Process','Role',{assigneeRole:'processor'}),
+    payrollStep(4,'Release','Release & Archive','Role',{assigneeRole:'releasing_officer'}),
+  ] }]);
+  await page.reload();
   await page.getByRole('button', { name: 'Payroll Management', exact: true }).click();
   await page.getByRole('button', { name: 'Routing Rules', exact: true }).click();
   await page.getByRole('button', { name: 'Change Assignee', exact: true }).first().click();

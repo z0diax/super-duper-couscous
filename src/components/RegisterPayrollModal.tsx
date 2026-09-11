@@ -667,11 +667,11 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-blue-900">4-Stage Batch Lifecycle:</span>
                       <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900">
-                        1. Docketing &rarr; 2. Initial Checking Desk (the receiving officer)
+                        1. Docketing &rarr; 2. Initial Checking Desk (configured personnel or team)
                       </span>
                     </div>
                     <p className="text-xs text-blue-700 mt-0.5">
-                      Batch is routed to the receiving officer for verification, then automatically split into parallel work groups by employment classification.
+                      Docketing is completed by the receiving officer, then the batch is assigned to the configured Initial Checking desk before it is split into parallel work groups by employment classification.
                     </p>
                   </div>
                 </div>
@@ -686,7 +686,7 @@ export const RegisterPayrollModal: React.FC<Props> = ({
             {mode === 'single' ? (
               <span>Employment classification is assigned by <strong>Phase 2 personnel</strong>.</span>
             ) : (
-              <span>Initial checking desk: <strong>the receiving officer</strong> ({items.length} items)</span>
+              <span>Initial checking desk: <strong>the configured Phase 2 assignee</strong> ({items.length} items)</span>
             )}
           </div>
 

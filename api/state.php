@@ -53,6 +53,10 @@ try {
         if (in_array($action,['addUser','updateUser','changePassword'],true)) $details='Account credentials or profile updated.';
         elseif ($action==='recordExternalHandoff') { $handoff=$args[1]??[]; $details='Destination: '.($handoff['destinationOffice']??'').' Purpose: '.($handoff['purpose']??'').' Handed to: '.($handoff['handedTo']??'').' Expected return: '.($handoff['expectedReturn']??'Not specified').'.'; }
         elseif ($action==='recordExternalReturn') { $return=$args[1]??[]; $details='Returned from: '.($return['returnedFrom']??'').' External result: '.($return['result']??'Not specified').'.'; }
+        elseif ($action==='registerPayrollBatch' && is_array($result)) {
+            $stages=$result['workflowStages']??[]; $initial=$result['initialCheckingDesk']??[];
+            $details='Docketed by '.($result['encodedBy']['userName']??$user['name']).'. Stage 1 - '.($stages[0]['name']??'Docketing').' completed. Stage 2 - '.($stages[1]['name']??'Initial Checking').' assigned to '.($initial['userName']??'configured desk').'.';
+        }
         elseif (is_array($args[0]??null)) {
             $parts=[];
             foreach (['title','name','classification','documentType','office','sourceOffice','leaveType','startDate','endDate','remarks','description'] as $field) if (isset($args[0][$field]) && is_string($args[0][$field]) && $args[0][$field]!=='') $parts[]=ucfirst($field).': '.$args[0][$field];
@@ -64,7 +68,7 @@ try {
             }
             $details=implode('. ',$parts);
         }
-        $auditAction=['registerDocument'=>'DOCUMENT_REGISTERED','registerSinglePayroll'=>'DOCUMENT_REGISTERED','registerPayrollBatch'=>'PAYROLL_BATCH_CREATED','deleteDocument'=>'DOCUMENT_DELETED','completeStep'=>'STEP_COMPLETED','returnStep'=>'STEP_RETURNED','approveDocument'=>'DOCUMENT_APPROVED','releaseDocument'=>'DOCUMENT_RELEASED','claimTask'=>'TASK_CLAIMED','reassignTask'=>'TASK_REASSIGNED','addDocumentRemark'=>'REMARK_ADDED','uploadSupportingFile'=>'ATTACHMENT_UPLOADED','runMigrationCheck'=>'MIGRATION_VERIFIED'][$action]??'WORKFLOW_CONFIG_UPDATED';
+        $auditAction=['registerDocument'=>'DOCUMENT_REGISTERED','registerSinglePayroll'=>'DOCUMENT_REGISTERED','registerPayrollBatch'=>'PAYROLL_BATCH_DOCKETED','deleteDocument'=>'DOCUMENT_DELETED','completeStep'=>'STEP_COMPLETED','returnStep'=>'STEP_RETURNED','approveDocument'=>'DOCUMENT_APPROVED','releaseDocument'=>'DOCUMENT_RELEASED','claimTask'=>'TASK_CLAIMED','reassignTask'=>'TASK_REASSIGNED','addDocumentRemark'=>'REMARK_ADDED','uploadSupportingFile'=>'ATTACHMENT_UPLOADED','runMigrationCheck'=>'MIGRATION_VERIFIED'][$action]??'WORKFLOW_CONFIG_UPDATED';
         $auditAction=['updatePayrollBatch'=>'PAYROLL_BATCH_UPDATED','deletePayrollBatch'=>'PAYROLL_BATCH_DELETED','updatePayrollItemClassification'=>'EMPLOYMENT_CLASSIFICATION_SET','bulkClassifyPayrollItems'=>'BULK_CLASSIFICATION_SET','markPayrollItemException'=>'PAYROLL_ITEM_EXCEPTION','clearPayrollItemException'=>'PAYROLL_ITEM_RETURNED','completeInitialCheckingAndRoute'=>'INITIAL_CHECK_COMPLETED','processWorkGroupItems'=>($args[2]??'')==='exception'?'PAYROLL_ITEM_EXCEPTION':'PAYROLL_ITEM_COMPLETED','releasePayrollBatch'=>'PAYROLL_RELEASED','fileLeaveApplication'=>'LEAVE_FILED','approveLeaveApplication'=>'LEAVE_APPROVED','addUser'=>'USER_CREATED','updateUser'=>'USER_UPDATED','deleteUser'=>'USER_DELETED','deleteClassificationType'=>'CLASSIFICATION_TYPE_DELETED','recordExternalHandoff'=>'DOCUMENT_SENT_OUTSIDE_HRMDO','recordExternalReturn'=>'DOCUMENT_RETURNED_TO_HRMDO','changePassword'=>'PASSWORD_CHANGED'][$action]??$auditAction;
         audit($pdo,$user,$auditAction,$id,ucfirst(strtolower(preg_replace('/(?<!^)[A-Z]/',' $0',$action))),$details,is_array($result)?($result['trackingNumber']??$result['batchNumber']??''):'');
         $pdo->exec('UPDATE app_meta SET revision=revision+1 WHERE id=1'); $revision++;

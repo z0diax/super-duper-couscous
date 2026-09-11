@@ -140,14 +140,38 @@ export interface PayrollBatch {
     userName: string;
     userRole: string;
   };
+  workflowTemplateId?: string;
+  workflowVersion?: number;
   currentStage: PayrollBatchStage;
   currentStageName: string;
   assignedDesk: {
     stage: PayrollBatchStage;
+    assignmentType?: 'Person' | 'Role' | 'Team' | 'Dynamic';
     userId?: string;
+    roleId?: UserRole;
+    team?: string;
     userName: string;
     roleTitle: string;
   };
+  initialCheckingDesk?: {
+    stage: PayrollBatchStage;
+    assignmentType?: 'Person' | 'Role' | 'Team' | 'Dynamic';
+    userId?: string;
+    roleId?: UserRole;
+    team?: string;
+    userName: string;
+    roleTitle: string;
+  };
+  workflowStages?: Array<{
+    stageNumber: number;
+    name: string;
+    status: 'Pending' | 'In_Progress' | 'Completed';
+    assignedTo: PayrollBatch['assignedDesk'];
+    completedBy?: { userId: string; userName: string; userRole: string };
+    completedAt?: string;
+    dynamic?: boolean;
+  }>;
+  workflowHistory?: PayrollItemAuditEntry[];
   totalItemsCount: number;
   itemIds: string[];
   workGroupIds: string[];
@@ -341,6 +365,9 @@ export interface AuditEvent {
     | 'WORKFLOW_CONFIG_UPDATED'
     | 'MIGRATION_VERIFIED'
     | 'PAYROLL_BATCH_CREATED'
+    | 'PAYROLL_BATCH_DOCKETED'
+    | 'WORKFLOW_STAGE_COMPLETED'
+    | 'WORKFLOW_STAGE_ASSIGNED'
     | 'PAYROLL_ITEM_CREATED'
     | 'INITIAL_CHECK_STARTED'
     | 'EMPLOYMENT_CLASSIFICATION_SET'

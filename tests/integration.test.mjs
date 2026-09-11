@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { startFixture, Client, testPassword } from './support.mjs';
-let fixture, admin, employee, processor, approver, releaser, workflow, doc, batch;
+let fixture, admin, employee, receiver, processor, approver, releaser, workflow, payrollWorkflow, doc, batch;
 const userData = (role) => ({name:`Test ${role}`,email:`${role}@example.test`,password:testPassword,role,roleTitle:role,office:'HRMDO',division:'Operations',position:'Officer'});
 const step = (n,role,action,extra={}) => ({stepNumber:n,name:`Step ${n}`,description:'Test routing',assigneeType:'Role',assigneeRole:role,assigneeName:role,slaHours:24,requiredAction:action,allowReturn:n>1,requiresAttachment:false,...extra});
 const documentData = (barcode) => ({title:'Integration document',subject:'Test subject',sourceType:'Internal',sourceOffice:'HRMDO',senderName:'Test Sender',classification:'Communication',documentType:'Office Order',priority:'Routine',description:'Test',barcode,files:[]});
@@ -21,8 +21,9 @@ test('authentication, CSRF and whole-state writes are enforced',async()=>{
   await admin.request('state.php','POST',{action:'runMigrationCheck',args:[],revision:admin.revision},403,{'X-CSRF-Token':'invalid'});
 });
 test('user accounts can sign in; non-admin accounts cannot alter configuration',async()=>{
-  for(const role of ['employee','processor','approver','releasing_officer']) await admin.action('addUser',[userData(role)]);
+  for(const role of ['employee','receiving_officer','processor','approver','releasing_officer']) await admin.action('addUser',[userData(role)]);
   employee=await new Client(fixture.base).login('employee@example.test'); processor=await new Client(fixture.base).login('processor@example.test');
+  receiver=await new Client(fixture.base).login('receiving_officer@example.test');
   approver=await new Client(fixture.base).login('approver@example.test'); releaser=await new Client(fixture.base).login('releasing_officer@example.test');
   await employee.action('addUser',[userData('admin')],403);
   await admin.action('addUser',[userData('processor')],409);
@@ -84,20 +85,34 @@ test('claim, return, required uploads, approval, release, and read-only history'
   assert(admin.state.auditLogs.some(a=>a.documentId===doc.id && a.actionType==='DOCUMENT_APPROVED' && a.actorId===approver.state.users.find(u=>u.role==='approver').id));
 });
 test('payroll batch checking, exceptions, routing, processing and release',async()=>{
-  await admin.refresh(); const processingUser=admin.state.users.find(u=>u.role==='processor');
+  await admin.refresh(); const receivingUser=admin.state.users.find(u=>u.role==='receiving_officer'); const processingUser=admin.state.users.find(u=>u.role==='processor');
   const reviewOnlyUser=admin.state.users.find(u=>u.role==='approver'); const firstRule=admin.state.employmentRoutingRules[0];
+  payrollWorkflow=(await admin.action('createWorkflowTemplate',[{title:'Payroll receiving to initial checking',description:'Separates docketing from Initial Checking',classification:'Payroll',documentType:'Salary',employmentClassification:'All',isActive:true,steps:[
+    {...step(1,'receiving_officer','Receive'),name:'Docketing',assigneeType:'Person',assigneeUserId:receivingUser.id},
+    {...step(2,'processor','Verify & Process'),name:'Initial Checking',assigneeType:'Person',assigneeUserId:processingUser.id},
+    {...step(3,'processor','Verify & Process'),name:'Parallel Groups'},
+    {...step(4,'releasing_officer','Release & Archive'),name:'Release'},
+  ]}])).result;
   const assignedReviewOfficer=(await admin.action('updateEmploymentRoutingRule',[{...firstRule,primaryProcessorId:reviewOnlyUser.id}])).result;
   assert.equal(assignedReviewOfficer.primaryProcessorId,reviewOnlyUser.id);
   for(const rule of admin.state.employmentRoutingRules) await admin.action('updateEmploymentRoutingRule',[{...rule,primaryProcessorId:processingUser.id}]);
-  batch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'BATCH-001',items:[{title:'Regular payroll',barcode:'PAY-001'},{title:'Casual payroll',barcode:'PAY-002'}],files:[]}])).result;
+  batch=(await receiver.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'BATCH-001',items:[{title:'Regular payroll',barcode:'PAY-001'},{title:'Casual payroll',barcode:'PAY-002'}],files:[]}])).result;
+  assert.equal(batch.encodedBy.userId,receivingUser.id);
+  assert.equal(batch.workflowTemplateId,payrollWorkflow.id);
+  assert.equal(batch.workflowStages[0].status,'Completed');
+  assert.equal(batch.workflowStages[0].completedBy.userId,receivingUser.id);
+  assert.equal(batch.currentStage,'initial_checking');
+  assert.equal(batch.initialCheckingDesk.userId,processingUser.id);
+  assert(batch.workflowHistory.some(event=>event.action==='WORKFLOW_STAGE_ASSIGNED' && event.details.includes(processingUser.name)));
+  await receiver.action('updatePayrollItemClassification',[batch.itemIds[0],'Regular'],403);
   await admin.action('completeInitialCheckingAndRoute',[batch.id],422);
-  await admin.action('updatePayrollItemClassification',[batch.itemIds[0],'Regular']);
-  await admin.action('markPayrollItemException',[batch.itemIds[1],'Missing DTR']);
-  await admin.action('completeInitialCheckingAndRoute',[batch.id]);
-  assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[0]).currentStage,'verification_signing');
-  assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[1]).currentStage,'initial_checking');
-  assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[1]).status,'On_Hold');
-  let groups=admin.state.workGroups.filter(g=>g.batchId===batch.id); assert.equal(groups.length,1);
+  await processor.action('updatePayrollItemClassification',[batch.itemIds[0],'Regular']);
+  await processor.action('markPayrollItemException',[batch.itemIds[1],'Missing DTR']);
+  await processor.action('completeInitialCheckingAndRoute',[batch.id]);
+  assert.equal(processor.state.payrollItems.find(item=>item.id===batch.itemIds[0]).currentStage,'verification_signing');
+  assert.equal(processor.state.payrollItems.find(item=>item.id===batch.itemIds[1]).currentStage,'initial_checking');
+  assert.equal(processor.state.payrollItems.find(item=>item.id===batch.itemIds[1]).status,'On_Hold');
+  let groups=processor.state.workGroups.filter(g=>g.batchId===batch.id); assert.equal(groups.length,1);
   await releaser.action('releasePayrollBatch',[batch.id,{releasedTo:'Office',releaseMode:'Electronic Copy'}],409);
   await employee.action('processWorkGroupItems',[groups[0].id,groups[0].itemIds,'complete'],403);
   await processor.action('processWorkGroupItems',[groups[0].id,groups[0].itemIds,'complete']);
@@ -107,11 +122,12 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   assert.equal(releaser.state.payrollItems.find(item=>item.id===batch.itemIds[0]).status,'Released');
   assert.equal(releaser.state.payrollItems.find(item=>item.id===batch.itemIds[1]).status,'On_Hold');
   assert.equal(releaser.state.payrollBatches.find(b=>b.id===batch.id).status,'Active');
-  await admin.action('clearPayrollItemException',[batch.itemIds[1]]);
-  assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[1]).verificationStatus,'Pending');
-  await admin.action('bulkClassifyPayrollItems',[[batch.itemIds[1]],'Casual',true]);
-  await admin.action('completeInitialCheckingAndRoute',[batch.id]); await admin.action('completeInitialCheckingAndRoute',[batch.id],409);
-  groups=admin.state.workGroups.filter(g=>g.batchId===batch.id); assert.equal(groups.length,2);
+  await receiver.action('clearPayrollItemException',[batch.itemIds[1]],403);
+  await processor.action('clearPayrollItemException',[batch.itemIds[1]]);
+  assert.equal(processor.state.payrollItems.find(item=>item.id===batch.itemIds[1]).verificationStatus,'Pending');
+  await processor.action('bulkClassifyPayrollItems',[[batch.itemIds[1]],'Casual',true]);
+  await processor.action('completeInitialCheckingAndRoute',[batch.id]); await processor.action('completeInitialCheckingAndRoute',[batch.id],409);
+  groups=processor.state.workGroups.filter(g=>g.batchId===batch.id); assert.equal(groups.length,2);
   const resumedGroup=groups.find(group=>group.status==='In_Progress');
   await processor.action('processWorkGroupItems',[resumedGroup.id,resumedGroup.itemIds,'complete']);
   await releaser.action('releasePayrollBatch',[batch.id,{releasedTo:'Payroll liaison',releaseMode:'In-Person Pick-up'}]);
@@ -155,6 +171,7 @@ test('unrouted payroll batches can be edited and deleted from payroll management
   assert.equal(admin.state.payrollItems.some(item=>item.batchId===batch.id),false);
 });
 test('single payroll follows configured workflow and synchronizes its item on release',async()=>{
+  await admin.action('updateWorkflowTemplate',[{...payrollWorkflow,isActive:false}]);
   const template=(await admin.action('createWorkflowTemplate',[{title:'Single payroll release',description:'Test',classification:'Payroll',documentType:'Salary',employmentClassification:'All',isActive:true,steps:[step(1,'processor','Verify & Process'),step(2,'releasing_officer','Release & Archive')]}])).result;
   const single=(await admin.action('registerSinglePayroll',[{office:'HRMDO',payrollType:'Salary',classificationType:'Salary',title:'Single salary',barcode:'SINGLE-001',files:[]}])).result;
   assert.equal(single.workflowTemplateId,template.id);
