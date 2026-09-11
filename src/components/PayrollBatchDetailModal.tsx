@@ -110,6 +110,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const readyForReleaseCount = items.filter(item => item.status === 'Ready_For_Release').length;
   const releasedCount = items.filter(item => item.status === 'Released').length;
   const stage3CompletedCount = items.filter(item => ['Ready_For_Release', 'Released'].includes(item.status)).length;
+  const allItemsReleased = items.length > 0 && releasedCount === items.length;
   const processorFor = (classification: string) => employmentRoutingRules.find(rule => rule.classification === classification)?.primaryProcessorName || 'Processor not configured';
   const releaseDesk = batch.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
   const lifecycleAudit = [
@@ -252,7 +253,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-slate-800 truncate">2. Initial Checking</p>
-                <p className="text-[10px] text-slate-500 truncate">Assigned to {initialCheckingDesk.userName}</p>
+                <p className="text-[10px] text-slate-500 truncate">{initialCheckingItems.length} remaining &bull; {onHoldCount} on hold</p>
               </div>
             </div>
 
@@ -274,25 +275,25 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-slate-800 truncate">3. Parallel Groups</p>
-                <p className="text-[10px] text-slate-500 truncate">Dynamic assignment by employment classification</p>
+                <p className="text-[10px] text-slate-500 truncate">{processingCount} processing &bull; {stage3CompletedCount} completed</p>
               </div>
             </div>
 
             {/* Stage 4: Release */}
             <div className="flex items-center gap-2">
               <div className={`relative isolate w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                batch.currentStage === 'completed' || (releasedCount > 0 && readyForReleaseCount === 0)
+                allItemsReleased || (releasedCount > 0 && readyForReleaseCount === 0)
                   ? 'bg-emerald-600 text-white'
                   : readyForReleaseCount > 0
                   ? 'bg-purple-600 text-white ring-2 ring-purple-400/30'
                   : 'bg-slate-200 text-slate-500'
               }`}>
                 {readyForReleaseCount > 0 && <span aria-hidden="true" className="absolute inset-0 -z-10 rounded-full bg-purple-500 opacity-60 animate-ping motion-reduce:animate-none" />}
-                <span className="relative">{batch.currentStage === 'completed' || (releasedCount > 0 && readyForReleaseCount === 0) ? <CheckCircle2 className="w-3.5 h-3.5" /> : '4'}</span>
+                <span className="relative">{allItemsReleased || (releasedCount > 0 && readyForReleaseCount === 0) ? <CheckCircle2 className="w-3.5 h-3.5" /> : '4'}</span>
               </div>
               <div className="min-w-0">
                 <p className="text-xs font-bold text-slate-800 truncate">4. Release</p>
-                <p className="text-[10px] text-slate-500 truncate">Assigned to {releaseDesk?.userName || 'Release desk'}</p>
+                <p className="text-[10px] text-slate-500 truncate">{readyForReleaseCount} ready &bull; {releasedCount} released</p>
               </div>
             </div>
           </div>
@@ -343,7 +344,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
             <div className="space-y-6">
 
               {/* STAGE 2: INITIAL CHECKING DESK */}
-              {initialCheckingItems.length > 0 && batch.currentStage !== 'completed' && (
+              {initialCheckingItems.length > 0 && (
                 <div className="space-y-4">
                   {/* Desk Info Banner */}
                   <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -356,7 +357,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                           Stage 2: Initial Checking Workspace
                         </h4>
                         <p className="text-xs text-amber-700">
-                          Assigned to <strong>{initialCheckingDesk.userName}</strong> ({initialCheckingDesk.roleTitle}). Review all payroll items, designate employment classification, and verify completeness before auto-routing to parallel workgroups.
+                          Assigned to <strong>{initialCheckingDesk.userName}</strong> ({initialCheckingDesk.roleTitle}). {initialCheckingItems.length} item(s) remain here; they can continue independently while sibling payrolls are in later phases.
                         </p>
                       </div>
                     </div>
@@ -603,7 +604,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
               )}
 
               {/* STAGE 3: PARALLEL WORK GROUPS DESK */}
-              {batchWorkGroups.length > 0 && batch.currentStage !== 'completed' && (
+              {batchWorkGroups.length > 0 && (
                 <div className="space-y-5">
                   {/* Stage Header Info */}
                   <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -831,7 +832,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
               )}
 
               {/* COMPLETED STAGE */}
-              {batch.currentStage === 'completed' && (
+              {allItemsReleased && (
                 <div className="space-y-4">
                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center justify-between">
                     <div className="flex items-center gap-3">

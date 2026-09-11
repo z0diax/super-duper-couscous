@@ -143,15 +143,25 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   const partialGroup=admin.state.workGroups.find(group=>group.batchId===partial.id && group.status==='In_Progress');
   assert.equal(partialGroup.itemIds.length,4);
   await processor.action('processWorkGroupItems',[partialGroup.id,partialGroup.itemIds,'complete']);
-  await releaser.action('releasePayrollBatch',[partial.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
-  assert.equal(releaser.state.payrollItems.filter(item=>item.batchId===partial.id && item.status==='Released').length,4);
-  assert.equal(releaser.state.payrollItems.find(item=>item.id===partial.itemIds[4]).status,'On_Hold');
+  let partialState=processor.state.payrollBatches.find(item=>item.id===partial.id);
+  assert.equal(partialState.currentStage,'release'); // compatibility summary: four siblings are ready.
+  assert.equal(partialState.progress.readyForRelease,4);
+  assert.equal(partialState.progress.onHold,1);
+  assert.equal(processor.state.payrollItems.find(item=>item.id===partial.itemIds[4]).status,'On_Hold');
+
+  // The parent compatibility stage is Release, but the held child remains eligible
+  // for its own Initial Checking recovery and must not be rejected as batch-level work.
   await admin.action('clearPayrollItemException',[partial.itemIds[4]]);
   assert.equal(admin.state.payrollItems.find(item=>item.id===partial.itemIds[4]).status,'Ready');
   assert.equal(admin.state.payrollItems.find(item=>item.id===partial.itemIds[4]).verificationStatus,'Passed');
+  assert.equal(admin.state.payrollBatches.find(item=>item.id===partial.id).currentStage,'release');
   await admin.action('completeInitialCheckingAndRoute',[partial.id]);
   const recoveredGroup=admin.state.workGroups.find(group=>group.batchId===partial.id && group.status==='In_Progress');
   assert.equal(recoveredGroup.itemIds.includes(partial.itemIds[4]),true);
+  assert.equal(admin.state.payrollItems.filter(item=>item.batchId===partial.id && item.status==='Ready_For_Release').length,4);
+  assert.equal(admin.state.payrollItems.find(item=>item.id===partial.itemIds[4]).currentStage,'verification_signing');
+  await releaser.action('releasePayrollBatch',[partial.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
+  assert.equal(releaser.state.payrollItems.filter(item=>item.batchId===partial.id && item.status==='Released').length,4);
   await processor.action('processWorkGroupItems',[recoveredGroup.id,[partial.itemIds[4]],'complete']);
   await releaser.action('releasePayrollBatch',[partial.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
   assert.equal(releaser.state.payrollBatches.find(item=>item.id===partial.id).status,'Completed');

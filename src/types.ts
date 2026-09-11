@@ -172,6 +172,15 @@ export interface PayrollBatch {
     dynamic?: boolean;
   }>;
   workflowHistory?: PayrollItemAuditEntry[];
+  /** Compatibility summary only. Individual PayrollItem state controls routing. */
+  progress?: {
+    totalItems: number;
+    initialChecking: number;
+    stage3Processing: number;
+    readyForRelease: number;
+    released: number;
+    onHold: number;
+  };
   totalItemsCount: number;
   itemIds: string[];
   workGroupIds: string[];
