@@ -122,6 +122,9 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   assert.equal(batch.currentStage,'initial_checking');
   assert.equal(batch.initialCheckingDesk.userId,processingUser.id);
   assert(batch.workflowHistory.some(event=>event.action==='WORKFLOW_STAGE_ASSIGNED' && event.details.includes(processingUser.name)));
+  await processor.refresh();
+  assert(processor.state.payrollBatches.some(record=>record.id===batch.id)); // Phase 2 receives the work item.
+  await processor.action('updatePayrollBatch',[{id:batch.id}],403); // The Phase 2 assignee is not the entry creator.
   await receiver.action('updatePayrollItemClassification',[batch.itemIds[0],'Regular'],403);
   await admin.action('completeInitialCheckingAndRoute',[batch.id],422);
   await processor.action('updatePayrollItemClassification',[batch.itemIds[0],'Regular']);

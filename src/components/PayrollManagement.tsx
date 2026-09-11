@@ -66,7 +66,12 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   const [editingBatchId, setEditingBatchId] = useWorkspaceState<string | null>(currentUser.id, 'payroll.editing-batch', null);
   const [deleteConfirmBatchId, setDeleteConfirmBatchId] = useState<string | null>(null);
   const [deleteConfirmSingleDocumentId, setDeleteConfirmSingleDocumentId] = useState<string | null>(null);
-  const editingBatch = payrollBatches.find(batch => batch.id === editingBatchId) || null;
+  // Payroll Management is an entry register. Processors receive work through
+  // My Tasks; they do not browse or edit entries registered by another employee.
+  // The System Administrator keeps the administrative view for support and deletion.
+  const ownsPayrollEntry = (entry: { encodedBy?: { userId?: string } }) => currentUser.role === 'admin' || entry.encodedBy?.userId === currentUser.id;
+  const ownedPayrollBatches = payrollBatches.filter(ownsPayrollEntry);
+  const editingBatch = ownedPayrollBatches.find(batch => batch.id === editingBatchId) || null;
 
   useEffect(() => {
     if (!['batches', 'single_entries'].includes(viewMode)) setViewMode('batches');
@@ -76,9 +81,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     const batchItems = payrollItems.filter(item => item.batchId === batch.id);
     const hasStarted = batchItems.some(item => (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) !== 'initial_checking');
     const hasWorkGroups = workGroups.some(group => group.batchId === batch.id);
-    const initialDesk = batch.initialCheckingDesk || batch.assignedDesk;
-    const assignedToInitialChecking = can('canSupervise') || (initialDesk.userId ? initialDesk.userId === currentUser.id : initialDesk.assignmentType === 'Role' ? initialDesk.roleId === currentUser.role : initialDesk.assignmentType === 'Team' && !!initialDesk.team && [currentUser.division, currentUser.office].includes(initialDesk.team));
-    return !hasStarted && !hasWorkGroups && assignedToInitialChecking;
+    return batch.encodedBy?.userId === currentUser.id && !hasStarted && !hasWorkGroups;
   };
 
   const handleDeleteBatch = async (batch: PayrollBatch) => {
@@ -104,7 +107,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   };
 
   // Filter batches
-  const filteredBatches = payrollBatches.filter(batch => {
+  const filteredBatches = ownedPayrollBatches.filter(batch => {
     const matchesSearch = 
       batch.batchNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
       batch.office.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -127,7 +130,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   }, [batchListPage, currentBatchListPage, setBatchListPage]);
 
   // Single payroll vouchers from documents
-  const singlePayrollDocs = documents.filter(d => d.classification === 'Payroll');
+  const singlePayrollDocs = documents.filter(d => d.classification === 'Payroll' && ownsPayrollEntry(d));
   const filteredSingleDocs = singlePayrollDocs.filter(doc => {
     const matchesSearch = 
       doc.trackingNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -140,13 +143,13 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   });
 
   // Calculate metrics
-  const totalActiveBatches = payrollBatches.filter(b => b.progress.derivedStatus !== 'COMPLETED').length;
-  const initialCheckingBatches = payrollBatches.filter(b => b.progress.initialChecking.active > 0).length;
-  const activeWorkGroupsCount = workGroups.filter(w => w.status === 'In_Progress').length;
-  const releasedBatchesCount = payrollBatches.filter(b => b.progress.derivedStatus === 'COMPLETED').length;
+  const totalActiveBatches = ownedPayrollBatches.filter(b => b.progress.derivedStatus !== 'COMPLETED').length;
+  const initialCheckingBatches = ownedPayrollBatches.filter(b => b.progress.initialChecking.active > 0).length;
+  const activeWorkGroupsCount = workGroups.filter(w => ownedPayrollBatches.some(batch => batch.id === w.batchId) && w.status === 'In_Progress').length;
+  const releasedBatchesCount = ownedPayrollBatches.filter(b => b.progress.derivedStatus === 'COMPLETED').length;
 
   // Unique offices for filter
-  const offices = Array.from(new Set(payrollBatches.map(b => b.office)));
+  const offices = Array.from(new Set(ownedPayrollBatches.map(b => b.office)));
 
   return (
     <div className="space-y-6">
@@ -225,7 +228,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Batch Payroll Entry ({payrollBatches.length})
+              Batch Payroll Entry ({ownedPayrollBatches.length})
             </button>
             <button
               onClick={() => setViewMode('single_entries')}

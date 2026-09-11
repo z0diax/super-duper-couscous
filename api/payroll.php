@@ -128,7 +128,7 @@ function payroll_batch_stage_history(array $s,array $u,array $workflow,array $in
     ];
 }
 function editable_payroll_batch(array $s,array $u,array $batch): void {
-    fail_unless(payroll_initial_check_authorized($s,$u,$batch),'This batch is assigned to another officer.',403);
+    fail_unless(($batch['encodedBy']['userId']??null)===$u['id'],'Only the employee who registered this payroll batch can edit it.',403);
     $items=array_values(array_filter($s['payrollItems'],fn($item)=>$item['batchId']===$batch['id']));
     $hasStarted=array_filter($items,fn($item)=>payroll_item_stage($item)!=='initial_checking');
     $hasWorkGroups=count(array_filter($s['workGroups'],fn($group)=>$group['batchId']===$batch['id']))>0;
