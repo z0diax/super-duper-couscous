@@ -20,7 +20,7 @@ test('refresh restores the payroll workspace and unsaved intake draft', async ({
   await page.getByLabel('Email address').fill('admin@example.test');
   await page.getByLabel('Password', { exact: true }).fill(testPassword);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await page.getByRole('button', { name: 'Payroll Management', exact: true }).click();
+  await page.getByRole('button', { name: /^Payroll Management/ }).click();
   await expect(page.getByRole('heading', { name: 'Payroll Management & Processing' })).toBeVisible();
   await page.getByRole('button', { name: 'Register Payroll', exact: true }).click();
   await page.getByRole('button', { name: /Payroll Batch Entry/ }).click();
@@ -120,7 +120,7 @@ test('payroll batch intake saves its items and a downloadable attachment', async
     payrollStep(4,'Release','Release & Archive','Role',{assigneeRole:'releasing_officer'}),
   ] }]);
   await page.reload();
-  await page.getByRole('button', { name: 'Payroll Management', exact: true }).click();
+  await page.getByRole('button', { name: /^Payroll Management/ }).click();
   await page.getByRole('button', { name: 'Routing Rules', exact: true }).click();
   await page.getByRole('button', { name: 'Change Assignee', exact: true }).first().click();
   const selectedOfficer = await page.getByLabel(/primary processor/).inputValue();
@@ -139,6 +139,13 @@ test('payroll batch intake saves its items and a downloadable attachment', async
   const client = await new Client(fixture.base).login();
   const item = client.state.payrollItems.find((i:any)=>i.barcode==='BROWSER-PAY-001'); expect(item).toBeTruthy();
   const batch = client.state.payrollBatches.find((b:any)=>b.id===item.batchId); expect(batch.attachments[0].name).toBe('transmittal.pdf');
+  await page.getByRole('button', { name: 'My Tasks & Queues', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Payroll tasks' })).toBeVisible();
+  await expect(page.getByText(batch.batchNumber, { exact: true })).toBeVisible();
+  await page.locator(`#btn-open-payroll-task-${batch.id}`).click();
+  await expect(page.getByText('Stage 2: Initial Checking Workspace')).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.getByRole('button', { name: /^Payroll Management/ }).click();
   await page.getByLabel(`Edit ${batch.batchNumber}`).click();
   await page.getByLabel('Payroll Period').fill('September 2026');
   await page.reload();

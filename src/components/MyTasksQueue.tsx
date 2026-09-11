@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { DocumentRecord } from '../types';
+import { DocumentRecord, PayrollBatch } from '../types';
 import { 
   Inbox, 
   Users, 
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export const MyTasksQueue: React.FC = () => {
-  const { documents, currentUser, can, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, setActiveTab, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
+  const { documents, currentUser, can, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, setActiveTab, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
 
   const [activeQueue, setActiveQueue] = useState<'my_tasks' | 'team_queue' | 'returned' | 'waiting' | 'ready_for_release' | 'completed'>('my_tasks');
   const [filterPriority, setFilterPriority] = useState<string>('all');
@@ -124,6 +124,16 @@ export const MyTasksQueue: React.FC = () => {
     return true;
   });
 
+  // Payroll batches are operational tasks too. Keep them in My Tasks rather than
+  // requiring the assigned desk to discover work through Payroll Management.
+  const filteredPayrollTasks: PayrollBatch[] = activeQueue === 'my_tasks' ? myPayrollBatches.filter(batch => {
+    if (filterClass !== 'all' && filterClass !== 'Payroll') return false;
+    if (filterPriority !== 'all') return false;
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return batch.batchNumber.toLowerCase().includes(q) || batch.payrollType.toLowerCase().includes(q) || batch.office.toLowerCase().includes(q);
+  }) : [];
+
   interface QueueTabItem {
     id: 'my_tasks' | 'team_queue' | 'returned' | 'waiting' | 'ready_for_release' | 'completed';
     label: string;
@@ -133,7 +143,7 @@ export const MyTasksQueue: React.FC = () => {
   }
 
   const queueTabs: QueueTabItem[] = [
-    { id: 'my_tasks', label: 'My Tasks', count: myTasks.length, icon: Inbox },
+    { id: 'my_tasks', label: 'My Tasks', count: myTasks.length + myPayrollBatches.length, icon: Inbox },
     { id: 'team_queue', label: 'Team Queue', count: teamTasks.length, icon: Users },
     { id: 'returned', label: 'Returned / Rework', count: returnedTasks.length, icon: RotateCcw, isAlert: returnedTasks.length > 0 },
     { id: 'waiting', label: 'Waiting / Tracked', count: waitingTasks.length, icon: Hourglass },
@@ -284,7 +294,7 @@ export const MyTasksQueue: React.FC = () => {
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Filter by tracking #, subject, sender, or office..."
+            placeholder="Filter by tracking #, payroll batch, subject, sender, or office..."
             className="w-full text-xs sm:text-sm pl-9 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -324,16 +334,53 @@ export const MyTasksQueue: React.FC = () => {
 
       {/* Tasks Table / Cards */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        {filteredList.length === 0 ? (
+        {filteredList.length === 0 && filteredPayrollTasks.length === 0 ? (
           <div className="text-center py-12 p-4">
             <Inbox className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h3 className="text-sm font-semibold text-slate-700">No documents in this queue</h3>
+            <h3 className="text-sm font-semibold text-slate-700">No tasks in this queue</h3>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              There are no documents matching your active queue and search filters.
+              There are no document or payroll tasks matching your active queue and search filters.
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {filteredPayrollTasks.length > 0 && (
+            <div className="border-b border-slate-200 bg-blue-50/40 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Layers className="h-4 w-4 text-blue-600" />
+                <h2 className="text-sm font-bold text-slate-900">Payroll tasks</h2>
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-800">{filteredPayrollTasks.length}</span>
+              </div>
+              <div className="space-y-2">
+                {filteredPayrollTasks.map(batch => {
+                  const initialDesk = batch.initialCheckingDesk || batch.assignedDesk;
+                  const initialItems = payrollItems.filter(item => item.batchId === batch.id && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
+                  const assignedGroup = workGroups.find(group => group.batchId === batch.id && group.assignedProcessorId === currentUser.id && group.status === 'In_Progress');
+                  const phaseLabel = initialItems.length > 0 && isInitialCheckingAssignee(batch.id)
+                    ? `Phase 2: ${batch.workflowStages?.find(stage => stage.stageNumber === 2)?.name || 'Initial Checking'}`
+                    : assignedGroup ? `Phase 3: ${assignedGroup.classification} Work Group` : batch.progress.release.ready > 0 ? 'Phase 4: Release' : batch.progress.displayStatus;
+                  const assignee = assignedGroup?.assignedProcessorName || initialDesk.userName || initialDesk.roleTitle || 'Configured desk';
+                  return <div key={batch.id} className="flex flex-col gap-3 rounded-lg border border-blue-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="font-mono text-xs font-bold text-blue-700">{batch.batchNumber}</p>
+                      <p className="mt-0.5 text-sm font-semibold text-slate-900">{batch.payrollType} payroll - {batch.progress.totalItems} item{batch.progress.totalItems === 1 ? '' : 's'}</p>
+                      <p className="mt-1 text-xs text-slate-600"><strong>{phaseLabel}</strong> &bull; Assigned to {assignee}</p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">{batch.office} &bull; {batch.progress.displayStatus}</p>
+                    </div>
+                    <button
+                      id={`btn-open-payroll-task-${batch.id}`}
+                      type="button"
+                      onClick={() => openBatchModal(batch, assignedGroup?.id)}
+                      className="inline-flex shrink-0 items-center justify-center gap-1 rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
+                    >
+                      Open &amp; Process <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  </div>;
+                })}
+              </div>
+            </div>
+          )}
+          {filteredList.length > 0 && <div className="overflow-x-auto">
             <table className="w-full text-left text-xs sm:text-sm">
               <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
                 <tr>
@@ -435,7 +482,8 @@ export const MyTasksQueue: React.FC = () => {
                 })}
               </tbody>
             </table>
-          </div>
+          </div>}
+          </>
         )}
       </div>
     </div>
