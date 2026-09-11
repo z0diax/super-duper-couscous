@@ -63,11 +63,24 @@ function payroll_attach_batch_progress(array &$s): void {
     unset($batch);
 }
 function payroll_batch_workflow(array $s,string $documentType): array {
-    try {
-        $workflow=resolve_workflow($s,['classification'=>'Payroll','documentType'=>$documentType,'employmentClassification'=>null]);
-    } catch (ApiError $error) {
-        throw new ApiError('Configure an active Payroll workflow for '.$documentType.'.',422);
+    // A batch is docketed before its items are classified. Select the configured
+    // Payroll template by document type without requiring an employment value that
+    // does not exist yet. Prefer an All-employment template when it has the same
+    // document-type match; a unique JOW/COS, Casual, or Regular template remains
+    // valid for batch intake.
+    $matches=[];
+    foreach ($s['workflowTemplates'] as $workflow) {
+        if (empty($workflow['isActive']) || empty($workflow['steps']) || ($workflow['classification']??null)!=='Payroll') continue;
+        $types=$workflow['documentTypes']??[$workflow['documentType']??''];
+        $exact=count(array_filter($types,fn($type)=>strcasecmp((string)$type,$documentType)===0))>0;
+        $all=count(array_filter($types,fn($type)=>in_array(strtolower((string)$type),['all','default'],true)))>0;
+        if (!$exact && !$all) continue;
+        $matches[]=['workflow'=>$workflow,'typeScore'=>$exact?2:1,'generalEmployment'=>($workflow['employmentClassification']??'All')==='All'?1:0];
     }
+    usort($matches,fn($a,$b)=>($b['typeScore']<=>$a['typeScore']) ?: ($b['generalEmployment']<=>$a['generalEmployment']));
+    fail_unless(count($matches)>0,'Configure an active Payroll workflow for '.$documentType.'.',422);
+    fail_unless(count($matches)<2 || $matches[0]['typeScore']!==$matches[1]['typeScore'] || $matches[0]['generalEmployment']!==$matches[1]['generalEmployment'],'Multiple active Payroll workflows match '.$documentType.'. Keep one matching workflow or configure an All-employment batch workflow.',422);
+    $workflow=$matches[0]['workflow'];
     fail_unless(count($workflow['steps']??[])>=2,'The selected Payroll workflow needs at least two configured internal phases.',422);
     $docketing=$workflow['steps'][0]; $initialChecking=$workflow['steps'][1];
     // Payroll registration completes the first configured internal phase. The

@@ -23,6 +23,8 @@ This is the authoritative workflow summary for maintainers and future changes.
 
 Receiving Personnel receive the physical submission, create one `PayrollBatch`, register its `PayrollItem` records, and record shared batch details and attachments. They do **not** classify items as JOW/COS, Casual, or Regular. Registration completes Docketing and assigns the batch to the configured Initial Checking person, role, or team. Receiving and Initial Checking can be the same person only when the Workflow Template explicitly configures that assignment.
 
+Batch intake selects an active Payroll template by the selected document type before Employment Classification is known. A uniquely matching JOW/COS, Casual, or Regular template is valid at intake; when an equally specific All-employment template exists, it is preferred for the mixed batch.
+
 ### Stage 2 - Initial Checking - IMPLEMENTED
 
 Initial Checking receives one batch task. The assigned personnel verify completeness, record or correct the Employment Classification for each item, may use bulk classification, and may place individual items on hold. Eligible items can be routed even when other items remain held.

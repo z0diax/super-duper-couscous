@@ -31,7 +31,7 @@ test('user accounts can sign in; non-admin accounts cannot alter configuration',
   assert(!JSON.stringify(admin.state).includes(testPassword)); assert(!JSON.stringify(admin.state).includes('password_hash'));
 });
 test('payroll batch intake derives its first phases from the configured workflow template',async()=>{
-  const configured=(await admin.action('createWorkflowTemplate',[{title:'Config-driven Voucher Payroll',description:'Custom payroll phase labels and actions',classification:'Payroll',documentType:'Voucher',employmentClassification:'All',isActive:true,steps:[
+  const configured=(await admin.action('createWorkflowTemplate',[{title:'Config-driven Voucher Payroll',description:'Custom payroll phase labels and actions',classification:'Payroll',documentType:'Voucher',employmentClassification:'Job Order (JOW)',isActive:true,steps:[
     {...step(1,'receiving_officer','Review & Recommend'),name:'Receiving Validation'},
     {...step(2,'processor','Approve & Sign'),name:'Payroll Classification Review'},
     {...step(3,'releasing_officer','Release & Archive'),name:'Custom Payroll Release'},
