@@ -5,7 +5,11 @@ $pdo=database(); $u=authenticated_user($pdo); $method=$_SERVER['REQUEST_METHOD']
 if ($method==='GET') {
     $id=$_GET['id']??''; fail_unless((bool)preg_match('/^file-[a-f0-9]{24}$/',$id),'File not found.',404);
     $q=$pdo->prepare('SELECT * FROM app_files WHERE id=?'); $q->execute([$id]); $file=$q->fetch();
-    fail_unless((bool)$file && ($file['owner_id']!==null || $file['uploaded_by']===$u['id']),'File not found.',404);
+    // File identifiers are not authorization. Resolve the owning record and apply
+    // the same record-level view policy used by the state API so an authenticated
+    // user cannot enumerate attachments from records outside their work scope.
+    $state=load_state($pdo);
+    fail_unless((bool)$file && can_view_attachment_owner($state,$u,$file['owner_id']??null,$file['uploaded_by']??null),'File not found.',404);
     $path=app_config()['upload_directory'].'/'.$id; fail_unless(is_file($path),'Stored file is missing.',404);
     fail_unless(hash_equals($file['sha256'],hash_file('sha256',$path)),'File integrity verification failed.',409);
     header('Content-Type: '.$file['mime_type']); header('Content-Length: '.$file['size_bytes']);

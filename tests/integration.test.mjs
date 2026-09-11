@@ -56,7 +56,7 @@ test('document creation is atomic, unique, and retains a workflow snapshot',asyn
   await admin.action('updateWorkflowTemplate',[{...workflow,title:'Updated workflow',steps:workflow.steps.map(s=>({...s,slaHours:36}))}]);
   assert.equal(admin.state.documents.find(d=>d.id===doc.id).workflowSteps[0].slaHours,24);
   await admin.action('deleteWorkflowTemplate',[workflow.id],422);
-  await employee.action('completeStep',[doc.id,'Forged completion'],403);
+  await employee.action('completeStep',[doc.id,'Forged completion'],404);
 });
 test('stale sessions cannot overwrite changes or complete the next step accidentally',async()=>{
   const other=await new Client(fixture.base).login(); await admin.refresh(); const stale=other.revision;
@@ -72,14 +72,20 @@ test('claim, return, required uploads, approval, release, and read-only history'
   await approver.action('completeStep',[doc.id,'Bypass approval'],422);
   const body=new FormData(); body.append('file',new Blob(['%PDF-1.4\nIntegration evidence\n%%EOF'],{type:'application/pdf'}),'evidence.pdf');
   const file=(await approver.request('files.php','POST',body,201)).file;
-  await employee.action('uploadSupportingFile',[doc.id,file],403);
+  await employee.action('uploadSupportingFile',[doc.id,file],404);
   await approver.action('uploadSupportingFile',[doc.id,file]);
   await approver.action('approveDocument',[doc.id,'Approved']);
   await processor.action('releaseDocument',[doc.id,{releasedTo:'Office',releaseMode:'Electronic Copy'}],403);
+  assert.equal(processor.state.documents.some(record=>record.id===doc.id),true); // previous processor: view only
   await releaser.action('releaseDocument',[doc.id,{releasedTo:'Office',releaseMode:'Electronic Copy'}]);
   await admin.refresh(); const saved=admin.state.documents.find(d=>d.id===doc.id); assert.equal(saved.status,'Released'); assert(saved.workflowSteps.every(s=>s.status==='Completed'));
   await admin.action('addDocumentRemark',[doc.id,'Cannot edit released record'],409);
   const response=await fetch(`${fixture.base}/api/files.php?id=${file.id}`,{headers:{Cookie:admin.cookie}}); assert.equal(response.status,200); assert.match(await response.text(),/Integration evidence/);
+  assert.equal((await fetch(`${fixture.base}/api/files.php?id=${file.id}`,{headers:{Cookie:processor.cookie}})).status,200);
+  assert.equal((await fetch(`${fixture.base}/api/files.php?id=${file.id}`,{headers:{Cookie:approver.cookie}})).status,200);
+  const deniedFile=await fetch(`${fixture.base}/api/files.php?id=${file.id}`,{headers:{Cookie:employee.cookie}}); assert.equal(deniedFile.status,404);
+  await employee.refresh(); assert.equal(employee.state.documents.some(record=>record.id===doc.id),false);
+  assert.equal(employee.state.auditLogs.some(event=>event.documentId===doc.id),false);
   const anonymous=await fetch(`${fixture.base}/api/files.php?id=${file.id}`); assert.equal(anonymous.status,401);
   const unsafe=new FormData(); unsafe.append('file',new Blob(['<?php echo 1; ?>']),'shell.php'); await admin.request('files.php','POST',unsafe,422);
   assert(admin.state.auditLogs.some(a=>a.documentId===doc.id && a.actionType==='DOCUMENT_APPROVED' && a.actorId===approver.state.users.find(u=>u.role==='approver').id));
@@ -120,7 +126,7 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   assert(processor.state.payrollItems.find(item=>item.id===batch.itemIds[0]).auditHistory.some(event=>event.action==='PAYROLL_AUTO_ROUTED_TO_RELEASE'));
   await releaser.action('releasePayrollBatch',[batch.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
   assert.equal(releaser.state.payrollItems.find(item=>item.id===batch.itemIds[0]).status,'Released');
-  assert.equal(releaser.state.payrollItems.find(item=>item.id===batch.itemIds[1]).status,'On_Hold');
+  assert.equal(releaser.state.payrollItems.some(item=>item.id===batch.itemIds[1]),false);
   assert.equal(releaser.state.payrollBatches.find(b=>b.id===batch.id).status,'PROCESSING_WITH_HOLDS');
   await receiver.action('recordPayrollItemCompliance',[batch.itemIds[1],'DTR received'],403);
   await processor.action('recordPayrollItemCompliance',[batch.itemIds[1],'DTR received']);
@@ -183,7 +189,7 @@ test('a held payroll item supports repeated compliance cycles after all siblings
   for (const group of admin.state.workGroups.filter(group=>group.batchId===held.id && group.status==='In_Progress')) await processor.action('processWorkGroupItems',[group.id,group.itemIds,'complete']);
   await releaser.action('releasePayrollBatch',[held.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
   assert.equal(releaser.state.payrollItems.filter(item=>item.batchId===held.id && item.status==='Released').length,2);
-  assert.equal(releaser.state.payrollItems.find(item=>item.id===held.itemIds[2]).status,'On_Hold');
+  assert.equal(releaser.state.payrollItems.some(item=>item.id===held.itemIds[2]),false);
 
   await admin.action('recordPayrollItemCompliance',[held.itemIds[2],'DTR supplied by liaison.']);
   await admin.action('recheckPayrollItem',[held.itemIds[2]]);
@@ -218,6 +224,35 @@ test('batch progress is a child-item aggregate for mixed release, processing, an
   assert.deepEqual(summary.management,{reached:4,active:2,completed:2,onHold:0,notReached:1});
   assert.deepEqual(summary.release,{ready:1,released:1,notReached:3});
   assert.equal(summary.onHoldTotal,1); assert.equal(summary.derivedStatus,'PROCESSING_WITH_HOLDS');
+});
+
+test('record-level payroll views expose only a processor’s assigned work group and scoped batch context',async()=>{
+  const scopedUser=(await admin.action('addUser',[{...userData('processor'),name:'Scoped JOW Processor',email:'scoped-jow@example.test'}])).result;
+  const scopedProcessor=await new Client(fixture.base).login('scoped-jow@example.test');
+  const jowRule=admin.state.employmentRoutingRules.find(rule=>rule.classification==='JOW/COS');
+  await admin.action('updateEmploymentRoutingRule',[{...jowRule,primaryProcessorId:scopedUser.id}]);
+  const attachmentForm=new FormData(); attachmentForm.append('file',new Blob(['%PDF-1.4\nScoped batch transmittal\n%%EOF'],{type:'application/pdf'}),'scoped-batch.pdf');
+  const batchAttachment=(await admin.request('files.php','POST',attachmentForm,201)).file;
+  const scopedBatch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'BATCH-SCOPED-001',payrollPeriod:'September 2026',receivedFromLiaison:'Private liaison',remarks:'Private batch remarks',items:[
+    {title:'JOW confidential payroll',barcode:'SCOPED-JOW-001'},
+    {title:'Regular confidential payroll',barcode:'SCOPED-REG-001'},
+  ],files:[batchAttachment]}])).result;
+  await admin.action('updatePayrollItemClassification',[scopedBatch.itemIds[0],'JOW/COS']);
+  await admin.action('updatePayrollItemClassification',[scopedBatch.itemIds[1],'Regular']);
+  await admin.action('completeInitialCheckingAndRoute',[scopedBatch.id]);
+
+  await scopedProcessor.refresh();
+  const visibleBatch=scopedProcessor.state.payrollBatches.find(batch=>batch.id===scopedBatch.id);
+  assert(visibleBatch); assert.deepEqual(visibleBatch.itemIds,[scopedBatch.itemIds[0]]);
+  assert.equal(visibleBatch.remarks,''); assert.equal(visibleBatch.receivedFromLiaison,''); assert.deepEqual(visibleBatch.attachments,[]);
+  assert.deepEqual(scopedProcessor.state.payrollItems.filter(item=>item.batchId===scopedBatch.id).map(item=>item.id),[scopedBatch.itemIds[0]]);
+  assert.deepEqual(scopedProcessor.state.workGroups.filter(group=>group.batchId===scopedBatch.id).map(group=>group.itemIds),[[scopedBatch.itemIds[0]]]);
+  assert.equal(JSON.stringify(scopedProcessor.state).includes('SCOPED-REG-001'),false);
+  assert.equal((await fetch(`${fixture.base}/api/files.php?id=${batchAttachment.id}`,{headers:{Cookie:scopedProcessor.cookie}})).status,404);
+
+  await employee.refresh();
+  assert.equal(employee.state.payrollBatches.some(batch=>batch.id===scopedBatch.id),false);
+  assert.equal(employee.state.payrollItems.some(item=>item.batchId===scopedBatch.id),false);
 });
 
 test('unrouted payroll batches can be edited and deleted from payroll management',async()=>{
@@ -317,7 +352,7 @@ test('external handoff preserves custody, waits for return, and activates the ne
   await admin.action('completeStep',[record.id,'Attempt to bypass return','Verify & Process'],409);
   await admin.action('recordExternalHandoff',[record.id,{destinationOffice:"City Mayor's Office",purpose:'Approval',handedTo:'Office Records Clerk',representative:'Mayor Office liaison',expectedReturn:'2026-09-12T10:00',remarks:'For approval',files:[]}]);
   active=admin.state.documents.find(d=>d.id===record.id); assert.equal(active.status,'Awaiting_External_Return'); assert.equal(active.currentLocation,"City Mayor's Office"); assert.equal(active.workflowSteps[1].externalStatus,'OUTSIDE_HRMDO');
-  await processor.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",result:'Approved',files:[]}],403);
+  await processor.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",result:'Approved',files:[]}],404);
   await admin.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",returnedBy:'Mayor Office liaison',result:'Approved',remarks:'Approved and returned',files:[]}]);
   active=admin.state.documents.find(d=>d.id===record.id); assert.equal(active.id,record.id); assert.equal(active.trackingNumber,'EXTERNAL-RETURN-001'); assert.equal(active.currentLocation,'HRMDO'); assert.equal(active.workflowSteps[1].externalStatus,'COMPLETED'); assert.equal(active.currentStepNumber,3); assert.equal(active.workflowSteps[2].status,'In_Progress'); assert.equal(active.custodyHistory.filter(event=>event.movementType==='EXTERNAL_HANDOFF' || event.movementType==='RETURN_TO_HRMDO').length,2);
 });

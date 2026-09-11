@@ -74,8 +74,9 @@ try {
         $pdo->exec('UPDATE app_meta SET revision=revision+1 WHERE id=1'); $revision++;
         $state=load_state($pdo); payroll_attach_batch_progress($state);
     }
-    // Staff may view the operational registry, but only their own leave records.
-    if (!has_cap($state,$user,'canApprove') && !has_cap($state,$user,'canSupervise')) $state['leaveApplications']=array_values(array_filter($state['leaveApplications'],fn($l)=>$l['employeeId']===$user['id']));
-    if (!has_cap($state,$user,'canSupervise')) $state['auditLogs']=array_values(array_filter($state['auditLogs'],fn($e)=>$e['actorId']===$user['id'] || in_array($e['documentId'],array_merge(array_column($state['documents'],'id'),array_column($state['payrollBatches'],'id')),true)));
+    // Build the response from the authenticated user's record-level scope.  Actions
+    // above always use the full state, so permission checks and routing rules are
+    // evaluated against complete operational data before any records are hidden.
+    $state=filter_state_for_view($state,$user);
     $pdo->commit(); respond(['state'=>$state,'revision'=>$revision,'result'=>$result]);
 } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }

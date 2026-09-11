@@ -26,6 +26,89 @@ function can_assign(array $s,array $u,array $assignment): bool {
     if (($assignment['type']??'')==='Role') return ($assignment['role']??null)===$u['role'];
     return ($assignment['type']??'')==='Team' && !empty($assignment['team']) && in_array($assignment['team'],[$u['division'],$u['office']],true);
 }
+function can_view_all_operational_records(array $s,array $u): bool { return has_cap($s,$u,'canSupervise') || has_cap($s,$u,'canAdmin'); }
+function payroll_desk_allows_view(array $s,array $u,array $desk): bool {
+    if (can_view_all_operational_records($s,$u)) return true;
+    if (!empty($desk['userId'])) return $desk['userId']===$u['id'];
+    if (($desk['assignmentType']??'')==='Role') return ($desk['roleId']??null)===$u['role'];
+    return ($desk['assignmentType']??'')==='Team' && !empty($desk['team']) && in_array($desk['team'],[$u['division'],$u['office']],true);
+}
+function can_view_document(array $s,array $u,array $doc): bool {
+    if (can_view_all_operational_records($s,$u)) return true;
+    if (($doc['encodedBy']['userId']??null)===$u['id']) return true;
+    foreach ($doc['workflowSteps']??[] as $step) {
+        if (($step['completedBy']['userId']??null)===$u['id'] || ($step['handoffOwner']['userId']??null)===$u['id']) return true;
+        if (($step['stepNumber']??0)===($doc['currentStepNumber']??0) && can_assign($s,$u,$step['assignedTo']??[])) return true;
+    }
+    return in_array(($doc['status']??''),['Ready_For_Release','Released'],true) && has_cap($s,$u,'canRelease');
+}
+function can_view_work_group(array $s,array $u,array $group): bool {
+    return can_view_all_operational_records($s,$u) || ($group['assignedProcessorId']??null)===$u['id'];
+}
+function can_view_payroll_item(array $s,array $u,array $item): bool {
+    if (can_view_all_operational_records($s,$u)) return true;
+    if (($item['batchId']??null)==='SINGLE_ENTRY') {
+        foreach ($s['documents'] as $doc) if (($doc['id']??null)===($item['documentId']??null)) return can_view_document($s,$u,$doc);
+        return false;
+    }
+    $batch=null; foreach ($s['payrollBatches'] as $record) if ($record['id']===$item['batchId']) { $batch=$record; break; }
+    if (!$batch) return false;
+    if (($batch['encodedBy']['userId']??null)===$u['id']) return true;
+    $stage=$item['currentStage']??(empty($item['workGroupId'])?'initial_checking':'verification_signing');
+    if ($stage==='initial_checking' && payroll_desk_allows_view($s,$u,$batch['initialCheckingDesk']??$batch['assignedDesk']??[])) return true;
+    if (($item['assignedToUserId']??null)===$u['id']) return true;
+    foreach ($s['workGroups'] as $group) if (in_array($item['id'],$group['itemIds']??[],true) && can_view_work_group($s,$u,$group)) return true;
+    return in_array(($item['status']??''),['Ready_For_Release','Released'],true) && has_cap($s,$u,'canRelease');
+}
+function can_view_payroll_batch(array $s,array $u,array $batch): bool {
+    if (can_view_full_payroll_batch($s,$u,$batch)) return true;
+    foreach ($s['payrollItems'] as $item) if (($item['batchId']??null)===$batch['id'] && can_view_payroll_item($s,$u,$item)) return true;
+    return false;
+}
+function can_view_full_payroll_batch(array $s,array $u,array $batch): bool {
+    return can_view_all_operational_records($s,$u)
+        || ($batch['encodedBy']['userId']??null)===$u['id']
+        || payroll_desk_allows_view($s,$u,$batch['initialCheckingDesk']??$batch['assignedDesk']??[]);
+}
+function can_view_leave_application(array $s,array $u,array $leave): bool {
+    return can_view_all_operational_records($s,$u) || ($leave['employeeId']??null)===$u['id'];
+}
+function can_view_attachment_owner(array $s,array $u,?string $ownerId,?string $uploadedBy=null): bool {
+    if ($ownerId===null || $ownerId==='') return $uploadedBy===$u['id'];
+    foreach ($s['documents'] as $doc) if ($doc['id']===$ownerId) return can_view_document($s,$u,$doc);
+    foreach ($s['payrollItems'] as $item) if ($item['id']===$ownerId) return can_view_payroll_item($s,$u,$item);
+    // Work-group processors receive a deliberately scoped batch representation;
+    // batch attachments remain available only to full-batch viewers.
+    foreach ($s['payrollBatches'] as $batch) if ($batch['id']===$ownerId) return can_view_full_payroll_batch($s,$u,$batch);
+    foreach ($s['leaveApplications'] as $leave) if (($leave['id']??null)===$ownerId) return can_view_leave_application($s,$u,$leave);
+    return false;
+}
+function scoped_payroll_batch(array $s,array $u,array $batch,array $visibleItems): array {
+    if (can_view_full_payroll_batch($s,$u,$batch)) return $batch;
+    // A Stage 3 processor receives only the context needed for the assigned work group.
+    $batch['itemIds']=array_values(array_intersect($batch['itemIds']??[],array_column($visibleItems,'id')));
+    $batch['attachments']=[]; $batch['remarks']=''; $batch['receivedFromLiaison']='';
+    unset($batch['workflowHistory'],$batch['workflowStages'],$batch['releaseDetails']);
+    return $batch;
+}
+function filter_state_for_view(array $s,array $u): array {
+    $visibleDocuments=array_values(array_filter($s['documents'],fn($doc)=>can_view_document($s,$u,$doc)));
+    $visibleItems=array_values(array_filter($s['payrollItems'],fn($item)=>can_view_payroll_item($s,$u,$item)));
+    $visibleGroups=array_values(array_filter($s['workGroups'],fn($group)=>can_view_work_group($s,$u,$group)));
+    $visibleBatches=[];
+    foreach ($s['payrollBatches'] as $batch) if (can_view_payroll_batch($s,$u,$batch)) $visibleBatches[]=scoped_payroll_batch($s,$u,$batch,$visibleItems);
+    $visibleBatchIds=array_column($visibleBatches,'id');
+    $visibleItems=array_values(array_filter($visibleItems,fn($item)=>($item['batchId']??'')==='SINGLE_ENTRY' || in_array($item['batchId'],$visibleBatchIds,true)));
+    $visibleGroups=array_values(array_filter($visibleGroups,fn($group)=>in_array($group['batchId']??'', $visibleBatchIds,true)));
+    // A limited work-group viewer may see parent metadata but not its batch-wide
+    // audit timeline. Their item and work-group histories remain available.
+    $fullBatchIds=array_column(array_values(array_filter($visibleBatches,fn($batch)=>can_view_full_payroll_batch($s,$u,$batch))),'id');
+    $visibleIds=array_merge(array_column($visibleDocuments,'id'),$fullBatchIds,array_column($visibleItems,'id'),array_column($visibleGroups,'id'));
+    $s['documents']=$visibleDocuments; $s['payrollItems']=$visibleItems; $s['workGroups']=$visibleGroups; $s['payrollBatches']=$visibleBatches;
+    $s['leaveApplications']=array_values(array_filter($s['leaveApplications'],fn($leave)=>can_view_leave_application($s,$u,$leave)));
+    $s['auditLogs']=array_values(array_filter($s['auditLogs'],fn($event)=>($event['actorId']??null)===$u['id'] || in_array($event['documentId']??'', $visibleIds,true)));
+    return $s;
+}
 function assert_barcode(array $s,string $barcode,array $additional=[]): void {
     fail_unless(strlen($barcode)<=190 && $barcode!=='','Barcode is required and must be at most 190 characters.');
     $codes=$additional;
@@ -172,6 +255,9 @@ function activate_document_step(array &$doc,int $nextIndex,array $actor): void {
 }
 function document_action(PDO $pdo,array &$s,array $u,string $action,array $args): array {
     $i=index_of($s['documents'],(string)($args[0]??'')); $doc=&$s['documents'][$i];
+    // A direct action request must not disclose a record merely because its ID is
+    // known. Processing authorization remains more restrictive below.
+    fail_unless(can_view_document($s,$u,$doc),'Record not found.',404);
     fail_unless(empty($doc['isLegacyV1']),'Historical documents are read only.');
     fail_unless(!in_array($doc['status'],['Released','Archived'],true),'This document has already been released.',409);
     $n=$doc['currentStepNumber']-1; $step=&$doc['workflowSteps'][$n];
