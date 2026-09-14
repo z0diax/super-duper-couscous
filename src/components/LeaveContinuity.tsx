@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { LeaveApplicationRecord, LeaveType } from '../types';
-import { CalendarClock, Eye, FileCheck2, Plus, Search, X } from 'lucide-react';
+import { LeaveApplicationRecord, LeaveDateRange, LeaveType } from '../types';
+import { CalendarClock, Eye, FileCheck2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 
 const LEAVE_TYPES: LeaveType[] = [
   'COC', 'Vacation Leave', 'Mandatory / Forced Leave', 'Sick Leave', 'Wellness Leave',
@@ -45,12 +45,32 @@ const detailLabels = (type: LeaveType) => {
   if (['Wellness Leave','Maternity Leave','Paternity Leave','Solo Parent Leave','10-Day VAWC Leave'].includes(type)) return ['', 'Additional Details'];
   return ['', ''];
 };
+type DateRangeDraft = Pick<LeaveDateRange, 'id' | 'startDate' | 'endDate'> & { dayType: 'WHOLE_DAY' | 'AM_HALF_DAY' | 'PM_HALF_DAY' };
+const emptyDateRange = (): DateRangeDraft => ({ startDate: '', endDate: '', dayType: 'WHOLE_DAY' });
+const rangesForRecord = (record: LeaveApplicationRecord): DateRangeDraft[] => record.dateRanges?.length
+  ? [...record.dateRanges].sort((a,b) => a.startDate.localeCompare(b.startDate)).map(range => ({ id: range.id, startDate: range.startDate, endDate: range.endDate, dayType: range.dayType || 'WHOLE_DAY' }))
+  : [{ startDate: record.startDate, endDate: record.endDate, dayType: 'WHOLE_DAY' }];
+const calculatedDays = (ranges: DateRangeDraft[]) => ranges.reduce((total, range) => {
+  if (!range.startDate || !range.endDate || range.startDate > range.endDate) return total;
+  if (range.dayType !== 'WHOLE_DAY') return total + (range.startDate === range.endDate ? 0.5 : 0);
+  return total + Math.floor((new Date(`${range.endDate}T00:00:00Z`).getTime() - new Date(`${range.startDate}T00:00:00Z`).getTime()) / 86400000) + 1;
+}, 0);
+const dayTypeLabel = (type?: LeaveDateRange['dayType']) => type ? ({ WHOLE_DAY: 'Whole Day', AM_HALF_DAY: 'AM Half-Day', PM_HALF_DAY: 'PM Half-Day' }[type]) : 'Legacy Date Range';
+const formatDays = (days: number) => `${days} day${days === 1 ? '' : 's'}`;
+const rangeDays = (range: LeaveDateRange) => range.leaveDayUnits !== undefined ? range.leaveDayUnits / 2 : range.dayType && range.dayType !== 'WHOLE_DAY' ? 0.5 : Math.floor((new Date(`${range.endDate}T00:00:00Z`).getTime() - new Date(`${range.startDate}T00:00:00Z`).getTime()) / 86400000) + 1;
+const compactDates = (record: LeaveApplicationRecord) => {
+  if (!record.dateRanges?.length) return `${record.startDate} to ${record.endDate}`;
+  const ranges=[...record.dateRanges].sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  const first=ranges[0].startDate===ranges[0].endDate?ranges[0].startDate:`${ranges[0].startDate} to ${ranges[0].endDate}`;
+  return ranges.length===1?first:`${first} + ${ranges.length-1} more range${ranges.length===2?'':'s'}`;
+};
 
 export const LeaveContinuity: React.FC = () => {
-  const { leaveApplications, users, currentUser, fileLeaveApplication, can } = useApp();
+  const { leaveApplications, users, currentUser, fileLeaveApplication, updateLeaveApplication, can } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<LeaveApplicationRecord | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<LeaveApplicationRecord | null>(null);
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [employeeId, setEmployeeId] = useState('');
@@ -59,9 +79,7 @@ export const LeaveContinuity: React.FC = () => {
   const [leaveType, setLeaveType] = useState<LeaveType>('Vacation Leave');
   const [leaveSubtype, setLeaveSubtype] = useState('');
   const [leaveDetails, setLeaveDetails] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [workingDays, setWorkingDays] = useState(1);
+  const [dateRanges, setDateRanges] = useState<DateRangeDraft[]>([emptyDateRange()]);
   const [commutation, setCommutation] = useState<'Requested' | 'Not Requested'>('Not Requested');
   const [remarks, setRemarks] = useState('');
 
@@ -83,8 +101,8 @@ export const LeaveContinuity: React.FC = () => {
 
   const resetForm = () => {
     setEmployeeSearch(''); setEmployeeId(''); setOffice(''); setBarcode('');
-    setLeaveType('Vacation Leave'); setLeaveSubtype(''); setLeaveDetails(''); setStartDate(''); setEndDate('');
-    setWorkingDays(1); setCommutation('Not Requested'); setRemarks('');
+    setLeaveType('Vacation Leave'); setLeaveSubtype(''); setLeaveDetails(''); setDateRanges([emptyDateRange()]);
+    setCommutation('Not Requested'); setRemarks(''); setEditingRecord(null);
   };
   const selectEmployee = (id: string) => {
     const employee = users.find(user => user.id === id);
@@ -93,15 +111,24 @@ export const LeaveContinuity: React.FC = () => {
   };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!employeeId || !office.trim() || !barcode.trim() || !startDate || !endDate) return;
-    const saved = await fileLeaveApplication({
+    if (!employeeId || !office.trim() || !barcode.trim() || dateRanges.some(range => !range.startDate || !range.endDate)) return;
+    const payload = {
+      ...(editingRecord ? { id: editingRecord.id } : {}),
       employeeId, office: office.trim(), barcode: barcode.trim(), leaveType,
-      leaveSubtype: leaveSubtype || null, leaveDetails: leaveDetails.trim() || null, startDate, endDate,
-      workingDaysNumber: Number(workingDays), commutation, remarks: remarks.trim(),
-    });
+      leaveSubtype: leaveSubtype || null, leaveDetails: leaveDetails.trim() || null, dateRanges,
+      calculatedLeaveDays: calculatedDays(dateRanges), commutation, remarks: remarks.trim(),
+    };
+    const saved = editingRecord ? await updateLeaveApplication(payload) : await fileLeaveApplication(payload);
     if (!saved) return;
     setIsModalOpen(false); resetForm();
   };
+  const openEdit = (record: LeaveApplicationRecord) => {
+    setEditingRecord(record); setEmployeeId(record.employeeId); setEmployeeSearch(record.employeeName);
+    setOffice(record.office || record.department || ''); setBarcode(record.barcode || record.trackingNumber || '');
+    setLeaveType(record.leaveType); setLeaveSubtype(record.leaveSubtype || ''); setLeaveDetails(record.leaveDetails || '');
+    setDateRanges(rangesForRecord(record)); setCommutation(record.commutation); setRemarks(record.remarks || ''); setIsModalOpen(true);
+  };
+  const changeRange = (index: number, field: keyof DateRangeDraft, value: string) => setDateRanges(previous => previous.map((range,i) => i===index ? { ...range, [field]: value, ...(field==='dayType' && value!=='WHOLE_DAY' ? { endDate: range.startDate } : {}), ...(field==='startDate' && range.dayType!=='WHOLE_DAY' ? { endDate: value } : {}) } as DateRangeDraft : range));
 
   const summaries = [
     ['Total Leave Records', activeRecords.length, 'text-slate-900'],
@@ -117,7 +144,7 @@ export const LeaveContinuity: React.FC = () => {
           <h1 className="text-xl font-bold tracking-tight text-slate-900">Leave Management</h1>
           <p className="mt-1 text-sm text-slate-500">Register and manage official employee Leave Applications processed by HRMDO.</p>
         </div>
-        {canRegister && <button id="btn-file-new-leave" onClick={() => setIsModalOpen(true)} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-2xs transition-colors hover:bg-blue-700">
+        {canRegister && <button id="btn-file-new-leave" onClick={() => { resetForm(); setIsModalOpen(true); }} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-2xs transition-colors hover:bg-blue-700">
           <Plus className="h-4 w-4" /> Register Leave Application
         </button>}
       </div>
@@ -152,9 +179,9 @@ export const LeaveContinuity: React.FC = () => {
               <td className="px-4 py-3"><p className="font-semibold text-slate-900">{record.employeeName}</p><p className="text-[11px] text-slate-500">{record.position || 'Position not recorded'}</p></td>
               <td className="px-4 py-3 text-xs text-slate-600">{record.office || record.department || 'Not recorded'}</td>
               <td className="px-4 py-3 font-medium text-slate-800">{record.leaveType}</td>
-              <td className="px-4 py-3 text-xs text-slate-700">{record.startDate} to {record.endDate}<p className="text-[10px] text-slate-400">{record.workingDaysNumber} working day{record.workingDaysNumber === 1 ? '' : 's'}</p></td>
+              <td className="px-4 py-3 text-xs text-slate-700">{compactDates(record)}<p className="text-[10px] text-slate-400">{formatDays(record.totalLeaveDays ?? record.workingDaysNumber)}</p></td>
               <td className="px-4 py-3"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusStyle(record.status)}`}>{statusLabel(record.status)}</span></td>
-              <td className="px-4 py-3 text-right"><button onClick={() => setSelectedRecord(record)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><Eye className="h-3.5 w-3.5" /> View</button></td>
+              <td className="px-4 py-3 text-right"><div className="inline-flex items-center gap-1"><button onClick={() => setSelectedRecord(record)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><Eye className="h-3.5 w-3.5" /> View</button>{canRegister && record.status !== 'Released' && !!record.dateRanges?.length && <button aria-label={`Edit ${record.barcode || record.trackingNumber}`} onClick={() => openEdit(record)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Pencil className="h-3.5 w-3.5" /></button>}</div></td>
             </tr>)}
             {filteredRecords.length === 0 && <tr><td colSpan={7} className="px-6 py-14 text-center"><FileCheck2 className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 font-semibold text-slate-700">No Leave Applications found</p><p className="mt-1 text-xs text-slate-400">Registered V2 Leave Applications will appear here.</p></td></tr>}
           </tbody>
@@ -165,7 +192,7 @@ export const LeaveContinuity: React.FC = () => {
     {isModalOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
       <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-slate-900 px-5 py-4 text-white">
-          <div className="flex items-center gap-3"><span className="rounded-lg bg-blue-600 p-2"><CalendarClock className="h-5 w-5" /></span><div><h2 className="font-bold">Register Leave Application</h2><p className="text-xs text-slate-300">Register an official employee application for HRMDO processing.</p></div></div>
+          <div className="flex items-center gap-3"><span className="rounded-lg bg-blue-600 p-2"><CalendarClock className="h-5 w-5" /></span><div><h2 className="font-bold">{editingRecord ? 'Edit Leave Application' : 'Register Leave Application'}</h2><p className="text-xs text-slate-300">{editingRecord ? 'Update the official record and recalculate its Leave Days.' : 'Register an official employee application for HRMDO processing.'}</p></div></div>
           <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-white"><X className="h-4 w-4" /></button>
         </header>
         <form onSubmit={submit} className="space-y-4 p-5 text-xs">
@@ -197,24 +224,25 @@ export const LeaveContinuity: React.FC = () => {
               <textarea id="input-leave-specific-details" required={leaveType === 'Sick Leave' || (leaveType === 'Others' && leaveSubtype === 'OTHER')} value={leaveDetails} onChange={event => setLeaveDetails(event.target.value)} rows={2} placeholder={leaveType === 'Vacation Leave' ? 'e.g. Cebu City or Japan' : leaveType === 'Sick Leave' ? 'Brief business-required illness information' : ''} className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" />
             </label>}
           </section>}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="font-semibold text-slate-700">Start Date *<input id="input-filing-start-date" required type="date" value={startDate} onChange={event => setStartDate(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
-            <label className="font-semibold text-slate-700">End Date *<input id="input-filing-end-date" required type="date" min={startDate || undefined} value={endDate} onChange={event => setEndDate(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="font-semibold text-slate-700">Working Days<input id="input-filing-working-days" required min={0.5} max={366} step={0.5} type="number" value={workingDays} onChange={event => setWorkingDays(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /><span className="mt-1 block text-[10px] font-normal text-slate-400">Compatibility field; automatic calculation will follow in Fix #3.</span></label>
-            <label className="font-semibold text-slate-700">Commutation<select value={commutation} onChange={event => setCommutation(event.target.value as typeof commutation)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100"><option>Not Requested</option><option>Requested</option></select></label>
-          </div>
+          <section className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between"><div><h3 className="font-bold text-slate-800">Leave Dates</h3><p className="text-[10px] text-slate-500">Add each continuous whole-day range or individual half-day.</p></div><button id="btn-add-leave-range" type="button" onClick={() => setDateRanges(previous => [...previous, emptyDateRange()])} className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 font-semibold text-blue-700 hover:bg-blue-50"><Plus className="h-3.5 w-3.5" /> Add Date Range</button></div>
+            <div className="mt-3 space-y-3">{dateRanges.map((range,index) => <div key={range.id || index} data-testid={`leave-date-range-${index}`} className="rounded-lg border border-slate-200 bg-white p-3"><div className="mb-2 flex items-center justify-between"><span className="font-bold text-slate-600">Date Range {index+1}</span>{dateRanges.length>1 && <button aria-label={`Remove date range ${index+1}`} type="button" onClick={() => setDateRanges(previous => previous.filter((_,i)=>i!==index))} className="rounded-md p-1 text-rose-500 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>}</div><div className="grid gap-3 sm:grid-cols-3">
+              <label className="font-semibold text-slate-700">Start Date *<input required type="date" value={range.startDate} onChange={event => changeRange(index,'startDate',event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
+              <label className="font-semibold text-slate-700">End Date *<input required type="date" min={range.startDate || undefined} value={range.endDate} onChange={event => changeRange(index,'endDate',event.target.value)} disabled={range.dayType!=='WHOLE_DAY'} className="mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100" /></label>
+              <label className="font-semibold text-slate-700">Duration Type *<select value={range.dayType} onChange={event => changeRange(index,'dayType',event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal outline-none focus:ring-2 focus:ring-blue-100"><option value="WHOLE_DAY">Whole Day</option><option value="AM_HALF_DAY">AM Half-Day</option><option value="PM_HALF_DAY">PM Half-Day</option></select></label>
+            </div></div>)}</div>
+            <div className="mt-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2"><span className="font-semibold text-blue-800">Calculated Leave Days</span><strong id="calculated-leave-days" className="text-base text-blue-900">{formatDays(calculatedDays(dateRanges))}</strong></div>
+          </section>
+          <label className="block font-semibold text-slate-700">Commutation<select value={commutation} onChange={event => setCommutation(event.target.value as typeof commutation)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100"><option>Not Requested</option><option>Requested</option></select></label>
           <label className="block font-semibold text-slate-700">Remarks / Additional Details<textarea value={remarks} onChange={event => setRemarks(event.target.value)} rows={3} className="mt-1 w-full resize-y rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
           <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] text-blue-800">The new record will enter the Leave Registry with a <strong>For Computation</strong> status. Encoder: {currentUser.name}.</p>
-          <footer className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button id="btn-submit-filing" type="submit" disabled={!employeeId} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Register Leave Application</button></footer>
+          <footer className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button id="btn-submit-filing" type="submit" disabled={!employeeId} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{editingRecord ? 'Save Changes' : 'Register Leave Application'}</button></footer>
         </form>
       </div>
     </div>}
 
     {selectedRecord && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs"><div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
       <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><p className="font-mono text-xs font-bold text-blue-700">{selectedRecord.barcode || selectedRecord.trackingNumber || 'No barcode recorded'}</p><h2 className="mt-1 text-lg font-bold text-slate-900">{selectedRecord.employeeName}</h2></div><button onClick={() => setSelectedRecord(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button></header>
-      <div className="grid grid-cols-2 gap-4 p-5 text-xs"><div><p className="text-slate-400">Office</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.office || selectedRecord.department}</p></div><div><p className="text-slate-400">Leave Type</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.leaveType}</p></div>{selectedRecord.leaveSubtype && <div><p className="text-slate-400">{detailLabels(selectedRecord.leaveType)[0] || 'Type Details'}</p><p className="mt-1 font-semibold text-slate-800">{subtypeLabels[selectedRecord.leaveSubtype] || selectedRecord.leaveSubtype}</p></div>}{selectedRecord.leaveDetails && <div><p className="text-slate-400">{detailLabels(selectedRecord.leaveType)[1] || 'Additional Details'}</p><p className="mt-1 whitespace-pre-wrap font-semibold text-slate-800">{selectedRecord.leaveDetails}</p></div>}<div><p className="text-slate-400">Inclusive Dates</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.startDate} to {selectedRecord.endDate}</p></div><div><p className="text-slate-400">Status</p><p className="mt-1 font-semibold text-slate-800">{statusLabel(selectedRecord.status)}</p></div><div><p className="text-slate-400">Encoded By</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdByName || 'Not recorded in legacy V2 record'}</p></div><div><p className="text-slate-400">Registered</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdAt || selectedRecord.filingDate}</p></div>{selectedRecord.remarks && <div className="col-span-2"><p className="text-slate-400">Remarks / Additional Details</p><p className="mt-1 whitespace-pre-wrap text-slate-800">{selectedRecord.remarks}</p></div>}</div>
+      <div className="grid grid-cols-2 gap-4 p-5 text-xs"><div><p className="text-slate-400">Office</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.office || selectedRecord.department}</p></div><div><p className="text-slate-400">Leave Type</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.leaveType}</p></div>{selectedRecord.leaveSubtype && <div><p className="text-slate-400">{detailLabels(selectedRecord.leaveType)[0] || 'Type Details'}</p><p className="mt-1 font-semibold text-slate-800">{subtypeLabels[selectedRecord.leaveSubtype] || selectedRecord.leaveSubtype}</p></div>}{selectedRecord.leaveDetails && <div><p className="text-slate-400">{detailLabels(selectedRecord.leaveType)[1] || 'Additional Details'}</p><p className="mt-1 whitespace-pre-wrap font-semibold text-slate-800">{selectedRecord.leaveDetails}</p></div>}<div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="mb-2 font-bold uppercase tracking-wide text-slate-500">Leave Dates</p>{selectedRecord.dateRanges?.length ? <div className="space-y-2">{[...selectedRecord.dateRanges].sort((a,b)=>a.startDate.localeCompare(b.startDate)).map((range,index)=><div key={range.id || index} className="flex items-center justify-between rounded-lg bg-white px-3 py-2"><div><p className="font-semibold text-slate-800">{range.startDate}{range.endDate!==range.startDate?` to ${range.endDate}`:''}</p><p className="text-[10px] text-slate-500">{dayTypeLabel(range.dayType)}</p></div><strong className="text-slate-700">{formatDays(rangeDays(range))}</strong></div>)}</div> : <div className="rounded-lg bg-white px-3 py-2"><p className="font-semibold text-slate-800">{selectedRecord.startDate} to {selectedRecord.endDate}</p><p className="text-[10px] text-slate-500">Legacy Date Range · preserved total</p></div>}<div className="mt-3 flex justify-between border-t border-slate-200 pt-2"><strong className="text-slate-600">Total Leave Days</strong><strong className="text-blue-700">{formatDays(selectedRecord.totalLeaveDays ?? selectedRecord.workingDaysNumber)}</strong></div></div><div><p className="text-slate-400">Status</p><p className="mt-1 font-semibold text-slate-800">{statusLabel(selectedRecord.status)}</p></div><div><p className="text-slate-400">Encoded By</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdByName || 'Not recorded in legacy V2 record'}</p></div><div><p className="text-slate-400">Registered</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdAt || selectedRecord.filingDate}</p></div>{selectedRecord.remarks && <div className="col-span-2"><p className="text-slate-400">Remarks / Additional Details</p><p className="mt-1 whitespace-pre-wrap text-slate-800">{selectedRecord.remarks}</p></div>}</div>
     </div></div>}
   </div>;
 };

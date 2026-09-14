@@ -382,6 +382,7 @@ export interface AuditEvent {
   actionType: 
     | 'LEAVE_FILED'
     | 'LEAVE_APPLICATION_REGISTERED'
+    | 'LEAVE_APPLICATION_UPDATED'
     | 'LEAVE_APPROVED'
     | 'USER_CREATED'
     | 'USER_UPDATED'
@@ -503,8 +504,9 @@ export interface LeaveApplicationRecord {
   filingDate: string;
   startDate: string;
   endDate: string;
-  dateRanges?: Array<{ startDate: string; endDate: string }>;
+  dateRanges?: LeaveDateRange[];
   workingDaysNumber: number;
+  totalLeaveDays?: number;
   commutation: 'Requested' | 'Not Requested';
   status: 'For_Computation' | 'For_Signature' | 'Released' | 'Pending' | 'Approved' | 'Disapproved' | 'Cancelled';
   createdByUserId?: string;
@@ -517,6 +519,16 @@ export interface LeaveApplicationRecord {
   disapprovalReason?: string;
   remarks?: string;
   v1MigrationStatus?: 'Reconciled' | 'Historical Reference';
+}
+
+export interface LeaveDateRange {
+  id?: string;
+  leaveApplicationId?: string;
+  startDate: string;
+  endDate: string;
+  dayType?: 'WHOLE_DAY' | 'AM_HALF_DAY' | 'PM_HALF_DAY';
+  leaveDayUnits?: number;
+  createdAt?: string;
 }
 
 export type LeaveType =

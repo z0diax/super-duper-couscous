@@ -122,7 +122,7 @@ function useApplication() {
     addAssigneeDesignation: operation<AssigneeDesignation>('addAssigneeDesignation'), updateAssigneeDesignation: operation('updateAssigneeDesignation'), deleteAssigneeDesignation: operation('deleteAssigneeDesignation'), resetAssigneeDesignations: operation('resetAssigneeDesignations'),
     addSystemRole: operation<SystemRoleDefinition>('addSystemRole'), updateSystemRole: operation<SystemRoleDefinition>('updateSystemRole'), deleteSystemRole: operation('deleteSystemRole'), resetSystemRoles: operation('resetSystemRoles'),
     addUser: operation<UserAccount>('addUser'), updateUser: operation('updateUser'), deleteUser: operation('deleteUser'), changePassword: operation('changePassword'),
-    fileLeaveApplication: operation('fileLeaveApplication'), approveLeaveApplication: operation('approveLeaveApplication'), runMigrationCheck: operation<MigrationSummary>('runMigrationCheck'),
+    fileLeaveApplication: operation('fileLeaveApplication'), updateLeaveApplication: operation('updateLeaveApplication'), approveLeaveApplication: operation('approveLeaveApplication'), runMigrationCheck: operation<MigrationSummary>('runMigrationCheck'),
   };
 }
 const AppContext = createContext<ReturnType<typeof useApplication> | undefined>(undefined);

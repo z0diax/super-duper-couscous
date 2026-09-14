@@ -117,14 +117,55 @@ function filter_state_for_view(array $s,array $u): array {
     $s['auditLogs']=array_values(array_filter($s['auditLogs'],fn($event)=>($event['actorId']??null)===$u['id'] || in_array($event['documentId']??'', $visibleIds,true)));
     return $s;
 }
-function assert_barcode(array $s,string $barcode,array $additional=[]): void {
+function assert_barcode(array $s,string $barcode,array $additional=[],string $excludeLeaveId=''): void {
     fail_unless(strlen($barcode)<=190 && $barcode!=='','Barcode is required and must be at most 190 characters.');
     $codes=$additional;
     foreach ($s['documents'] as $r) { $codes[]=$r['barcode']??''; $codes[]=$r['trackingNumber']; }
     foreach ($s['payrollBatches'] as $r) { $codes[]=$r['batchBarcode']??''; $codes[]=$r['batchNumber']; }
     foreach ($s['payrollItems'] as $r) $codes[]=$r['barcode'];
-    foreach ($s['leaveApplications'] as $r) { $codes[]=$r['barcode']??''; $codes[]=$r['trackingNumber']??''; }
+    foreach ($s['leaveApplications'] as $r) if (($r['id']??'')!==$excludeLeaveId) { $codes[]=$r['barcode']??''; $codes[]=$r['trackingNumber']??''; }
     fail_unless(!in_array(strtolower($barcode),array_map('strtolower',$codes),true),'Barcode is already in use.',409);
+}
+function validated_leave_date_ranges($submitted): array {
+    fail_unless(is_array($submitted) && count($submitted)>0 && count($submitted)<=50,'Add between 1 and 50 complete Leave Date Ranges.');
+    $ranges=[]; $halfDayUnits=0;
+    foreach ($submitted as $index=>$range) {
+        fail_unless(is_array($range),'Complete or remove Leave Date Range '.($index+1).'.');
+        $start=required($range,'startDate',10); $end=required($range,'endDate',10);
+        foreach ([$start,$end] as $date) { $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date); fail_unless($parsed!==false && $parsed->format('Y-m-d')===$date,'Enter valid dates for Leave Date Range '.($index+1).'.'); }
+        fail_unless($start<=$end,'Leave Date Range '.($index+1).' must start on or before its end date.');
+        $dayType=choice($range['dayType']??null,['WHOLE_DAY','AM_HALF_DAY','PM_HALF_DAY'],'duration type');
+        if ($dayType!=='WHOLE_DAY') fail_unless($start===$end,'AM and PM Half-Day entries must use a single date.');
+        $units=$dayType==='WHOLE_DAY'?(((int)((strtotime($end)-strtotime($start))/86400)+1)*2):1;
+        $ranges[]=['id'=>(isset($range['id']) && is_string($range['id']) && trim($range['id'])!=='')?trim($range['id']):uid('leave-range'),'startDate'=>$start,'endDate'=>$end,'dayType'=>$dayType,'leaveDayUnits'=>$units];
+        $halfDayUnits+=$units;
+    }
+    usort($ranges,fn($a,$b)=>[$a['startDate'],$a['endDate']]<=>[$b['startDate'],$b['endDate']]);
+    for ($i=1;$i<count($ranges);$i++) fail_unless($ranges[$i]['startDate']>$ranges[$i-1]['endDate'],'Leave date ranges cannot overlap or contain duplicate dates.');
+    return ['ranges'=>$ranges,'total'=>$halfDayUnits/2];
+}
+function validated_leave_application(array $s,array $d,string $excludeLeaveId=''): array {
+    $submittedRanges=$d['dateRanges']??null;
+    if ($submittedRanges===null) $submittedRanges=[['startDate'=>required($d,'startDate',10),'endDate'=>required($d,'endDate',10),'dayType'=>'WHOLE_DAY']];
+    $dateResult=validated_leave_date_ranges($submittedRanges); $ranges=$dateResult['ranges'];
+    $leaveType=choice($d['leaveType']??null,['COC','Vacation Leave','Mandatory / Forced Leave','Sick Leave','Wellness Leave','Maternity Leave','Paternity Leave','Special Privilege Leave','Solo Parent Leave','Study Leave','10-Day VAWC Leave','Rehabilitation Privilege','Special Leave Benefits for Women','Special Emergency / Calamity Leave','Adoption Leave','Others','Terminal Leave'],'leave type');
+    $commutation=choice($d['commutation']??'Not Requested',['Requested','Not Requested'],'commutation');
+    fail_unless(!isset($d['leaveSubtype']) || $d['leaveSubtype']===null || is_string($d['leaveSubtype']),'Invalid Leave Type details.');
+    fail_unless(!isset($d['leaveDetails']) || $d['leaveDetails']===null || is_string($d['leaveDetails']),'Invalid Leave Type details.');
+    $leaveSubtype=trim((string)($d['leaveSubtype']??'')); $leaveDetails=trim((string)($d['leaveDetails']??''));
+    fail_unless(mb_strlen($leaveDetails)<=2000,'Leave Type details must be at most 2000 characters.');
+    if (in_array($leaveType,['Vacation Leave','Special Privilege Leave'],true)) $leaveSubtype=choice($leaveSubtype,['WITHIN_PHILIPPINES','ABROAD'],'location type');
+    elseif ($leaveType==='Sick Leave') { $leaveSubtype=choice($leaveSubtype,['IN_HOSPITAL','OUT_PATIENT'],'medical setting'); fail_unless($leaveDetails!=='','Illness / Medical Details are required.'); }
+    elseif ($leaveType==='Study Leave') $leaveSubtype=choice($leaveSubtype,['MASTERS_COMPLETION','BOARD_BAR_REVIEW'],'study leave purpose');
+    elseif ($leaveType==='Others') { $leaveSubtype=choice($leaveSubtype,['MONETIZATION','TERMINAL_LEAVE','OTHER'],'other leave purpose'); if ($leaveSubtype==='OTHER') fail_unless($leaveDetails!=='','Specify the other Leave purpose.'); }
+    else fail_unless($leaveSubtype==='','This Leave Type does not accept a subtype.');
+    $employeeId=required($d,'employeeId',64); $applicant=null;
+    foreach ($s['users'] as $candidate) if ($candidate['id']===$employeeId) { $applicant=$candidate; break; }
+    fail_unless((bool)$applicant,'Select an employee from the personnel directory.',404);
+    $office=required($d,'office',190); $barcode=required($d,'barcode',190); assert_barcode($s,$barcode,[],$excludeLeaveId);
+    fail_unless(!isset($d['remarks']) || is_string($d['remarks']),'Invalid remarks.');
+    $remarks=trim($d['remarks']??''); fail_unless(mb_strlen($remarks)<=2000,'Remarks must be at most 2000 characters.');
+    return ['trackingNumber'=>$barcode,'barcode'=>$barcode,'employeeId'=>$applicant['id'],'employeeName'=>$applicant['name'],'office'=>$office,'department'=>$office,'position'=>$applicant['position'],'leaveType'=>$leaveType,'leaveSubtype'=>$leaveSubtype!==''?$leaveSubtype:null,'leaveDetails'=>$leaveDetails!==''?$leaveDetails:null,'startDate'=>$ranges[0]['startDate'],'endDate'=>$ranges[count($ranges)-1]['endDate'],'dateRanges'=>$ranges,'workingDaysNumber'=>$dateResult['total'],'totalLeaveDays'=>$dateResult['total'],'commutation'=>$commutation,'remarks'=>$remarks];
 }
 function validated_workflow(array $s,array $d): array {
     $d['title']=required($d,'title',160);
