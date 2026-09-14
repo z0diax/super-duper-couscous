@@ -79,7 +79,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
       id: 'payroll', 
       label: 'Payroll Management', 
       icon: Layers, 
-      section: 'Operations' 
+      section: 'Operations'
     },
     { id: 'registry', label: 'Document Registry', icon: FileStack, section: 'Operations' },
     { id: 'leave', label: 'Leave Continuity', icon: CalendarClock, section: 'Operations' },
