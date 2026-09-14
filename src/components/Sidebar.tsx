@@ -85,7 +85,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
       section: 'Operations'
     },
     { id: 'registry', label: 'Document Registry', icon: FileStack, section: 'Operations' },
-    { id: 'leave', label: 'Leave Continuity', icon: CalendarClock, section: 'Operations' },
+    { id: 'leave', label: 'Leave Records', icon: CalendarClock, section: 'Operations' },
 
     ...(showConfiguration ? [
       { id: 'workflows' as const, label: 'Workflow Engine', icon: GitMerge, section: 'Configuration' },

@@ -967,7 +967,7 @@ export const UsersDashboard: React.FC = () => {
                 <div><h4 className="text-xs font-bold text-slate-800">Sidebar Modules</h4><p className="mt-0.5 text-[11px] text-slate-500">Choose which Operations pages this account can open from the sidebar.</p></div>
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {([
-                    ['dashboard','Dashboard'],['queues','My Tasks & Queues'],['payroll','Payroll Management'],['registry','Document Registry'],['leave','Leave Continuity'],
+                    ['dashboard','Dashboard'],['queues','My Tasks & Queues'],['payroll','Payroll Management'],['registry','Document Registry'],['leave','Leave Records'],
                   ] as Array<[SidebarModule,string]>).map(([module,label]) => {
                     const checked = formData.role === 'admin' || formData.sidebarModules.includes(module);
                     return <label key={module} className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs ${checked ? 'border-blue-200 bg-white text-slate-800' : 'border-slate-200 bg-slate-100 text-slate-500'}`}><span className="font-medium">{label}</span><input type="checkbox" checked={checked} disabled={formData.role === 'admin'} onChange={event => setFormData(previous => ({ ...previous, sidebarModules: event.target.checked ? [...previous.sidebarModules, module] : previous.sidebarModules.filter(item => item !== module) }))} className="h-4 w-4 rounded border-slate-300 text-blue-600" /></label>;

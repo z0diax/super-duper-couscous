@@ -70,7 +70,7 @@ test('configure catalogue, workflow, register with a real file, reload every scr
   await page.reload(); await expect(page.getByText('Operational Overview')).toBeVisible();
   await page.getByRole('button', { name: 'Document Registry', exact: true }).click();
   await expect(page.getByText('BROWSER-DOC-001', { exact: true })).toBeVisible();
-  for (const label of ['My Tasks & Queues', 'Payroll Management', 'Leave Continuity', 'Workflow Engine', 'Classification Catalogue', 'Users & Designations', 'V1 Historical Archive', 'Audit Trail & Reports']) {
+  for (const label of ['My Tasks & Queues', 'Payroll Management', 'Leave Records', 'Workflow Engine', 'Classification Catalogue', 'Users & Designations', 'V1 Historical Archive', 'Audit Trail & Reports']) {
     await page.getByRole('button', { name: label }).click();
     await expect(page.locator('main')).not.toBeEmpty();
   }
