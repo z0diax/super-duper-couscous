@@ -116,7 +116,7 @@ test('leave registration switches dynamic fields without retaining stale values'
   await page.getByLabel('Office *').selectOption("CEO - City Engineer's Office");
   await page.getByLabel(/Barcode \/ Tracking No/).fill('BROWSER-LEAVE-001');
   let range=page.getByTestId('leave-date-range-0'); await range.getByRole('button',{name:'Select Leave Date Range'}).click(); await page.getByRole('button',{name:'2026-09-14'}).click(); await page.getByRole('button',{name:'2026-09-14'}).click();
-  await page.locator('#btn-add-leave-range').click(); range=page.getByTestId('leave-date-range-1'); await range.getByRole('button',{name:'Select Leave Date Range'}).click(); await page.getByRole('button',{name:'2026-09-16'}).click(); await page.getByRole('button',{name:'2026-09-17'}).click();
+  await page.locator('#btn-add-leave-range').click(); range=page.getByTestId('leave-date-range-1'); await range.getByRole('button',{name:'Select Leave Date Range'}).click(); await page.getByRole('button',{name:'2026-09-16'}).click(); await page.getByRole('button',{name:'2026-09-18'}).hover(); await expect(page.getByRole('button',{name:'2026-09-17'})).toHaveAttribute('data-range-state','between'); await page.getByRole('button',{name:'2026-09-17'}).click();
   await page.locator('#btn-add-leave-range').click(); range=page.getByTestId('leave-date-range-2'); await range.locator('select').selectOption('AM_HALF_DAY'); await range.getByRole('button',{name:'Select Leave Date Range'}).click(); await page.getByRole('button',{name:'2026-09-21'}).click();
   await expect(page.locator('#calculated-leave-days')).toHaveText('3.5 days');
   await page.locator('#select-filing-leave-type').selectOption('Vacation Leave');
