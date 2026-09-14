@@ -688,7 +688,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                               : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                           }`}
                         >
-                          {!isComplete && <span className="relative flex h-2.5 w-2.5" aria-label={`${wg.itemIds.length} pending item${wg.itemIds.length === 1 ? '' : 's'}`}><span className="payroll-pending-ping absolute inset-0 rounded-full bg-red-400" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white/80" /></span>}
+                          {!isComplete && <span className="relative flex h-2.5 w-2.5" aria-label={`${wg.itemIds.length} pending item${wg.itemIds.length === 1 ? '' : 's'}`}><span className="payroll-pending-ping absolute inset-0 rounded-full bg-white" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white ring-2 ring-blue-200" /></span>}
                           <span>{wg.code}</span>
                           <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold ${
                             isComplete
