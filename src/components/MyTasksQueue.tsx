@@ -21,7 +21,6 @@ export const MyTasksQueue: React.FC = () => {
   const { documents, currentUser, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
 
   const [activeQueue, setActiveQueue] = useState<'my_tasks' | 'team_queue' | 'returned' | 'waiting' | 'ready_for_release' | 'completed'>('my_tasks');
-  const [filterPriority, setFilterPriority] = useState<string>('all');
   const [filterClass, setFilterClass] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [complianceRemarks, setComplianceRemarks] = useState<Record<string, string>>({});
@@ -117,7 +116,6 @@ export const MyTasksQueue: React.FC = () => {
 
   // Filter
   const filteredList = currentList.filter(doc => {
-    if (filterPriority !== 'all' && doc.priority !== filterPriority) return false;
     if (filterClass !== 'all' && doc.classification !== filterClass) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -135,7 +133,6 @@ export const MyTasksQueue: React.FC = () => {
   // requiring the assigned desk to discover work through Payroll Management.
   const filteredPayrollTasks: PayrollBatch[] = activeQueue === 'my_tasks' ? myPayrollBatches.filter(batch => {
     if (filterClass !== 'all' && filterClass !== 'Payroll') return false;
-    if (filterPriority !== 'all') return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return batch.batchNumber.toLowerCase().includes(q) || batch.payrollType.toLowerCase().includes(q) || batch.office.toLowerCase().includes(q);
@@ -157,17 +154,6 @@ export const MyTasksQueue: React.FC = () => {
     { id: 'ready_for_release', label: 'Ready for Release', count: readyForReleaseTasks.length, icon: FileCheck2 },
     { id: 'completed', label: 'Released / Concluded', count: completedTasks.length, icon: CheckCircle2 },
   ];
-
-  const getPriorityBadge = (priority: string) => {
-    switch (priority) {
-      case 'Urgent':
-        return 'bg-rose-100 text-rose-800 border-rose-200';
-      case 'Priority':
-        return 'bg-amber-100 text-amber-800 border-amber-200';
-      default:
-        return 'bg-slate-100 text-slate-700 border-slate-200';
-    }
-  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -304,18 +290,6 @@ export const MyTasksQueue: React.FC = () => {
           </div>
 
           <select
-            id="queue-filter-priority"
-            value={filterPriority}
-            onChange={e => setFilterPriority(e.target.value)}
-            className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="all">All Priorities</option>
-            <option value="Routine">Routine</option>
-            <option value="Priority">Priority</option>
-            <option value="Urgent">Urgent</option>
-          </select>
-
-          <select
             id="queue-filter-classification"
             value={filterClass}
             onChange={e => setFilterClass(e.target.value)}
@@ -388,7 +362,6 @@ export const MyTasksQueue: React.FC = () => {
                   <th className="py-3 px-4">Subject & Details</th>
                   <th className="py-3 px-4">Classification</th>
                   <th className="py-3 px-4">Current Phase & Assignee</th>
-                  <th className="py-3 px-4">Priority</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
@@ -442,11 +415,6 @@ export const MyTasksQueue: React.FC = () => {
                         <div className="text-xs text-slate-600 truncate max-w-[180px] mt-0.5">
                           {currentStep?.assignedTo.displayName}
                         </div>
-                      </td>
-
-                      {/* Priority */}
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getPriorityBadge(doc.priority)}`}>{doc.priority.toUpperCase()}</span>
                       </td>
 
                       {/* Status */}
