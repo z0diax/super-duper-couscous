@@ -28,6 +28,23 @@ try {
             $days=positive($d['workingDaysNumber']??0,'Working days',366); fail_unless($days<=(strtotime($end)-strtotime($start))/86400+1,'Working days exceed the date range.');
             $leaveType=choice($d['leaveType']??null,['COC','Vacation Leave','Mandatory / Forced Leave','Sick Leave','Wellness Leave','Maternity Leave','Paternity Leave','Special Privilege Leave','Solo Parent Leave','Study Leave','10-Day VAWC Leave','Rehabilitation Privilege','Special Leave Benefits for Women','Special Emergency / Calamity Leave','Adoption Leave','Others','Terminal Leave'],'leave type');
             $commutation=choice($d['commutation']??'Not Requested',['Requested','Not Requested'],'commutation');
+            fail_unless(!isset($d['leaveSubtype']) || $d['leaveSubtype']===null || is_string($d['leaveSubtype']),'Invalid Leave Type details.');
+            fail_unless(!isset($d['leaveDetails']) || $d['leaveDetails']===null || is_string($d['leaveDetails']),'Invalid Leave Type details.');
+            $leaveSubtype=trim((string)($d['leaveSubtype']??'')); $leaveDetails=trim((string)($d['leaveDetails']??''));
+            fail_unless(mb_strlen($leaveDetails)<=2000,'Leave Type details must be at most 2000 characters.');
+            if (in_array($leaveType,['Vacation Leave','Special Privilege Leave'],true)) {
+                $leaveSubtype=choice($leaveSubtype,['WITHIN_PHILIPPINES','ABROAD'],'location type');
+            } elseif ($leaveType==='Sick Leave') {
+                $leaveSubtype=choice($leaveSubtype,['IN_HOSPITAL','OUT_PATIENT'],'medical setting');
+                fail_unless($leaveDetails!=='','Illness / Medical Details are required.');
+            } elseif ($leaveType==='Study Leave') {
+                $leaveSubtype=choice($leaveSubtype,['MASTERS_COMPLETION','BOARD_BAR_REVIEW'],'study leave purpose');
+            } elseif ($leaveType==='Others') {
+                $leaveSubtype=choice($leaveSubtype,['MONETIZATION','TERMINAL_LEAVE','OTHER'],'other leave purpose');
+                if ($leaveSubtype==='OTHER') fail_unless($leaveDetails!=='','Specify the other Leave purpose.');
+            } else {
+                fail_unless($leaveSubtype==='','This Leave Type does not accept a subtype.');
+            }
             $employeeId=required($d,'employeeId',64); $applicant=null;
             foreach ($state['users'] as $candidate) if ($candidate['id']===$employeeId) { $applicant=$candidate; break; }
             fail_unless((bool)$applicant,'Select an employee from the personnel directory.',404);
@@ -35,7 +52,7 @@ try {
             fail_unless(!isset($d['remarks']) || is_string($d['remarks']),'Invalid remarks.');
             $remarks=trim($d['remarks']??''); fail_unless(mb_strlen($remarks)<=2000,'Remarks must be at most 2000 characters.');
             $createdAt=now();
-            $result=['id'=>uid('leave'),'trackingNumber'=>$barcode,'barcode'=>$barcode,'isLegacyV1'=>false,'employeeId'=>$applicant['id'],'employeeName'=>$applicant['name'],'office'=>$office,'department'=>$office,'position'=>$applicant['position'],'leaveType'=>$leaveType,'leaveSubtype'=>null,'leaveDetails'=>null,'filingDate'=>$createdAt,'startDate'=>$start,'endDate'=>$end,'dateRanges'=>[['startDate'=>$start,'endDate'=>$end]],'workingDaysNumber'=>$days,'commutation'=>$commutation,'remarks'=>$remarks,'status'=>'For_Computation','createdByUserId'=>$user['id'],'createdByName'=>$user['name'],'createdAt'=>$createdAt,'updatedAt'=>$createdAt,'releasedAt'=>null];
+            $result=['id'=>uid('leave'),'trackingNumber'=>$barcode,'barcode'=>$barcode,'isLegacyV1'=>false,'employeeId'=>$applicant['id'],'employeeName'=>$applicant['name'],'office'=>$office,'department'=>$office,'position'=>$applicant['position'],'leaveType'=>$leaveType,'leaveSubtype'=>$leaveSubtype!==''?$leaveSubtype:null,'leaveDetails'=>$leaveDetails!==''?$leaveDetails:null,'filingDate'=>$createdAt,'startDate'=>$start,'endDate'=>$end,'dateRanges'=>[['startDate'=>$start,'endDate'=>$end]],'workingDaysNumber'=>$days,'commutation'=>$commutation,'remarks'=>$remarks,'status'=>'For_Computation','createdByUserId'=>$user['id'],'createdByName'=>$user['name'],'createdAt'=>$createdAt,'updatedAt'=>$createdAt,'releasedAt'=>null];
             $state['leaveApplications'][]=$result;
         } elseif ($action==='approveLeaveApplication') {
             fail_unless(has_cap($state,$user,'canApprove') || has_cap($state,$user,'canSupervise'),'Leave approval permission is required.',403);
@@ -68,7 +85,7 @@ try {
             $details='Docketed by '.($result['encodedBy']['userName']??$user['name']).'. Stage 1 - '.($stages[0]['name']??'Docketing').' completed. Stage 2 - '.($stages[1]['name']??'Initial Checking').' assigned to '.($initial['userName']??'configured desk').'.';
         }
         elseif ($action==='fileLeaveApplication' && is_array($result)) {
-            $details='Applicant: '.$result['employeeName'].'. Office: '.$result['office'].'. Encoded by: '.$user['name'].'. Initial status: For Computation. Barcode: '.$result['barcode'].'.';
+            $details='Applicant: '.$result['employeeName'].'. Office: '.$result['office'].'. Leave type: '.$result['leaveType'].'.'.(!empty($result['leaveSubtype'])?' Structured subtype: '.$result['leaveSubtype'].'.':'').' Encoded by: '.$user['name'].'. Initial status: For Computation. Barcode: '.$result['barcode'].'.';
         }
         elseif (is_array($args[0]??null)) {
             $parts=[];

@@ -108,6 +108,25 @@ test('user creation creates a usable login with the selected permissions', async
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   await page.screenshot({path:'test-results/application-mobile.png',fullPage:true,animations:'disabled'});
 });
+test('leave registration switches dynamic fields without retaining stale values', async ({ page }) => {
+  await page.goto(`${fixture.base}/`); await page.getByLabel('Email address').fill('admin@example.test'); await page.getByLabel('Password', { exact: true }).fill(testPassword); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('button', { name: 'Leave Records', exact: true }).click();
+  await page.getByRole('button', { name: 'Register Leave Application', exact: true }).click();
+  await page.getByPlaceholder('Search employee name, office, or position...').fill('Browser Officer');
+  await page.getByRole('button', { name: /Browser Officer/ }).click();
+  await page.getByPlaceholder('Enter or scan barcode...').fill('BROWSER-LEAVE-001');
+  await page.locator('#input-filing-start-date').fill('2026-10-20'); await page.locator('#input-filing-end-date').fill('2026-10-20');
+  await page.locator('#select-filing-leave-type').selectOption('Vacation Leave');
+  await page.locator('#select-leave-subtype').selectOption('ABROAD'); await page.locator('#input-leave-specific-details').fill('Japan');
+  await page.locator('#select-filing-leave-type').selectOption('Sick Leave');
+  await expect(page.locator('#select-leave-subtype')).toHaveValue(''); await expect(page.locator('#input-leave-specific-details')).toHaveValue('');
+  await page.locator('#select-leave-subtype').selectOption('OUT_PATIENT'); await page.locator('#input-leave-specific-details').fill('Flu');
+  await page.locator('#btn-submit-filing').click();
+  const row=page.getByText('BROWSER-LEAVE-001', { exact: true }).locator('xpath=ancestor::tr');
+  await expect(row).toContainText('Sick Leave'); await row.getByRole('button', { name: 'View', exact: true }).click();
+  await expect(page.getByText('Medical Setting', { exact: true })).toBeVisible(); await expect(page.getByText('Out Patient', { exact: true })).toBeVisible(); await expect(page.getByText('Flu', { exact: true })).toBeVisible();
+  await expect(page.getByText('ABROAD', { exact: true })).toHaveCount(0); await expect(page.getByText('Japan', { exact: true })).toHaveCount(0);
+});
 test('payroll batch intake saves its items and a downloadable attachment', async ({ page }) => {
   await page.goto(`${fixture.base}/`); await page.getByLabel('Email address').fill('admin@example.test'); await page.getByLabel('Password', { exact: true }).fill(testPassword); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   const setup = await new Client(fixture.base).login();

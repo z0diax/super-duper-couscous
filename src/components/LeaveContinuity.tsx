@@ -28,6 +28,24 @@ const statusStyle = (status: LeaveApplicationRecord['status']) => {
   return 'border-amber-200 bg-amber-50 text-amber-700';
 };
 
+const subtypeLabels: Record<string, string> = {
+  WITHIN_PHILIPPINES: 'Within the Philippines', ABROAD: 'Abroad',
+  IN_HOSPITAL: 'In Hospital', OUT_PATIENT: 'Out Patient',
+  MASTERS_COMPLETION: "Completion of Master's Degree", BOARD_BAR_REVIEW: 'BAR / Board Examination Review',
+  MONETIZATION: 'Monetization of Leave Credits', TERMINAL_LEAVE: 'Terminal Leave', OTHER: 'Other',
+};
+const detailLabels = (type: LeaveType) => {
+  if (type === 'Vacation Leave' || type === 'Special Privilege Leave') return ['Location Type', 'Location / Destination'];
+  if (type === 'Sick Leave') return ['Medical Setting', 'Illness / Medical Details'];
+  if (type === 'Study Leave') return ['Study Leave Purpose', 'Additional Details'];
+  if (type === 'Others') return ['Other Leave Purpose', 'Specified Purpose / Details'];
+  if (type === 'Special Leave Benefits for Women') return ['', 'Specific Details / Reason'];
+  if (type === 'Special Emergency / Calamity Leave') return ['', 'Emergency / Calamity Details'];
+  if (type === 'Rehabilitation Privilege') return ['', 'Rehabilitation Details'];
+  if (['Wellness Leave','Maternity Leave','Paternity Leave','Solo Parent Leave','10-Day VAWC Leave'].includes(type)) return ['', 'Additional Details'];
+  return ['', ''];
+};
+
 export const LeaveContinuity: React.FC = () => {
   const { leaveApplications, users, currentUser, fileLeaveApplication, can } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
@@ -39,6 +57,8 @@ export const LeaveContinuity: React.FC = () => {
   const [office, setOffice] = useState('');
   const [barcode, setBarcode] = useState('');
   const [leaveType, setLeaveType] = useState<LeaveType>('Vacation Leave');
+  const [leaveSubtype, setLeaveSubtype] = useState('');
+  const [leaveDetails, setLeaveDetails] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [workingDays, setWorkingDays] = useState(1);
@@ -63,7 +83,7 @@ export const LeaveContinuity: React.FC = () => {
 
   const resetForm = () => {
     setEmployeeSearch(''); setEmployeeId(''); setOffice(''); setBarcode('');
-    setLeaveType('Vacation Leave'); setStartDate(''); setEndDate('');
+    setLeaveType('Vacation Leave'); setLeaveSubtype(''); setLeaveDetails(''); setStartDate(''); setEndDate('');
     setWorkingDays(1); setCommutation('Not Requested'); setRemarks('');
   };
   const selectEmployee = (id: string) => {
@@ -75,7 +95,8 @@ export const LeaveContinuity: React.FC = () => {
     event.preventDefault();
     if (!employeeId || !office.trim() || !barcode.trim() || !startDate || !endDate) return;
     const saved = await fileLeaveApplication({
-      employeeId, office: office.trim(), barcode: barcode.trim(), leaveType, startDate, endDate,
+      employeeId, office: office.trim(), barcode: barcode.trim(), leaveType,
+      leaveSubtype: leaveSubtype || null, leaveDetails: leaveDetails.trim() || null, startDate, endDate,
       workingDaysNumber: Number(workingDays), commutation, remarks: remarks.trim(),
     });
     if (!saved) return;
@@ -160,7 +181,22 @@ export const LeaveContinuity: React.FC = () => {
             <label className="font-semibold text-slate-700">Office *<input required value={office} onChange={event => setOffice(event.target.value)} placeholder="Applicant office" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
             <label className="font-semibold text-slate-700">Barcode / Tracking No. *<input required value={barcode} onChange={event => setBarcode(event.target.value)} placeholder="Enter or scan barcode..." className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
           </div>
-          <label className="block font-semibold text-slate-700">Leave Type *<select value={leaveType} onChange={event => setLeaveType(event.target.value as LeaveType)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100">{LEAVE_TYPES.map(type => <option key={type}>{type}</option>)}</select></label>
+          <label className="block font-semibold text-slate-700">Leave Type *<select id="select-filing-leave-type" value={leaveType} onChange={event => { setLeaveType(event.target.value as LeaveType); setLeaveSubtype(''); setLeaveDetails(''); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100">{LEAVE_TYPES.map(type => <option key={type}>{type}</option>)}</select></label>
+          {(detailLabels(leaveType)[0] || detailLabels(leaveType)[1]) && <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+            <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-blue-700">{leaveType} Details</p>
+            {detailLabels(leaveType)[0] && <label className="block font-semibold text-slate-700">{detailLabels(leaveType)[0]} *
+              <select id="select-leave-subtype" required value={leaveSubtype} onChange={event => { setLeaveSubtype(event.target.value); if (leaveType === 'Others' && event.target.value !== 'OTHER') setLeaveDetails(''); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100">
+                <option value="">Select {detailLabels(leaveType)[0].toLowerCase()}</option>
+                {(leaveType === 'Vacation Leave' || leaveType === 'Special Privilege Leave') && <><option value="WITHIN_PHILIPPINES">Within the Philippines</option><option value="ABROAD">Abroad</option></>}
+                {leaveType === 'Sick Leave' && <><option value="IN_HOSPITAL">In Hospital</option><option value="OUT_PATIENT">Out Patient</option></>}
+                {leaveType === 'Study Leave' && <><option value="MASTERS_COMPLETION">Completion of Master's Degree</option><option value="BOARD_BAR_REVIEW">BAR / Board Examination Review</option></>}
+                {leaveType === 'Others' && <><option value="MONETIZATION">Monetization of Leave Credits</option><option value="TERMINAL_LEAVE">Terminal Leave</option><option value="OTHER">Other</option></>}
+              </select>
+            </label>}
+            {detailLabels(leaveType)[1] && <label className={`${detailLabels(leaveType)[0] ? 'mt-3' : ''} block font-semibold text-slate-700`}>{detailLabels(leaveType)[1]}{(leaveType === 'Sick Leave' || (leaveType === 'Others' && leaveSubtype === 'OTHER')) && ' *'}
+              <textarea id="input-leave-specific-details" required={leaveType === 'Sick Leave' || (leaveType === 'Others' && leaveSubtype === 'OTHER')} value={leaveDetails} onChange={event => setLeaveDetails(event.target.value)} rows={2} placeholder={leaveType === 'Vacation Leave' ? 'e.g. Cebu City or Japan' : leaveType === 'Sick Leave' ? 'Brief business-required illness information' : ''} className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" />
+            </label>}
+          </section>}
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="font-semibold text-slate-700">Start Date *<input id="input-filing-start-date" required type="date" value={startDate} onChange={event => setStartDate(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
             <label className="font-semibold text-slate-700">End Date *<input id="input-filing-end-date" required type="date" min={startDate || undefined} value={endDate} onChange={event => setEndDate(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
@@ -178,7 +214,7 @@ export const LeaveContinuity: React.FC = () => {
 
     {selectedRecord && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs"><div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
       <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><p className="font-mono text-xs font-bold text-blue-700">{selectedRecord.barcode || selectedRecord.trackingNumber || 'No barcode recorded'}</p><h2 className="mt-1 text-lg font-bold text-slate-900">{selectedRecord.employeeName}</h2></div><button onClick={() => setSelectedRecord(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button></header>
-      <div className="grid grid-cols-2 gap-4 p-5 text-xs"><div><p className="text-slate-400">Office</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.office || selectedRecord.department}</p></div><div><p className="text-slate-400">Leave Type</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.leaveType}</p></div><div><p className="text-slate-400">Inclusive Dates</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.startDate} to {selectedRecord.endDate}</p></div><div><p className="text-slate-400">Status</p><p className="mt-1 font-semibold text-slate-800">{statusLabel(selectedRecord.status)}</p></div><div><p className="text-slate-400">Encoded By</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdByName || 'Not recorded in legacy V2 record'}</p></div><div><p className="text-slate-400">Registered</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdAt || selectedRecord.filingDate}</p></div>{selectedRecord.remarks && <div className="col-span-2"><p className="text-slate-400">Remarks / Additional Details</p><p className="mt-1 whitespace-pre-wrap text-slate-800">{selectedRecord.remarks}</p></div>}</div>
+      <div className="grid grid-cols-2 gap-4 p-5 text-xs"><div><p className="text-slate-400">Office</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.office || selectedRecord.department}</p></div><div><p className="text-slate-400">Leave Type</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.leaveType}</p></div>{selectedRecord.leaveSubtype && <div><p className="text-slate-400">{detailLabels(selectedRecord.leaveType)[0] || 'Type Details'}</p><p className="mt-1 font-semibold text-slate-800">{subtypeLabels[selectedRecord.leaveSubtype] || selectedRecord.leaveSubtype}</p></div>}{selectedRecord.leaveDetails && <div><p className="text-slate-400">{detailLabels(selectedRecord.leaveType)[1] || 'Additional Details'}</p><p className="mt-1 whitespace-pre-wrap font-semibold text-slate-800">{selectedRecord.leaveDetails}</p></div>}<div><p className="text-slate-400">Inclusive Dates</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.startDate} to {selectedRecord.endDate}</p></div><div><p className="text-slate-400">Status</p><p className="mt-1 font-semibold text-slate-800">{statusLabel(selectedRecord.status)}</p></div><div><p className="text-slate-400">Encoded By</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdByName || 'Not recorded in legacy V2 record'}</p></div><div><p className="text-slate-400">Registered</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdAt || selectedRecord.filingDate}</p></div>{selectedRecord.remarks && <div className="col-span-2"><p className="text-slate-400">Remarks / Additional Details</p><p className="mt-1 whitespace-pre-wrap text-slate-800">{selectedRecord.remarks}</p></div>}</div>
     </div></div>}
   </div>;
 };
