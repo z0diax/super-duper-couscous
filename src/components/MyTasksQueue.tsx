@@ -225,9 +225,6 @@ export const MyTasksQueue: React.FC = () => {
               Role-authorized queues with phase accountability, automatic advancing, and return rules.
             </p>
           </div>
-          <div className="text-xs bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600">
-            Active Desk: <strong className="text-slate-800">{currentUser.name}</strong> ({currentUser.roleTitle})
-          </div>
         </div>
 
         {/* Queue Switcher Navigation Tabs */}
