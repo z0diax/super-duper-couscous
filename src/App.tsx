@@ -123,7 +123,7 @@ const MainLayout: React.FC = () => {
             <V1MigrationPanel />
           )}
 
-          {activeTab === 'audit' && (
+          {activeTab === 'audit' && (can('canAdmin') || can('canSupervise')) && (
             <AuditReportView />
           )}
 

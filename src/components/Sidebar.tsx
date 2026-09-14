@@ -35,6 +35,8 @@ interface NavItem {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegisterModal, onOpenPayrollModal }) => {
   const { activeTab, setActiveTab, documents, currentUser, payrollBatches, payrollItems, workGroups, can } = useApp();
+  const showConfiguration = can('canAdmin');
+  const showComplianceHistory = can('canAdmin') || can('canSupervise');
 
   const isAssignedDesk = (desk: { userId?: string; assignmentType?: string; roleId?: string; team?: string }) => {
     if (desk.userId) return desk.userId === currentUser.id;
@@ -65,29 +67,33 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
   }).length;
 
   const navItems: NavItem[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Core Operations' },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Operations' },
     { 
       id: 'queues', 
       label: 'My Tasks & Queues', 
       icon: Inbox, 
       badge: documentTaskCount + payrollTaskCount > 0 ? documentTaskCount + payrollTaskCount : undefined,
-      section: 'Core Operations'
+      section: 'Operations'
     },
     { 
       id: 'payroll', 
       label: 'Payroll Management', 
       icon: Layers, 
-      section: 'Core Operations' 
+      section: 'Operations' 
     },
-    { id: 'registry', label: 'Document Registry', icon: FileStack, section: 'Core Operations' },
-    { id: 'leave', label: 'Leave Continuity', icon: CalendarClock, section: 'Core Operations' },
+    { id: 'registry', label: 'Document Registry', icon: FileStack, section: 'Operations' },
+    { id: 'leave', label: 'Leave Continuity', icon: CalendarClock, section: 'Operations' },
 
-    { id: 'workflows', label: 'Workflow Engine', icon: GitMerge, section: 'Configuration' },
-    { id: 'catalogue', label: 'Classification Catalogue', icon: Tags, section: 'Configuration' },
-    { id: 'users', label: 'Users & Designations', icon: Users, section: 'Configuration' },
+    ...(showConfiguration ? [
+      { id: 'workflows' as const, label: 'Workflow Engine', icon: GitMerge, section: 'Configuration' },
+      { id: 'catalogue' as const, label: 'Classification Catalogue', icon: Tags, section: 'Configuration' },
+      { id: 'users' as const, label: 'Users & Designations', icon: Users, section: 'Configuration' },
+    ] : []),
 
-    { id: 'migration', label: 'V1 Historical Archive', icon: DatabaseBackup, section: 'Compliance & History' },
-    { id: 'audit', label: 'Audit Trail & Reports', icon: History, section: 'Compliance & History' },
+    ...(showComplianceHistory ? [
+      ...(showConfiguration ? [{ id: 'migration' as const, label: 'V1 Historical Archive', icon: DatabaseBackup, section: 'Compliance & History' }] : []),
+      { id: 'audit' as const, label: 'Audit Trail & Reports', icon: History, section: 'Compliance & History' },
+    ] : []),
   ];
 
   const handleNavClick = (tabId: NavItem['id']) => {
@@ -98,7 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
   };
 
   // Group items by section
-  const sections = ['Core Operations', 'Configuration', 'Compliance & History'];
+  const sections = ['Operations', 'Configuration', 'Compliance & History'];
 
   return (
     <>
