@@ -167,6 +167,55 @@ function validated_leave_application(array $s,array $d,string $excludeLeaveId=''
     $remarks=trim($d['remarks']??''); fail_unless(mb_strlen($remarks)<=2000,'Remarks must be at most 2000 characters.');
     return ['trackingNumber'=>$barcode,'barcode'=>$barcode,'employeeId'=>$applicant['id'],'employeeName'=>$applicant['name'],'office'=>$office,'department'=>$office,'position'=>$applicant['position'],'leaveType'=>$leaveType,'leaveSubtype'=>$leaveSubtype!==''?$leaveSubtype:null,'leaveDetails'=>$leaveDetails!==''?$leaveDetails:null,'startDate'=>$ranges[0]['startDate'],'endDate'=>$ranges[count($ranges)-1]['endDate'],'dateRanges'=>$ranges,'workingDaysNumber'=>$dateResult['total'],'totalLeaveDays'=>$dateResult['total'],'commutation'=>$commutation,'remarks'=>$remarks];
 }
+function leave_stage_capability(string $status): string {
+    return match ($status) {
+        'For_Computation', 'For_Processing' => 'canProcess',
+        'For_Signature' => 'canApprove',
+        default => '',
+    };
+}
+function require_leave_stage_authority(array $s,array $u,string $status): void {
+    $cap=leave_stage_capability($status);
+    fail_unless($cap!=='' && (has_cap($s,$u,$cap) || has_cap($s,$u,'canSupervise')),'Your account is not authorized for this Leave processing stage.',403);
+}
+function transition_leave_application(array &$s,array $u,string $action,array $args): array {
+    $id=(string)($args[0]??''); $i=index_of($s['leaveApplications'],$id); $leave=&$s['leaveApplications'][$i];
+    fail_unless(empty($leave['isLegacyV1']),'Historical Leave records cannot enter the V2 workflow.',409);
+    $before=(string)($leave['status']??''); $data=is_array($args[1]??null)?$args[1]:[]; $at=now();
+    $event=''; $summary=''; $remarks='';
+    if ($action==='completeLeaveComputation') {
+        fail_unless($before==='For_Computation','Only a Leave Application For Computation can complete computation.',409); require_leave_stage_authority($s,$u,$before);
+        validated_leave_application($s,$leave,$id);
+        $remarks=trim((string)($data['remarks']??'')); fail_unless(mb_strlen($remarks)<=2000,'Computation remarks must be at most 2000 characters.');
+        $leave['status']='For_Processing'; $leave['computationRemarks']=$remarks; $event='LEAVE_COMPUTATION_COMPLETED'; $summary='Leave computation completed';
+    } elseif ($action==='sendLeaveForSignature') {
+        fail_unless($before==='For_Processing','Only a Leave Application in Processing can be sent for signature.',409); require_leave_stage_authority($s,$u,$before);
+        $remarks=trim((string)($data['remarks']??'')); fail_unless(mb_strlen($remarks)<=2000,'Processing remarks must be at most 2000 characters.');
+        $leave['status']='For_Signature'; $event='LEAVE_SENT_FOR_SIGNATURE'; $summary='Leave sent for signature';
+    } elseif ($action==='releaseLeaveApplication') {
+        fail_unless(has_cap($s,$u,'canRelease') || has_cap($s,$u,'canSupervise'),'Leave release permission is required.',403);
+        fail_unless($before==='For_Signature','Only a Leave Application For Signature can be released.',409);
+        $remarks=trim((string)($data['remarks']??'')); fail_unless(mb_strlen($remarks)<=2000,'Release remarks must be at most 2000 characters.');
+        $leave['status']='Released'; $leave['releasedAt']=$at; $leave['releasedByUserId']=$u['id']; $leave['releasedByName']=$u['name']; $leave['releaseRemarks']=$remarks; $event='LEAVE_RELEASED'; $summary='Leave application released';
+    } elseif ($action==='placeLeaveOnHold') {
+        fail_unless(in_array($before,['For_Computation','For_Processing','For_Signature'],true),'Only an active Leave Application can be placed on hold.',409); require_leave_stage_authority($s,$u,$before);
+        $reason=required($data,'reason',500); $remarks=trim((string)($data['remarks']??'')); fail_unless(mb_strlen($remarks)<=2000,'Hold remarks must be at most 2000 characters.');
+        $leave['heldFromStatus']=$before; $leave['status']='On_Hold'; $leave['holdReason']=$reason; $leave['holdRemarks']=$remarks; $leave['heldAt']=$at; $leave['heldByUserId']=$u['id']; $leave['heldByName']=$u['name']; unset($leave['complianceReceivedAt'],$leave['complianceReceivedByUserId'],$leave['complianceReceivedByName'],$leave['complianceRemarks']);
+        $event='LEAVE_PLACED_ON_HOLD'; $summary='Leave placed on hold'; $remarks=$reason.($remarks!==''?' — '.$remarks:'');
+    } elseif ($action==='recordLeaveCompliance') {
+        fail_unless($before==='On_Hold','Compliance can only be recorded for a Leave Application On Hold.',409); $heldFrom=(string)($leave['heldFromStatus']??''); require_leave_stage_authority($s,$u,$heldFrom);
+        $remarks=required($data,'remarks',2000); $leave['complianceRemarks']=$remarks; $leave['complianceReceivedAt']=$at; $leave['complianceReceivedByUserId']=$u['id']; $leave['complianceReceivedByName']=$u['name']; $event='LEAVE_COMPLIANCE_RECEIVED'; $summary='Leave compliance received';
+    } elseif ($action==='resumeLeaveProcessing') {
+        fail_unless($before==='On_Hold','Only a Leave Application On Hold can resume processing.',409); fail_unless(!empty($leave['complianceReceivedAt']),'Record compliance received before resuming processing.',409);
+        $resume=(string)($leave['heldFromStatus']??''); fail_unless(in_array($resume,['For_Computation','For_Processing','For_Signature'],true),'The held processing stage is unavailable.',409); require_leave_stage_authority($s,$u,$resume);
+        $leave['status']=$resume; $event='LEAVE_PROCESSING_RESUMED'; $summary='Leave processing resumed'; $remarks='Returned to '.str_replace('_',' ',$resume).'.';
+    } elseif ($action==='cancelLeaveApplication') {
+        fail_unless(has_cap($s,$u,'canSupervise'),'Leave cancellation requires supervisor authority.',403); fail_unless(in_array($before,['For_Computation','For_Processing','For_Signature','On_Hold'],true),'Only an active Leave Application can be cancelled.',409);
+        $remarks=required($data,'reason',2000); $leave['status']='Cancelled'; $leave['cancelledAt']=$at; $leave['cancelledByUserId']=$u['id']; $leave['cancelledByName']=$u['name']; $leave['cancellationReason']=$remarks; $event='LEAVE_CANCELLED'; $summary='Leave application cancelled';
+    } else throw new ApiError('Unsupported Leave workflow action.',404);
+    $leave['updatedAt']=$at;
+    return ['record'=>$leave,'event'=>$event,'summary'=>$summary,'details'=>'Previous status: '.str_replace('_',' ',$before).'. New status: '.str_replace('_',' ',$leave['status']).'.'.($remarks!==''?' Remarks/reason: '.$remarks:'')];
+}
 function validated_workflow(array $s,array $d): array {
     $d['title']=required($d,'title',160);
     $types=$d['documentTypes']??[$d['documentType']??null];

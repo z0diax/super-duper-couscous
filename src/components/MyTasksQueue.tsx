@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export const MyTasksQueue: React.FC = () => {
-  const { documents, currentUser, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
+  const { documents, currentUser, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, leaveApplications, can, setActiveTab, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
 
   const [activeQueue, setActiveQueue] = useState<'my_tasks' | 'team_queue' | 'returned' | 'waiting' | 'ready_for_release' | 'completed'>('my_tasks');
   const [filterClass, setFilterClass] = useState<string>('all');
@@ -38,6 +38,11 @@ export const MyTasksQueue: React.FC = () => {
     return isAssignedDesk(desk);
   };
   const heldPayrollItems = payrollItems.filter(item => item.batchId !== 'SINGLE_ENTRY' && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking' && (['On_Hold', 'Ready_For_Recheck'].includes(item.status) || (item.status === 'Ready' && !!item.holdResolvedAt)) && isInitialCheckingAssignee(item.batchId));
+  const myLeaveTasks = leaveApplications.filter(leave => !leave.isLegacyV1 && (
+    ((leave.status === 'For_Computation' || leave.status === 'For_Processing') && (can('canProcess') || can('canSupervise'))) ||
+    ((leave.status === 'For_Signature') && (can('canApprove') || can('canRelease') || can('canSupervise'))) ||
+    (leave.status === 'On_Hold' && (((leave.heldFromStatus === 'For_Computation' || leave.heldFromStatus === 'For_Processing') && can('canProcess')) || (leave.heldFromStatus === 'For_Signature' && can('canApprove')) || can('canSupervise')))
+  ));
 
   // Active payroll batches relevant to user desk
   const myPayrollBatches = payrollBatches.filter(b => {
@@ -147,7 +152,7 @@ export const MyTasksQueue: React.FC = () => {
   }
 
   const queueTabs: QueueTabItem[] = [
-    { id: 'my_tasks', label: 'My Tasks', count: myTasks.length + myPayrollBatches.length, icon: Inbox },
+    { id: 'my_tasks', label: 'My Tasks', count: myTasks.length + myPayrollBatches.length + myLeaveTasks.length, icon: Inbox },
     { id: 'team_queue', label: 'Team Queue', count: teamTasks.length, icon: Users },
     { id: 'returned', label: 'Returned / Rework', count: returnedTasks.length, icon: RotateCcw, isAlert: returnedTasks.length > 0 },
     { id: 'waiting', label: 'Waiting / Tracked', count: waitingTasks.length, icon: Hourglass },
@@ -191,6 +196,13 @@ export const MyTasksQueue: React.FC = () => {
               <p className="text-xs text-blue-700 mt-0.5">Open the assigned task below to process its active phase.</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {myLeaveTasks.length > 0 && activeQueue === 'my_tasks' && (
+        <div className="flex flex-col items-start justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 p-4 shadow-2xs sm:flex-row sm:items-center">
+          <div><h2 className="text-sm font-bold text-violet-950">Leave Processing Required <span className="ml-1 rounded-full bg-violet-200 px-2 py-0.5 text-xs">{myLeaveTasks.length}</span></h2><p className="mt-1 text-xs text-violet-700">Leave Applications are waiting at a stage authorized for your role.</p></div>
+          <button onClick={() => setActiveTab('leave')} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white">Open Leave Records</button>
         </div>
       )}
 

@@ -13,7 +13,9 @@ const LEAVE_TYPES: LeaveType[] = [
 
 const statusLabel = (status: LeaveApplicationRecord['status']) => ({
   For_Computation: 'For Computation',
+  For_Processing: 'Processing',
   For_Signature: 'For Signature',
+  On_Hold: 'On Hold / For Compliance',
   Released: 'Released',
   Pending: 'Pending (Legacy V2)',
   Approved: 'Approved (Legacy V2)',
@@ -24,7 +26,9 @@ const statusLabel = (status: LeaveApplicationRecord['status']) => ({
 const statusStyle = (status: LeaveApplicationRecord['status']) => {
   if (status === 'Released' || status === 'Approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (status === 'For_Signature') return 'border-violet-200 bg-violet-50 text-violet-700';
-  if (status === 'Cancelled' || status === 'Disapproved') return 'border-rose-200 bg-rose-50 text-rose-700';
+  if (status === 'For_Processing') return 'border-blue-200 bg-blue-50 text-blue-700';
+  if (status === 'On_Hold') return 'border-orange-200 bg-orange-50 text-orange-700';
+  if (status === 'Cancelled' || status === 'Disapproved') return 'border-slate-200 bg-slate-100 text-slate-600';
   return 'border-amber-200 bg-amber-50 text-amber-700';
 };
 
@@ -66,12 +70,15 @@ const compactDates = (record: LeaveApplicationRecord) => {
 };
 
 export const LeaveContinuity: React.FC = () => {
-  const { leaveApplications, users, currentUser, fileLeaveApplication, updateLeaveApplication, can } = useApp();
+  const { leaveApplications, users, auditLogs, currentUser, fileLeaveApplication, updateLeaveApplication, completeLeaveComputation, sendLeaveForSignature, releaseLeaveApplication, placeLeaveOnHold, recordLeaveCompliance, resumeLeaveProcessing, cancelLeaveApplication, can } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<LeaveApplicationRecord | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<LeaveApplicationRecord | null>(null);
+  const [workflowAction, setWorkflowAction] = useState<'compute'|'signature'|'release'|'hold'|'compliance'|'resume'|'cancel'|null>(null);
+  const [actionRemarks, setActionRemarks] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [office, setOffice] = useState('');
@@ -86,11 +93,12 @@ export const LeaveContinuity: React.FC = () => {
   const activeRecords = useMemo(() => leaveApplications.filter(record => !record.isLegacyV1), [leaveApplications]);
   const filteredRecords = useMemo(() => activeRecords.filter(record => {
     if (filterType !== 'all' && record.leaveType !== filterType) return false;
+    if (filterStatus !== 'all' && record.status !== filterStatus) return false;
     const query = searchQuery.trim().toLowerCase();
     if (!query) return true;
     return [record.barcode, record.trackingNumber, record.employeeName, record.office, record.department, record.leaveType]
       .some(value => value?.toLowerCase().includes(query));
-  }), [activeRecords, filterType, searchQuery]);
+  }), [activeRecords, filterStatus, filterType, searchQuery]);
   const matchingEmployees = useMemo(() => {
     const query = employeeSearch.trim().toLowerCase();
     if (!query) return users.slice(0, 8);
@@ -98,6 +106,17 @@ export const LeaveContinuity: React.FC = () => {
   }, [employeeSearch, users]);
   const selectedEmployee = users.find(user => user.id === employeeId);
   const canRegister = can('canIntake') && (currentUser.role === 'admin' || currentUser.sidebarModules === undefined || currentUser.sidebarModules.includes('leave'));
+  const runWorkflowAction = async (event: React.FormEvent) => {
+    event.preventDefault(); if (!selectedRecord || !workflowAction) return;
+    const calls = {
+      compute: () => completeLeaveComputation(selectedRecord.id,{remarks:actionRemarks}), signature: () => sendLeaveForSignature(selectedRecord.id,{remarks:actionRemarks}),
+      release: () => releaseLeaveApplication(selectedRecord.id,{remarks:actionRemarks}), hold: () => placeLeaveOnHold(selectedRecord.id,{reason:actionRemarks}),
+      compliance: () => recordLeaveCompliance(selectedRecord.id,{remarks:actionRemarks}), resume: () => resumeLeaveProcessing(selectedRecord.id,{}),
+      cancel: () => cancelLeaveApplication(selectedRecord.id,{reason:actionRemarks}),
+    };
+    const saved = await calls[workflowAction]() as LeaveApplicationRecord | null;
+    if (saved) { setSelectedRecord(saved); setWorkflowAction(null); setActionRemarks(''); }
+  };
 
   const resetForm = () => {
     setEmployeeSearch(''); setEmployeeId(''); setOffice(''); setBarcode('');
@@ -133,7 +152,9 @@ export const LeaveContinuity: React.FC = () => {
   const summaries = [
     ['Total Leave Records', activeRecords.length, 'text-slate-900'],
     ['For Computation', activeRecords.filter(record => record.status === 'For_Computation').length, 'text-amber-700'],
+    ['Processing', activeRecords.filter(record => record.status === 'For_Processing').length, 'text-blue-700'],
     ['For Signature', activeRecords.filter(record => record.status === 'For_Signature').length, 'text-violet-700'],
+    ['On Hold', activeRecords.filter(record => record.status === 'On_Hold').length, 'text-orange-700'],
     ['Released', activeRecords.filter(record => record.status === 'Released').length, 'text-emerald-700'],
   ];
 
@@ -148,7 +169,7 @@ export const LeaveContinuity: React.FC = () => {
           <Plus className="h-4 w-4" /> Register Leave Application
         </button>}
       </div>
-      <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 lg:grid-cols-4">
+      <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 lg:grid-cols-6">
         {summaries.map(([label, count, color]) => <div key={String(label)} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
           <p className={`mt-1 text-2xl font-bold ${color}`}>{count}</p>
@@ -165,6 +186,7 @@ export const LeaveContinuity: React.FC = () => {
         <option value="all">All Leave Types</option>
         {LEAVE_TYPES.map(type => <option key={type}>{type}</option>)}
       </select>
+      <select id="leave-filter-status" value={filterStatus} onChange={event => setFilterStatus(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"><option value="all">All Statuses</option><option value="For_Computation">For Computation</option><option value="For_Processing">Processing</option><option value="For_Signature">For Signature</option><option value="On_Hold">On Hold</option><option value="Released">Released</option><option value="Cancelled">Cancelled</option></select>
     </section>
 
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
@@ -181,7 +203,7 @@ export const LeaveContinuity: React.FC = () => {
               <td className="px-4 py-3 font-medium text-slate-800">{record.leaveType}</td>
               <td className="px-4 py-3 text-xs text-slate-700">{compactDates(record)}<p className="text-[10px] text-slate-400">{formatDays(record.totalLeaveDays ?? record.workingDaysNumber)}</p></td>
               <td className="px-4 py-3"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusStyle(record.status)}`}>{statusLabel(record.status)}</span></td>
-              <td className="px-4 py-3 text-right"><div className="inline-flex items-center gap-1"><button onClick={() => setSelectedRecord(record)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><Eye className="h-3.5 w-3.5" /> View</button>{canRegister && record.status !== 'Released' && !!record.dateRanges?.length && <button aria-label={`Edit ${record.barcode || record.trackingNumber}`} onClick={() => openEdit(record)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Pencil className="h-3.5 w-3.5" /></button>}</div></td>
+              <td className="px-4 py-3 text-right"><div className="inline-flex items-center gap-1"><button aria-label="View" onClick={() => setSelectedRecord(record)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><Eye className="h-3.5 w-3.5" /> View & Process</button>{canRegister && record.status === 'For_Computation' && !!record.dateRanges?.length && <button aria-label={`Edit ${record.barcode || record.trackingNumber}`} onClick={() => openEdit(record)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Pencil className="h-3.5 w-3.5" /></button>}</div></td>
             </tr>)}
             {filteredRecords.length === 0 && <tr><td colSpan={7} className="px-6 py-14 text-center"><FileCheck2 className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 font-semibold text-slate-700">No Leave Applications found</p><p className="mt-1 text-xs text-slate-400">Registered V2 Leave Applications will appear here.</p></td></tr>}
           </tbody>
@@ -242,7 +264,11 @@ export const LeaveContinuity: React.FC = () => {
 
     {selectedRecord && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs"><div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
       <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><p className="font-mono text-xs font-bold text-blue-700">{selectedRecord.barcode || selectedRecord.trackingNumber || 'No barcode recorded'}</p><h2 className="mt-1 text-lg font-bold text-slate-900">{selectedRecord.employeeName}</h2></div><button onClick={() => setSelectedRecord(null)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X className="h-4 w-4" /></button></header>
-      <div className="grid grid-cols-2 gap-4 p-5 text-xs"><div><p className="text-slate-400">Office</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.office || selectedRecord.department}</p></div><div><p className="text-slate-400">Leave Type</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.leaveType}</p></div>{selectedRecord.leaveSubtype && <div><p className="text-slate-400">{detailLabels(selectedRecord.leaveType)[0] || 'Type Details'}</p><p className="mt-1 font-semibold text-slate-800">{subtypeLabels[selectedRecord.leaveSubtype] || selectedRecord.leaveSubtype}</p></div>}{selectedRecord.leaveDetails && <div><p className="text-slate-400">{detailLabels(selectedRecord.leaveType)[1] || 'Additional Details'}</p><p className="mt-1 whitespace-pre-wrap font-semibold text-slate-800">{selectedRecord.leaveDetails}</p></div>}<div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="mb-2 font-bold uppercase tracking-wide text-slate-500">Leave Dates</p>{selectedRecord.dateRanges?.length ? <div className="space-y-2">{[...selectedRecord.dateRanges].sort((a,b)=>a.startDate.localeCompare(b.startDate)).map((range,index)=><div key={range.id || index} className="flex items-center justify-between rounded-lg bg-white px-3 py-2"><div><p className="font-semibold text-slate-800">{range.startDate}{range.endDate!==range.startDate?` to ${range.endDate}`:''}</p><p className="text-[10px] text-slate-500">{dayTypeLabel(range.dayType)}</p></div><strong className="text-slate-700">{formatDays(rangeDays(range))}</strong></div>)}</div> : <div className="rounded-lg bg-white px-3 py-2"><p className="font-semibold text-slate-800">{selectedRecord.startDate} to {selectedRecord.endDate}</p><p className="text-[10px] text-slate-500">Legacy Date Range · preserved total</p></div>}<div className="mt-3 flex justify-between border-t border-slate-200 pt-2"><strong className="text-slate-600">Total Leave Days</strong><strong className="text-blue-700">{formatDays(selectedRecord.totalLeaveDays ?? selectedRecord.workingDaysNumber)}</strong></div></div><div><p className="text-slate-400">Status</p><p className="mt-1 font-semibold text-slate-800">{statusLabel(selectedRecord.status)}</p></div><div><p className="text-slate-400">Encoded By</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdByName || 'Not recorded in legacy V2 record'}</p></div><div><p className="text-slate-400">Registered</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdAt || selectedRecord.filingDate}</p></div>{selectedRecord.remarks && <div className="col-span-2"><p className="text-slate-400">Remarks / Additional Details</p><p className="mt-1 whitespace-pre-wrap text-slate-800">{selectedRecord.remarks}</p></div>}</div>
+      <div className="grid grid-cols-2 gap-4 p-5 text-xs"><div><p className="text-slate-400">Office</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.office || selectedRecord.department}</p></div><div><p className="text-slate-400">Leave Type</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.leaveType}</p></div>{selectedRecord.leaveSubtype && <div><p className="text-slate-400">{detailLabels(selectedRecord.leaveType)[0] || 'Type Details'}</p><p className="mt-1 font-semibold text-slate-800">{subtypeLabels[selectedRecord.leaveSubtype] || selectedRecord.leaveSubtype}</p></div>}{selectedRecord.leaveDetails && <div><p className="text-slate-400">{detailLabels(selectedRecord.leaveType)[1] || 'Additional Details'}</p><p className="mt-1 whitespace-pre-wrap font-semibold text-slate-800">{selectedRecord.leaveDetails}</p></div>}<div className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="mb-2 font-bold uppercase tracking-wide text-slate-500">Leave Dates</p>{selectedRecord.dateRanges?.length ? <div className="space-y-2">{[...selectedRecord.dateRanges].sort((a,b)=>a.startDate.localeCompare(b.startDate)).map((range,index)=><div key={range.id || index} className="flex items-center justify-between rounded-lg bg-white px-3 py-2"><div><p className="font-semibold text-slate-800">{range.startDate}{range.endDate!==range.startDate?` to ${range.endDate}`:''}</p><p className="text-[10px] text-slate-500">{dayTypeLabel(range.dayType)}</p></div><strong className="text-slate-700">{formatDays(rangeDays(range))}</strong></div>)}</div> : <div className="rounded-lg bg-white px-3 py-2"><p className="font-semibold text-slate-800">{selectedRecord.startDate} to {selectedRecord.endDate}</p><p className="text-[10px] text-slate-500">Legacy Date Range · preserved total</p></div>}<div className="mt-3 flex justify-between border-t border-slate-200 pt-2"><strong className="text-slate-600">Total Leave Days</strong><strong className="text-blue-700">{formatDays(selectedRecord.totalLeaveDays ?? selectedRecord.workingDaysNumber)}</strong></div></div><div><p className="text-slate-400">Status</p><p className="mt-1 font-semibold text-slate-800">{statusLabel(selectedRecord.status)}</p></div><div><p className="text-slate-400">Encoded By</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdByName || 'Not recorded in legacy V2 record'}</p></div><div><p className="text-slate-400">Registered</p><p className="mt-1 font-semibold text-slate-800">{selectedRecord.createdAt || selectedRecord.filingDate}</p></div>{selectedRecord.remarks && <div className="col-span-2"><p className="text-slate-400">Remarks / Additional Details</p><p className="mt-1 whitespace-pre-wrap text-slate-800">{selectedRecord.remarks}</p></div>}{selectedRecord.computationRemarks && <div className="col-span-2"><p className="text-slate-400">Computation Remarks</p><p className="mt-1 whitespace-pre-wrap">{selectedRecord.computationRemarks}</p></div>}{selectedRecord.status==='On_Hold' && <div className="col-span-2 rounded-lg border border-orange-200 bg-orange-50 p-3"><strong>Held from {statusLabel(selectedRecord.heldFromStatus!)}</strong><p>{selectedRecord.holdReason}</p>{selectedRecord.complianceReceivedAt&&<p className="mt-2 text-emerald-700">Compliance received: {selectedRecord.complianceRemarks}</p>}</div>}{selectedRecord.releasedAt&&<div className="col-span-2"><p className="text-slate-400">Released</p><p className="font-semibold">{selectedRecord.releasedByName} · {selectedRecord.releasedAt}</p><p>{selectedRecord.releaseRemarks}</p></div>}{selectedRecord.cancelledAt&&<div className="col-span-2"><p className="text-slate-400">Cancelled</p><p className="font-semibold">{selectedRecord.cancelledByName} · {selectedRecord.cancelledAt}</p><p>{selectedRecord.cancellationReason}</p></div>}
+        {!selectedRecord.isLegacyV1 && !['Released','Approved','Disapproved','Cancelled','Pending'].includes(selectedRecord.status) && <section className="col-span-2 rounded-xl border border-blue-100 bg-blue-50 p-3"><p className="font-bold uppercase tracking-wide text-blue-900">Available Actions</p><div className="mt-2 flex flex-wrap gap-2">{selectedRecord.status==='For_Computation'&&(can('canProcess')||can('canSupervise'))&&<button id="btn-complete-leave-computation" onClick={()=>setWorkflowAction('compute')} className="rounded-lg bg-blue-600 px-3 py-2 font-semibold text-white">Complete Computation</button>}{selectedRecord.status==='For_Processing'&&(can('canProcess')||can('canSupervise'))&&<button id="btn-send-leave-signature" onClick={()=>setWorkflowAction('signature')} className="rounded-lg bg-violet-600 px-3 py-2 font-semibold text-white">Send for Signature</button>}{selectedRecord.status==='For_Signature'&&(can('canRelease')||can('canSupervise'))&&<button id="btn-release-leave" onClick={()=>setWorkflowAction('release')} className="rounded-lg bg-emerald-600 px-3 py-2 font-semibold text-white">Release</button>}{['For_Computation','For_Processing','For_Signature'].includes(selectedRecord.status)&&((['For_Computation','For_Processing'].includes(selectedRecord.status)&&can('canProcess'))||(selectedRecord.status==='For_Signature'&&can('canApprove'))||can('canSupervise'))&&<button id="btn-hold-leave" onClick={()=>setWorkflowAction('hold')} className="rounded-lg border border-orange-300 bg-white px-3 py-2 font-semibold text-orange-700">Place On Hold</button>}{selectedRecord.status==='On_Hold'&&((['For_Computation','For_Processing'].includes(selectedRecord.heldFromStatus||'')&&can('canProcess'))||(selectedRecord.heldFromStatus==='For_Signature'&&can('canApprove'))||can('canSupervise'))&&(!selectedRecord.complianceReceivedAt?<button id="btn-record-leave-compliance" onClick={()=>setWorkflowAction('compliance')} className="rounded-lg bg-orange-600 px-3 py-2 font-semibold text-white">Record Compliance Received</button>:<button id="btn-resume-leave" onClick={()=>setWorkflowAction('resume')} className="rounded-lg bg-blue-600 px-3 py-2 font-semibold text-white">Resume Processing</button>)}{can('canSupervise')&&<button id="btn-cancel-leave" onClick={()=>setWorkflowAction('cancel')} className="rounded-lg border border-rose-300 bg-white px-3 py-2 font-semibold text-rose-700">Cancel Record</button>}</div></section>}
+        <section className="col-span-2 rounded-xl border border-slate-200 p-3"><p className="font-bold uppercase tracking-wide text-slate-500">Processing History</p><div className="mt-2 max-h-44 space-y-2 overflow-y-auto">{auditLogs.filter(event=>event.documentId===selectedRecord.id).sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).map(event=><div key={event.id} className="border-l-2 border-blue-200 pl-3"><p className="font-semibold">{event.summary}</p><p className="text-[10px] text-slate-500">{event.timestamp} · {event.actorName}</p>{event.details&&<p className="text-slate-600">{event.details}</p>}</div>)}</div></section>
+      </div>
+      {workflowAction&&<div className="fixed inset-0 z-20 flex items-center justify-center bg-slate-950/55 p-4"><form onSubmit={runWorkflowAction} className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl"><h3 className="font-bold">{{compute:'Complete Computation',signature:'Send for Signature',release:'Release Leave Application',hold:'Place On Hold',compliance:'Record Compliance Received',resume:'Resume Processing',cancel:'Cancel Leave Application'}[workflowAction]}</h3>{workflowAction!=='resume'&&<label className="mt-4 block font-semibold text-slate-700">{workflowAction==='hold'||workflowAction==='cancel'?'Reason *':workflowAction==='compliance'?'Compliance Remarks *':'Remarks (optional)'}<textarea autoFocus required={['hold','compliance','cancel'].includes(workflowAction)} value={actionRemarks} onChange={event=>setActionRemarks(event.target.value)} rows={4} className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal"/></label>}<div className="mt-4 flex justify-end gap-2"><button type="button" onClick={()=>{setWorkflowAction(null);setActionRemarks('');}} className="rounded-lg px-3 py-2 font-semibold text-slate-600">Back</button><button type="submit" className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white">Confirm Action</button></div></form></div>}
     </div></div>}
   </div>;
 };

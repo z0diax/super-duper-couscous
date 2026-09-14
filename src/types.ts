@@ -384,6 +384,13 @@ export interface AuditEvent {
     | 'LEAVE_APPLICATION_REGISTERED'
     | 'LEAVE_APPLICATION_UPDATED'
     | 'LEAVE_APPROVED'
+    | 'LEAVE_COMPUTATION_COMPLETED'
+    | 'LEAVE_SENT_FOR_SIGNATURE'
+    | 'LEAVE_PLACED_ON_HOLD'
+    | 'LEAVE_COMPLIANCE_RECEIVED'
+    | 'LEAVE_PROCESSING_RESUMED'
+    | 'LEAVE_RELEASED'
+    | 'LEAVE_CANCELLED'
     | 'USER_CREATED'
     | 'USER_UPDATED'
     | 'USER_DELETED'
@@ -508,12 +515,30 @@ export interface LeaveApplicationRecord {
   workingDaysNumber: number;
   totalLeaveDays?: number;
   commutation: 'Requested' | 'Not Requested';
-  status: 'For_Computation' | 'For_Signature' | 'Released' | 'Pending' | 'Approved' | 'Disapproved' | 'Cancelled';
+  status: 'For_Computation' | 'For_Processing' | 'For_Signature' | 'On_Hold' | 'Released' | 'Pending' | 'Approved' | 'Disapproved' | 'Cancelled';
   createdByUserId?: string;
   createdByName?: string;
   createdAt?: string;
   updatedAt?: string;
   releasedAt?: string | null;
+  releasedByUserId?: string;
+  releasedByName?: string;
+  releaseRemarks?: string;
+  computationRemarks?: string;
+  heldFromStatus?: 'For_Computation' | 'For_Processing' | 'For_Signature';
+  holdReason?: string;
+  holdRemarks?: string;
+  heldAt?: string;
+  heldByUserId?: string;
+  heldByName?: string;
+  complianceRemarks?: string;
+  complianceReceivedAt?: string;
+  complianceReceivedByUserId?: string;
+  complianceReceivedByName?: string;
+  cancelledAt?: string;
+  cancelledByUserId?: string;
+  cancelledByName?: string;
+  cancellationReason?: string;
   approvalDate?: string;
   approvedBy?: string;
   disapprovalReason?: string;

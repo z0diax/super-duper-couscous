@@ -103,9 +103,9 @@ Payroll Stage 3 processors receive their assigned items and the limited parent b
 
 The intended migration priorities are Users, Leave Applications, Historical Documents, and Document Attachments; Communications should also migrate. Historical V1 Documents are read-only reference records that preserve available metadata, history, and attachments. They are not assigned new live V2 workflow phases merely because they were imported.
 
-## Leave module status - PARTIAL
+## Leave module status
 
-Users can file leave applications and authorized approvers/supervisors can approve pending V2 applications. The visible leave-balance figures are prototype values, not a production leave-credit ledger or authoritative employee balance. Leave credit calculation, accrual, reconciliation, and a complete approval policy remain planned.
+Authorized HRMDO personnel register employee Leave Applications with structured leave details and one or more whole-day or half-day date ranges. The server calculates the total and controls the operational lifecycle: For Computation, Processing, For Signature, and Released. Stage-authorized personnel can place records on hold, record compliance, and resume at the held stage; supervisors can cancel active records without deleting their history. Released and cancelled records are read-only. A production leave-credit ledger remains outside the current scope.
 
 ## Existing XAMPP installation
 
