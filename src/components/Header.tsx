@@ -8,8 +8,6 @@ import {
   Bell, 
   ChevronDown,
   Menu,
-  Check,
-  ShieldCheck,
   Layers,
   LogOut
 } from 'lucide-react';
@@ -200,41 +198,39 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
                   className="fixed inset-0 z-40" 
                   onClick={() => setIsPersonaOpen(false)} 
                 />
-                <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 py-2 text-slate-900 animate-in fade-in-50 zoom-in-95 duration-100">
-                  <div className="px-3.5 py-2.5 border-b border-slate-100">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                        Signed-in account
-                      </span>
-                      <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded font-semibold border border-blue-200">
-                        Account
-                      </span>
+                <div className="absolute right-0 mt-2 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-2xl z-50 animate-in fade-in-50 zoom-in-95 duration-100">
+                  <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-3.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                      {currentUser.avatarInitials}
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Your permissions follow your authenticated account.
-                    </p>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-slate-900">{currentUser.name}</p>
+                      <p className="truncate text-[11px] text-slate-500">{currentUser.email}</p>
+                      <p className="mt-0.5 truncate text-[10px] font-medium text-blue-700">{currentUser.roleTitle}</p>
+                    </div>
                   </div>
 
-                  <button
-                    id="btn-sign-out"
-                    onClick={() => { void logout(); setIsPersonaOpen(false); }}
-                    className="mx-1.5 mb-1 flex w-[calc(100%-0.75rem)] items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-rose-700 hover:bg-rose-50"
-                  >
-                    <LogOut className="h-3.5 w-3.5" />
-                    Sign out
-                  </button>
-
                   <PasswordForm />
-                  <div className="p-2 border-t border-slate-100 bg-slate-50">
+                  {currentUser.role === 'admin' && <div className="border-t border-slate-100 px-2 py-1.5">
                     <button
                       type="button"
                       onClick={() => {
                         setActiveTab('users');
                         setIsPersonaOpen(false);
                       }}
-                      className="w-full text-center text-xs font-semibold text-blue-600 hover:text-blue-800 py-1.5 rounded-lg hover:bg-blue-50 transition-colors cursor-pointer"
+                      className="w-full rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-50 cursor-pointer"
                     >
-                      Manage Users & Designations &rarr;
+                      Manage users and designations
+                    </button>
+                  </div>}
+                  <div className="border-t border-slate-100 px-2 py-1.5">
+                    <button
+                      id="btn-sign-out"
+                      onClick={() => { void logout(); setIsPersonaOpen(false); }}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-50"
+                    >
+                      <LogOut className="h-3.5 w-3.5" />
+                      Sign out
                     </button>
                   </div>
                 </div>
