@@ -25,6 +25,7 @@ export const MyTasksQueue: React.FC = () => {
   const [filterClass, setFilterClass] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [complianceRemarks, setComplianceRemarks] = useState<Record<string, string>>({});
+  const displayStatus = (status: DocumentRecord['status']) => status === 'In_Progress' ? 'Processing' : status.replace(/_/g, ' ');
 
   const isAssignedDesk = (desk: { userId?: string; assignmentType?: string; roleId?: string; team?: string }) => {
     if (desk.userId) return desk.userId === currentUser.id;
@@ -387,7 +388,8 @@ export const MyTasksQueue: React.FC = () => {
                   <th className="py-3 px-4">Subject & Details</th>
                   <th className="py-3 px-4">Classification</th>
                   <th className="py-3 px-4">Current Phase & Assignee</th>
-                  <th className="py-3 px-4">Priority / Status</th>
+                  <th className="py-3 px-4">Priority</th>
+                  <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -442,16 +444,14 @@ export const MyTasksQueue: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Priority & Status */}
+                      {/* Priority */}
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="flex flex-col gap-1 items-start">
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getPriorityBadge(doc.priority)}`}>
-                            {doc.priority.toUpperCase()}
-                          </span>
-                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${getStatusBadge(doc.status)}`}>
-                            {doc.status.replace(/_/g, ' ')}
-                          </span>
-                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getPriorityBadge(doc.priority)}`}>{doc.priority.toUpperCase()}</span>
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded border ${getStatusBadge(doc.status)}`}>{displayStatus(doc.status)}</span>
                       </td>
 
                       {/* Action Button */}
