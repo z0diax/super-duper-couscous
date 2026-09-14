@@ -5,7 +5,7 @@ import path from 'node:path';
 import { startFixture, Client, testPassword } from './support.mjs';
 let fixture, admin, employee, receiver, processor, approver, releaser, workflow, payrollWorkflow, doc, batch;
 const userData = (role) => ({name:`Test ${role}`,email:`${role}@example.test`,password:testPassword,role,roleTitle:role,office:'HRMDO',division:'Operations',position:'Officer'});
-const step = (n,role,action,extra={}) => ({stepNumber:n,name:`Step ${n}`,description:'Test routing',assigneeType:'Role',assigneeRole:role,assigneeName:role,slaHours:24,requiredAction:action,allowReturn:n>1,requiresAttachment:false,...extra});
+const step = (n,role,action,extra={}) => ({stepNumber:n,name:`Step ${n}`,description:'Test routing',assigneeType:'Role',assigneeRole:role,assigneeName:role,slaHours:24,requiredAction:action,allowHold:true,allowReturn:n>1,requiresAttachment:false,...extra});
 const documentData = (barcode) => ({title:'Integration document',subject:'Test subject',sourceType:'Internal',sourceOffice:'HRMDO',senderName:'Test Sender',classification:'Communication',documentType:'Office Order',priority:'Routine',description:'Test',barcode,files:[]});
 before(async()=>{ fixture=await startFixture(); admin=await new Client(fixture.base).login(); });
 after(async()=>{ await fixture?.stop(); });

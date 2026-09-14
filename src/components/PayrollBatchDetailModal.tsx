@@ -116,7 +116,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
           : false
   );
   const canSubmitCompliance = batch.encodedBy.userId === currentUser.id || can('canAdmin');
-  const phaseAllowsHold = (phaseNumber: number) => batch.workflowStages?.find(stage => stage.stageNumber === phaseNumber)?.allowHold !== false;
+  const phaseAllowsHold = (phaseNumber: number) => batch.workflowStages?.find(stage => stage.stageNumber === phaseNumber)?.allowHold === true;
 
   // Count items by classification
   const jowCount = items.filter(i => (i.employmentClassification === 'JOW/COS' || i.employmentClassification === 'Job Order (JOW)') && i.status !== 'On_Hold').length;

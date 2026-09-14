@@ -146,6 +146,7 @@ export const WorkflowManager: React.FC = () => {
       assigneeName: 'Receiving & Docketing Officer',
       slaHours: 24,
       requiredAction: 'Receive',
+      allowHold: false,
       allowReturn: false,
       requiresAttachment: true,
     },
@@ -158,6 +159,7 @@ export const WorkflowManager: React.FC = () => {
       assigneeName: 'HRMDO Director / Approving Authority',
       slaHours: 48,
       requiredAction: 'Approve & Sign',
+      allowHold: false,
       allowReturn: true,
       requiresAttachment: false,
     },
@@ -286,6 +288,7 @@ export const WorkflowManager: React.FC = () => {
       assigneeName: fallbackRole.name,
       slaHours: 24,
       requiredAction: 'Verify & Process',
+      allowHold: false,
       allowReturn: true,
       requiresAttachment: false,
     };
@@ -400,6 +403,7 @@ export const WorkflowManager: React.FC = () => {
       assigneeName: fallbackRole.name,
       slaHours: 24,
       requiredAction: 'Verify & Process',
+      allowHold: false,
       allowReturn: true,
       requiresAttachment: false,
     };
@@ -1114,7 +1118,7 @@ export const WorkflowManager: React.FC = () => {
                         </div>
 
                         <div className={`${stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''} sm:col-span-2 flex flex-wrap items-center gap-4 pt-1`}>
-                          <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" checked={step.allowHold ?? true} onChange={e => handleEditStepChange(idx, 'allowHold', e.target.checked)} className="w-3.5 h-3.5 text-amber-600 rounded cursor-pointer" /><span>Allow Hold at this Phase</span></label>
+                          <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" checked={step.allowHold ?? false} onChange={e => handleEditStepChange(idx, 'allowHold', e.target.checked)} className="w-3.5 h-3.5 text-amber-600 rounded cursor-pointer" /><span>Allow Hold at this Phase</span></label>
                           <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                             <input
                               type="checkbox"
@@ -1489,7 +1493,7 @@ export const WorkflowManager: React.FC = () => {
                         </div>
 
                         <div className={`${stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''} sm:col-span-2 flex flex-wrap items-center gap-4 pt-1`}>
-                          <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" checked={step.allowHold ?? true} onChange={e => handleCreateStepChange(idx, 'allowHold', e.target.checked)} className="w-3.5 h-3.5 text-amber-600 rounded cursor-pointer" /><span>Allow Hold at this Phase</span></label>
+                          <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" checked={step.allowHold ?? false} onChange={e => handleCreateStepChange(idx, 'allowHold', e.target.checked)} className="w-3.5 h-3.5 text-amber-600 rounded cursor-pointer" /><span>Allow Hold at this Phase</span></label>
                           <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                             <input
                               type="checkbox"

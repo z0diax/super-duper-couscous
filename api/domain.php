@@ -177,7 +177,7 @@ function validated_workflow(array $s,array $d): array {
             fail_unless(count(array_filter($s['users'],fn($u)=>in_array($team,[$u['division'],$u['office']],true)))>0,'A team must match an existing user division or office.');
             $step['assigneeName']=$team;
         }
-        $step['allowReturn']=(bool)($step['allowReturn']??false); $step['allowHold']=(bool)($step['allowHold']??true); $step['requiresAttachment']=(bool)($step['requiresAttachment']??false);
+        $step['allowReturn']=(bool)($step['allowReturn']??false); $step['allowHold']=(bool)($step['allowHold']??false); $step['requiresAttachment']=(bool)($step['requiresAttachment']??false);
     } unset($step);
     $d['isActive']=(bool)($d['isActive']??false); return $d;
 }
@@ -222,7 +222,7 @@ function register_document(PDO $pdo,array &$s,array $u,array $d): array {
     foreach ($wf['steps'] as $i=>$st) {
         $stageType=$st['stageType']??(($st['requiredAction']??'')==='Release & Archive'?'FINAL_RELEASE':'INTERNAL_PROCESSING');
         $isExternal=$stageType==='EXTERNAL_HANDOFF_REVIEW';
-        $instance=['stepNumber'=>$i+1,'name'=>$st['name'],'stageType'=>$stageType,'assignedTo'=>$isExternal?['type'=>'System','displayName'=>'System / awaiting HRMDO handoff']:['type'=>$st['assigneeType'],'role'=>$st['assigneeRole']??null,'team'=>$st['assigneeTeam']??null,'userId'=>$st['assigneeType']==='Person'?($st['assigneeUserId']??null):null,'displayName'=>$st['assigneeName']], 'requiredAction'=>$st['requiredAction'],'allowReturn'=>$st['allowReturn'],'allowHold'=>$st['allowHold']??true,'requiresAttachment'=>$st['requiresAttachment'],'status'=>$i===0?'In_Progress':'Pending','slaHours'=>$st['slaHours'],'startedAt'=>$i===0?$registeredAt:null,'isCurrent'=>$i===0];
+        $instance=['stepNumber'=>$i+1,'name'=>$st['name'],'stageType'=>$stageType,'assignedTo'=>$isExternal?['type'=>'System','displayName'=>'System / awaiting HRMDO handoff']:['type'=>$st['assigneeType'],'role'=>$st['assigneeRole']??null,'team'=>$st['assigneeTeam']??null,'userId'=>$st['assigneeType']==='Person'?($st['assigneeUserId']??null):null,'displayName'=>$st['assigneeName']], 'requiredAction'=>$st['requiredAction'],'allowReturn'=>$st['allowReturn'],'allowHold'=>$st['allowHold']??false,'requiresAttachment'=>$st['requiresAttachment'],'status'=>$i===0?'In_Progress':'Pending','slaHours'=>$st['slaHours'],'startedAt'=>$i===0?$registeredAt:null,'isCurrent'=>$i===0];
         if ($isExternal) {
             $instance=array_merge($instance,['externalPurpose'=>$st['externalPurpose'],'externalDestinationMode'=>$st['externalDestinationMode'],'externalDestinationOffice'=>$st['externalDestinationOffice']??null,'returnReceiver'=>['type'=>$st['returnReceiverType'],'role'=>$st['returnReceiverRole']??null,'team'=>$st['returnReceiverTeam']??null,'userId'=>$st['returnReceiverType']==='Person'?($st['returnReceiverUserId']??null):null,'displayName'=>$st['returnReceiverName']],'expectedTurnaroundHours'=>$st['expectedTurnaroundHours']??null,'requiresReturnedAttachment'=>(bool)($st['requiresReturnedAttachment']??false),'requiresExternalResult'=>(bool)($st['requiresExternalResult']??false),'externalStatus'=>$i===0?'PENDING_HANDOFF':null]);
             if ($i===0) $instance['handoffOwner']=['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']];

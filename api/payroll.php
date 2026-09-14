@@ -129,9 +129,9 @@ function payroll_batch_stage_history(array $s,array $u,array $workflow,array $in
     $releaseDesk=$releaseStep ? payroll_desk_from_workflow_step($s,$releaseStep,'release') : ['stage'=>'release','assignmentType'=>'Role','userName'=>'Releasing Officer','roleTitle'=>'Releasing Officer'];
     return [
         ['stageNumber'=>1,'name'=>$workflow['steps'][0]['name'],'status'=>'Completed','assignedTo'=>payroll_desk_from_workflow_step($s,$workflow['steps'][0],'receiving'),'completedBy'=>['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']],'completedAt'=>$now],
-        ['stageNumber'=>2,'name'=>$workflow['steps'][1]['name'],'status'=>'In_Progress','assignedTo'=>$initialDesk,'allowHold'=>$workflow['steps'][1]['allowHold']??true],
-        ['stageNumber'=>3,'name'=>$workflow['steps'][2]['name']??'Parallel Groups','status'=>'Pending','assignedTo'=>['stage'=>'verification_signing','assignmentType'=>'Dynamic','userName'=>'Dynamic routing by employment classification','roleTitle'=>'Payroll processors'],'dynamic'=>true,'allowHold'=>$workflow['steps'][2]['allowHold']??true],
-        ['stageNumber'=>4,'name'=>$releaseStep['name']??'Release','status'=>'Pending','assignedTo'=>$releaseDesk,'allowHold'=>$releaseStep['allowHold']??true],
+        ['stageNumber'=>2,'name'=>$workflow['steps'][1]['name'],'status'=>'In_Progress','assignedTo'=>$initialDesk,'allowHold'=>$workflow['steps'][1]['allowHold']??false],
+        ['stageNumber'=>3,'name'=>$workflow['steps'][2]['name']??'Parallel Groups','status'=>'Pending','assignedTo'=>['stage'=>'verification_signing','assignmentType'=>'Dynamic','userName'=>'Dynamic routing by employment classification','roleTitle'=>'Payroll processors'],'dynamic'=>true,'allowHold'=>$workflow['steps'][2]['allowHold']??false],
+        ['stageNumber'=>4,'name'=>$releaseStep['name']??'Release','status'=>'Pending','assignedTo'=>$releaseDesk,'allowHold'=>$releaseStep['allowHold']??false],
     ];
 }
 function editable_payroll_batch(array $s,array $u,array $batch): void {
