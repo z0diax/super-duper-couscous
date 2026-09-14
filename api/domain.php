@@ -160,13 +160,17 @@ function validated_leave_application(array $s,array $d,string $excludeLeaveId=''
     elseif ($leaveType==='Study Leave') $leaveSubtype=choice($leaveSubtype,['MASTERS_COMPLETION','BOARD_BAR_REVIEW'],'study leave purpose');
     elseif ($leaveType==='Others') { $leaveSubtype=choice($leaveSubtype,['MONETIZATION','TERMINAL_LEAVE','OTHER'],'other leave purpose'); if ($leaveSubtype==='OTHER') fail_unless($leaveDetails!=='','Specify the other Leave purpose.'); }
     else fail_unless($leaveSubtype==='','This Leave Type does not accept a subtype.');
-    $employeeId=required($d,'employeeId',64); $applicant=null;
-    foreach ($s['users'] as $candidate) if ($candidate['id']===$employeeId) { $applicant=$candidate; break; }
-    fail_unless((bool)$applicant,'Select an employee from the personnel directory.',404);
-    $office=required($d,'office',190); $barcode=required($d,'barcode',190); assert_barcode($s,$barcode,[],$excludeLeaveId);
+    fail_unless(!isset($d['employeeId']) || is_string($d['employeeId']),'Invalid employee reference.');
+    $employeeId=trim((string)($d['employeeId']??'')); fail_unless(mb_strlen($employeeId)<=64,'Employee reference must be at most 64 characters.'); $applicant=null;
+    foreach ($s['users'] as $candidate) if ($employeeId!=='' && $candidate['id']===$employeeId) { $applicant=$candidate; break; }
+    fail_unless(!isset($d['employeeName']) || is_string($d['employeeName']),'Invalid employee or applicant name.');
+    $employeeName=trim((string)($d['employeeName']??($applicant['name']??''))); fail_unless($employeeName!=='' && mb_strlen($employeeName)<=190,'Enter an employee or applicant name with at most 190 characters.');
+    $office=required($d,'office',190); fail_unless(!isset($d['barcode']) || is_string($d['barcode']),'Invalid barcode or tracking number.');
+    $barcode=trim((string)($d['barcode']??'')); $barcode=$barcode==='' || strtoupper($barcode)==='N/A'?'N/A':$barcode;
+    fail_unless(mb_strlen($barcode)<=190,'Barcode or tracking number must be at most 190 characters.'); if ($barcode!=='N/A') assert_barcode($s,$barcode,[],$excludeLeaveId);
     fail_unless(!isset($d['remarks']) || is_string($d['remarks']),'Invalid remarks.');
     $remarks=trim($d['remarks']??''); fail_unless(mb_strlen($remarks)<=2000,'Remarks must be at most 2000 characters.');
-    return ['trackingNumber'=>$barcode,'barcode'=>$barcode,'employeeId'=>$applicant['id'],'employeeName'=>$applicant['name'],'office'=>$office,'department'=>$office,'position'=>$applicant['position'],'leaveType'=>$leaveType,'leaveSubtype'=>$leaveSubtype!==''?$leaveSubtype:null,'leaveDetails'=>$leaveDetails!==''?$leaveDetails:null,'startDate'=>$ranges[0]['startDate'],'endDate'=>$ranges[count($ranges)-1]['endDate'],'dateRanges'=>$ranges,'workingDaysNumber'=>$dateResult['total'],'totalLeaveDays'=>$dateResult['total'],'commutation'=>$commutation,'remarks'=>$remarks];
+    return ['trackingNumber'=>$barcode,'barcode'=>$barcode,'employeeId'=>$applicant['id']??'','employeeName'=>$employeeName,'office'=>$office,'department'=>$office,'position'=>$applicant['position']??'Not recorded','leaveType'=>$leaveType,'leaveSubtype'=>$leaveSubtype!==''?$leaveSubtype:null,'leaveDetails'=>$leaveDetails!==''?$leaveDetails:null,'startDate'=>$ranges[0]['startDate'],'endDate'=>$ranges[count($ranges)-1]['endDate'],'dateRanges'=>$ranges,'workingDaysNumber'=>$dateResult['total'],'totalLeaveDays'=>$dateResult['total'],'commutation'=>$commutation,'remarks'=>$remarks];
 }
 function leave_stage_capability(string $status): string {
     return match ($status) {

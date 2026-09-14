@@ -344,6 +344,10 @@ test('HRMDO leave registry separates applicant and encoder, validates barcodes, 
   assert.equal(leave.office,'City Engineering Office'); assert.equal(leave.barcode,'LEAVE-TEST-0001'); assert.equal(leave.trackingNumber,'LEAVE-TEST-0001'); assert.equal(leave.status,'For_Computation');
   assert.equal(leave.leaveSubtype,'ABROAD'); assert.equal(leave.leaveDetails,'Japan');
   assert.equal(leave.dateRanges.length,3); assert.equal(leave.totalLeaveDays,3.5); assert.equal(leave.workingDaysNumber,3.5);
+  const manualApplicant=(await receiver.action('fileLeaveApplication',[{...data,employeeId:'',employeeName:'Maria Dela Cruz',barcode:'',office:"CEO - City Engineer's Office"}])).result;
+  assert.equal(manualApplicant.employeeId,''); assert.equal(manualApplicant.employeeName,'Maria Dela Cruz'); assert.equal(manualApplicant.barcode,'N/A'); assert.equal(manualApplicant.trackingNumber,'N/A'); assert.equal(manualApplicant.commutation,'Not Requested');
+  const secondUntracked=(await receiver.action('fileLeaveApplication',[{...data,employeeId:'',employeeName:'Jose Dela Cruz',barcode:'N/A',office:"CEO - City Engineer's Office"}])).result;
+  assert.equal(secondUntracked.barcode,'N/A');
   const am=(await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-AM',dateRanges:[{startDate:'2026-09-24',endDate:'2026-09-24',dayType:'AM_HALF_DAY'}]}])).result; assert.equal(am.totalLeaveDays,0.5);
   const pm=(await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-PM',dateRanges:[{startDate:'2026-09-25',endDate:'2026-09-25',dayType:'PM_HALF_DAY'}]}])).result; assert.equal(pm.totalLeaveDays,0.5);
   const updated=(await receiver.action('updateLeaveApplication',[{...leave,dateRanges:[leave.dateRanges[0],{startDate:'2026-09-22',endDate:'2026-09-22',dayType:'PM_HALF_DAY'}],calculatedLeaveDays:99}])).result;

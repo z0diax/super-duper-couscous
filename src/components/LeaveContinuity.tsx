@@ -1,8 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { LeaveApplicationRecord, LeaveDateRange, LeaveType } from '../types';
 import { CalendarClock, Eye, FileCheck2, Filter, Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { queryLeaveRegistry } from '../services/leaveApi';
+import { OFFICE_OPTIONS } from '../data/offices';
+import { LeaveDateRangePicker } from './LeaveDateRangePicker';
 
 const LEAVE_TYPES: LeaveType[] = [
   'COC', 'Vacation Leave', 'Mandatory / Forced Leave', 'Sick Leave', 'Wellness Leave',
@@ -72,7 +74,7 @@ const compactDates = (record: LeaveApplicationRecord) => {
 };
 
 export const LeaveContinuity: React.FC = () => {
-  const { users, auditLogs, currentUser, fileLeaveApplication, updateLeaveApplication, completeLeaveComputation, sendLeaveForSignature, releaseLeaveApplication, placeLeaveOnHold, recordLeaveCompliance, resumeLeaveProcessing, cancelLeaveApplication, can } = useApp();
+  const { auditLogs, currentUser, fileLeaveApplication, updateLeaveApplication, completeLeaveComputation, sendLeaveForSignature, releaseLeaveApplication, placeLeaveOnHold, recordLeaveCompliance, resumeLeaveProcessing, cancelLeaveApplication, can } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -86,26 +88,18 @@ export const LeaveContinuity: React.FC = () => {
   const [selectedRecord, setSelectedRecord] = useState<LeaveApplicationRecord | null>(null);
   const [workflowAction, setWorkflowAction] = useState<'compute'|'signature'|'release'|'hold'|'compliance'|'resume'|'cancel'|null>(null);
   const [actionRemarks, setActionRemarks] = useState('');
-  const [employeeSearch, setEmployeeSearch] = useState('');
-  const [employeeId, setEmployeeId] = useState('');
+  const [employeeName, setEmployeeName] = useState('');
   const [office, setOffice] = useState('');
-  const [barcode, setBarcode] = useState('');
+  const [barcode, setBarcode] = useState('N/A');
   const [leaveType, setLeaveType] = useState<LeaveType>('Vacation Leave');
   const [leaveSubtype, setLeaveSubtype] = useState('');
   const [leaveDetails, setLeaveDetails] = useState('');
   const [dateRanges, setDateRanges] = useState<DateRangeDraft[]>([emptyDateRange()]);
-  const [commutation, setCommutation] = useState<'Requested' | 'Not Requested'>('Not Requested');
   const [remarks, setRemarks] = useState('');
 
   const canViewLeave = currentUser.role === 'admin' || currentUser.sidebarModules === undefined || currentUser.sidebarModules.includes('leave');
   const loadRegistry=useCallback(async()=>{ setIsQuerying(true); setQueryError(''); try { const result=await queryLeaveRegistry({q:searchQuery,status:filterStatus==='all'?'':filterStatus,leaveType:filterType==='all'?'':filterType,office:filterOffice,filedFrom,filedTo,leaveDate,page,pageSize,sort}); setRecords(result.items); setSummary(result.summary); setPagination(result.pagination); setOffices(result.offices); if(result.pagination.page!==page)setPage(result.pagination.page); } catch(error){setQueryError(error instanceof Error?error.message:'Leave records could not be loaded.');} finally {setIsQuerying(false);}},[filedFrom,filedTo,filterOffice,filterStatus,filterType,leaveDate,page,pageSize,searchQuery,sort]);
   useEffect(()=>{if(!canViewLeave)return;const timer=setTimeout(()=>void loadRegistry(),300);return()=>clearTimeout(timer);},[canViewLeave,loadRegistry]);
-  const matchingEmployees = useMemo(() => {
-    const query = employeeSearch.trim().toLowerCase();
-    if (!query) return users.slice(0, 8);
-    return users.filter(user => [user.name, user.office, user.division, user.position].some(value => value.toLowerCase().includes(query))).slice(0, 8);
-  }, [employeeSearch, users]);
-  const selectedEmployee = users.find(user => user.id === employeeId);
   const canRegister = can('canIntake') && canViewLeave;
   const runWorkflowAction = async (event: React.FormEvent) => {
     event.preventDefault(); if (!selectedRecord || !workflowAction) return;
@@ -120,33 +114,28 @@ export const LeaveContinuity: React.FC = () => {
   };
 
   const resetForm = () => {
-    setEmployeeSearch(''); setEmployeeId(''); setOffice(''); setBarcode('');
+    setEmployeeName(''); setOffice(''); setBarcode('N/A');
     setLeaveType('Vacation Leave'); setLeaveSubtype(''); setLeaveDetails(''); setDateRanges([emptyDateRange()]);
-    setCommutation('Not Requested'); setRemarks(''); setEditingRecord(null);
-  };
-  const selectEmployee = (id: string) => {
-    const employee = users.find(user => user.id === id);
-    if (!employee) return;
-    setEmployeeId(employee.id); setEmployeeSearch(employee.name); setOffice(employee.office || employee.division);
+    setRemarks(''); setEditingRecord(null);
   };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!employeeId || !office.trim() || !barcode.trim() || dateRanges.some(range => !range.startDate || !range.endDate)) return;
+    if (!employeeName.trim() || !office.trim() || dateRanges.some(range => !range.startDate || !range.endDate)) return;
     const payload = {
       ...(editingRecord ? { id: editingRecord.id } : {}),
-      employeeId, office: office.trim(), barcode: barcode.trim(), leaveType,
+      employeeId: editingRecord?.employeeId || '', employeeName: employeeName.trim(), office: office.trim(), barcode: barcode.trim() || 'N/A', leaveType,
       leaveSubtype: leaveSubtype || null, leaveDetails: leaveDetails.trim() || null, dateRanges,
-      calculatedLeaveDays: calculatedDays(dateRanges), commutation, remarks: remarks.trim(),
+      calculatedLeaveDays: calculatedDays(dateRanges), remarks: remarks.trim(),
     };
     const saved = editingRecord ? await updateLeaveApplication(payload) : await fileLeaveApplication(payload);
     if (!saved) return;
     setIsModalOpen(false); resetForm(); setPage(1); await loadRegistry();
   };
   const openEdit = (record: LeaveApplicationRecord) => {
-    setEditingRecord(record); setEmployeeId(record.employeeId); setEmployeeSearch(record.employeeName);
-    setOffice(record.office || record.department || ''); setBarcode(record.barcode || record.trackingNumber || '');
+    setEditingRecord(record); setEmployeeName(record.employeeName);
+    setOffice(record.office || record.department || ''); setBarcode(record.barcode || record.trackingNumber || 'N/A');
     setLeaveType(record.leaveType); setLeaveSubtype(record.leaveSubtype || ''); setLeaveDetails(record.leaveDetails || '');
-    setDateRanges(rangesForRecord(record)); setCommutation(record.commutation); setRemarks(record.remarks || ''); setIsModalOpen(true);
+    setDateRanges(rangesForRecord(record)); setRemarks(record.remarks || ''); setIsModalOpen(true);
   };
   const changeRange = (index: number, field: keyof DateRangeDraft, value: string) => setDateRanges(previous => previous.map((range,i) => i===index ? { ...range, [field]: value, ...(field==='dayType' && value!=='WHOLE_DAY' ? { endDate: range.startDate } : {}), ...(field==='startDate' && range.dayType!=='WHOLE_DAY' ? { endDate: value } : {}) } as DateRangeDraft : range));
 
@@ -221,17 +210,12 @@ export const LeaveContinuity: React.FC = () => {
           <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-white"><X className="h-4 w-4" /></button>
         </header>
         <form onSubmit={submit} className="space-y-4 p-5 text-xs">
-          <div className="relative"><label className="mb-1 block font-semibold text-slate-700">Employee / Applicant *</label>
-            <input required value={employeeSearch} onChange={event => { setEmployeeSearch(event.target.value); setEmployeeId(''); setOffice(''); }} placeholder="Search employee name, office, or position..." className="w-full rounded-lg border border-slate-300 p-2.5 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
-            {!employeeId && employeeSearch.trim() && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
-              {matchingEmployees.map(employee => <button type="button" key={employee.id} onClick={() => selectEmployee(employee.id)} className="block w-full rounded-md px-3 py-2 text-left hover:bg-blue-50"><strong className="block text-slate-800">{employee.name}</strong><span className="text-[11px] text-slate-500">{employee.position} · {employee.office}</span></button>)}
-              {matchingEmployees.length === 0 && <p className="px-3 py-3 text-slate-500">No personnel directory match.</p>}
-            </div>}
-            {selectedEmployee && <p className="mt-1 text-[11px] text-emerald-700">Selected: {selectedEmployee.name} · {selectedEmployee.position}</p>}
-          </div>
+          <label className="block font-semibold text-slate-700">Employee / Applicant *
+            <input required value={employeeName} onChange={event => setEmployeeName(event.target.value)} placeholder="Enter employee or applicant name" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+          </label>
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="font-semibold text-slate-700">Office *<input required value={office} onChange={event => setOffice(event.target.value)} placeholder="Applicant office" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
-            <label className="font-semibold text-slate-700">Barcode / Tracking No. *<input required value={barcode} onChange={event => setBarcode(event.target.value)} placeholder="Enter or scan barcode..." className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
+            <label className="font-semibold text-slate-700">Office *<select required value={office} onChange={event => setOffice(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"><option value="">Select applicant office</option>{office && !(OFFICE_OPTIONS as readonly string[]).includes(office) && <option value={office}>{office}</option>}{OFFICE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+            <label className="font-semibold text-slate-700">Barcode / Tracking No. <span className="font-normal text-slate-400">(optional)</span><input value={barcode} onChange={event => setBarcode(event.target.value)} placeholder="N/A" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
           </div>
           <label className="block font-semibold text-slate-700">Leave Type *<select id="select-filing-leave-type" value={leaveType} onChange={event => { setLeaveType(event.target.value as LeaveType); setLeaveSubtype(''); setLeaveDetails(''); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100">{LEAVE_TYPES.map(type => <option key={type}>{type}</option>)}</select></label>
           {(detailLabels(leaveType)[0] || detailLabels(leaveType)[1]) && <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
@@ -249,18 +233,16 @@ export const LeaveContinuity: React.FC = () => {
               <textarea id="input-leave-specific-details" required={leaveType === 'Sick Leave' || (leaveType === 'Others' && leaveSubtype === 'OTHER')} value={leaveDetails} onChange={event => setLeaveDetails(event.target.value)} rows={2} placeholder={leaveType === 'Vacation Leave' ? 'e.g. Cebu City or Japan' : leaveType === 'Sick Leave' ? 'Brief business-required illness information' : ''} className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" />
             </label>}
           </section>}
-          <section className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between"><div><h3 className="font-bold text-slate-800">Leave Dates</h3><p className="text-[10px] text-slate-500">Add each continuous whole-day range or individual half-day.</p></div><button id="btn-add-leave-range" type="button" onClick={() => setDateRanges(previous => [...previous, emptyDateRange()])} className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 font-semibold text-blue-700 hover:bg-blue-50"><Plus className="h-3.5 w-3.5" /> Add Date Range</button></div>
-            <div className="mt-3 space-y-3">{dateRanges.map((range,index) => <div key={range.id || index} data-testid={`leave-date-range-${index}`} className="rounded-lg border border-slate-200 bg-white p-3"><div className="mb-2 flex items-center justify-between"><span className="font-bold text-slate-600">Date Range {index+1}</span>{dateRanges.length>1 && <button aria-label={`Remove date range ${index+1}`} type="button" onClick={() => setDateRanges(previous => previous.filter((_,i)=>i!==index))} className="rounded-md p-1 text-rose-500 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>}</div><div className="grid gap-3 sm:grid-cols-3">
-              <label className="font-semibold text-slate-700">Start Date *<input required type="date" value={range.startDate} onChange={event => changeRange(index,'startDate',event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
-              <label className="font-semibold text-slate-700">End Date *<input required type="date" min={range.startDate || undefined} value={range.endDate} onChange={event => changeRange(index,'endDate',event.target.value)} disabled={range.dayType!=='WHOLE_DAY'} className="mt-1 w-full rounded-lg border border-slate-300 p-2 font-normal outline-none focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100" /></label>
-              <label className="font-semibold text-slate-700">Duration Type *<select value={range.dayType} onChange={event => changeRange(index,'dayType',event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 font-normal outline-none focus:ring-2 focus:ring-blue-100"><option value="WHOLE_DAY">Whole Day</option><option value="AM_HALF_DAY">AM Half-Day</option><option value="PM_HALF_DAY">PM Half-Day</option></select></label>
+          <section className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-bold text-slate-800">Leave Dates</h3><p className="text-[10px] text-slate-500">Select the first and last date on the calendar. Add another range only for non-consecutive dates.</p></div><button id="btn-add-leave-range" type="button" onClick={() => setDateRanges(previous => [...previous, emptyDateRange()])} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 font-semibold text-blue-700 hover:bg-blue-50"><Plus className="h-3.5 w-3.5" /> Add Range</button></div>
+            <div className="mt-3 space-y-3">{dateRanges.map((range,index) => <div key={range.id || index} data-testid={`leave-date-range-${index}`} className="rounded-lg border border-slate-200 bg-white p-3"><div className="mb-2 flex items-center justify-between"><span className="font-bold text-slate-600">Date Range {index+1}</span>{dateRanges.length>1 && <button aria-label={`Remove date range ${index+1}`} type="button" onClick={() => setDateRanges(previous => previous.filter((_,i)=>i!==index))} className="rounded-md p-1 text-rose-500 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>}</div><div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
+              <label className="min-w-0 font-semibold text-slate-700">Date Range *<div className="mt-1"><LeaveDateRangePicker startDate={range.startDate} endDate={range.endDate} dayType={range.dayType} onChange={(startDate,endDate) => setDateRanges(previous => previous.map((item,i) => i===index ? { ...item, startDate, endDate } : item))} /></div></label>
+              <label className="font-semibold text-slate-700">Duration *<select value={range.dayType} onChange={event => changeRange(index,'dayType',event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100"><option value="WHOLE_DAY">Whole Day</option><option value="AM_HALF_DAY">AM Half-Day</option><option value="PM_HALF_DAY">PM Half-Day</option></select></label>
             </div></div>)}</div>
             <div className="mt-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2"><span className="font-semibold text-blue-800">Calculated Leave Days</span><strong id="calculated-leave-days" className="text-base text-blue-900">{formatDays(calculatedDays(dateRanges))}</strong></div>
           </section>
-          <label className="block font-semibold text-slate-700">Commutation<select value={commutation} onChange={event => setCommutation(event.target.value as typeof commutation)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100"><option>Not Requested</option><option>Requested</option></select></label>
           <label className="block font-semibold text-slate-700">Remarks / Additional Details<textarea value={remarks} onChange={event => setRemarks(event.target.value)} rows={3} className="mt-1 w-full resize-y rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
           <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] text-blue-800">The new record will enter the Leave Registry with a <strong>For Computation</strong> status. Encoder: {currentUser.name}.</p>
-          <footer className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button id="btn-submit-filing" type="submit" disabled={!employeeId} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{editingRecord ? 'Save Changes' : 'Register Leave Application'}</button></footer>
+          <footer className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button id="btn-submit-filing" type="submit" disabled={!employeeName.trim()} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{editingRecord ? 'Save Changes' : 'Register Leave Application'}</button></footer>
         </form>
       </div>
     </div>}

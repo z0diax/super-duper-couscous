@@ -112,12 +112,12 @@ test('leave registration switches dynamic fields without retaining stale values'
   await page.goto(`${fixture.base}/`); await page.getByLabel('Email address').fill('admin@example.test'); await page.getByLabel('Password', { exact: true }).fill(testPassword); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Leave Records', exact: true }).click();
   await page.getByRole('button', { name: 'Register Leave Application', exact: true }).click();
-  await page.getByPlaceholder('Search employee name, office, or position...').fill('System Administrator');
-  await page.getByRole('button', { name: 'System Administrator Administrator · HRMDO', exact: true }).click();
-  await page.getByPlaceholder('Enter or scan barcode...').fill('BROWSER-LEAVE-001');
-  let range=page.getByTestId('leave-date-range-0'); await range.locator('input[type=date]').nth(0).fill('2026-09-14'); await range.locator('input[type=date]').nth(1).fill('2026-09-14');
-  await page.locator('#btn-add-leave-range').click(); range=page.getByTestId('leave-date-range-1'); await range.locator('input[type=date]').nth(0).fill('2026-09-16'); await range.locator('input[type=date]').nth(1).fill('2026-09-17');
-  await page.locator('#btn-add-leave-range').click(); range=page.getByTestId('leave-date-range-2'); await range.locator('input[type=date]').nth(0).fill('2026-09-21'); await range.locator('select').selectOption('AM_HALF_DAY');
+  await page.getByPlaceholder('Enter employee or applicant name').fill('Browser Test Applicant');
+  await page.getByLabel('Office *').selectOption("CEO - City Engineer's Office");
+  await page.getByLabel(/Barcode \/ Tracking No/).fill('BROWSER-LEAVE-001');
+  let range=page.getByTestId('leave-date-range-0'); await range.getByRole('button',{name:'Select Leave Date Range'}).click(); await page.getByRole('button',{name:'2026-09-14'}).click(); await page.getByRole('button',{name:'2026-09-14'}).click();
+  await page.locator('#btn-add-leave-range').click(); range=page.getByTestId('leave-date-range-1'); await range.getByRole('button',{name:'Select Leave Date Range'}).click(); await page.getByRole('button',{name:'2026-09-16'}).click(); await page.getByRole('button',{name:'2026-09-17'}).click();
+  await page.locator('#btn-add-leave-range').click(); range=page.getByTestId('leave-date-range-2'); await range.locator('select').selectOption('AM_HALF_DAY'); await range.getByRole('button',{name:'Select Leave Date Range'}).click(); await page.getByRole('button',{name:'2026-09-21'}).click();
   await expect(page.locator('#calculated-leave-days')).toHaveText('3.5 days');
   await page.locator('#select-filing-leave-type').selectOption('Vacation Leave');
   await page.locator('#select-leave-subtype').selectOption('ABROAD'); await page.locator('#input-leave-specific-details').fill('Japan');
