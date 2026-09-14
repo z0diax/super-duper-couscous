@@ -82,6 +82,19 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const [releaseMode, setReleaseMode] = useState<'In-Person Pick-up' | 'Official Courier' | 'Electronic Copy' | 'Internal Messenger'>('In-Person Pick-up');
   const [releaseRemarks, setReleaseRemarks] = useState('');
 
+  React.useEffect(() => {
+    if (!isOpen || !batch) {
+      setActiveWorkGroupTab('');
+      return;
+    }
+    const groups = workGroups.filter(group => group.batchId === batch.id);
+    setActiveWorkGroupTab(current => {
+      if (initialWorkGroupId && groups.some(group => group.id === initialWorkGroupId)) return initialWorkGroupId;
+      if (groups.some(group => group.id === current)) return current;
+      return groups.find(group => group.status !== 'Completed')?.id || groups[0]?.id || '';
+    });
+  }, [isOpen, batch?.id, initialWorkGroupId, workGroups]);
+
   if (!isOpen || !batch) return null;
 
   const items = payrollItems.filter(i => i.batchId === batch.id);
@@ -100,11 +113,6 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   );
   const canSubmitCompliance = batch.encodedBy.userId === currentUser.id || can('canAdmin');
   const phaseAllowsHold = (phaseNumber: number) => batch.workflowStages?.find(stage => stage.stageNumber === phaseNumber)?.allowHold !== false;
-
-  // Set default active workgroup tab if not set
-  if (!activeWorkGroupTab && batchWorkGroups.length > 0) {
-    setActiveWorkGroupTab(batchWorkGroups[0].id);
-  }
 
   // Count items by classification
   const jowCount = items.filter(i => (i.employmentClassification === 'JOW/COS' || i.employmentClassification === 'Job Order (JOW)') && i.status !== 'On_Hold').length;
@@ -680,6 +688,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                               : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                           }`}
                         >
+                          {!isComplete && <span className="relative flex h-2.5 w-2.5" aria-label="Pending work group"><span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${isActive ? 'bg-white' : 'bg-blue-500'}`} /><span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${isActive ? 'bg-white' : 'bg-blue-600'}`} /></span>}
                           <span>{wg.code}</span>
                           <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-bold ${
                             isComplete
