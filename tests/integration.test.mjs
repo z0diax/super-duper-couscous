@@ -141,6 +141,9 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   let heldInPhaseThree=processor.state.payrollItems.find(item=>item.id===phaseThreeItemId);
   assert.equal(heldInPhaseThree.currentStage,'verification_signing');
   assert.equal(heldInPhaseThree.workGroupId,groups[0].id);
+  await processor.action('resumePayrollItemHold',[phaseThreeItemId]);
+  assert.equal(processor.state.payrollItems.find(item=>item.id===phaseThreeItemId).status,'In_Progress');
+  await processor.action('placePayrollItemHold',[phaseThreeItemId,{reason:'Signature still incomplete',remarks:'Request corrected page',files:[]}]);
   await receiver.action('submitPayrollItemCompliance',[phaseThreeItemId,{remarks:'Signed page returned',files:[]}]);
   await processor.action('resumePayrollItemHold',[phaseThreeItemId]);
   await processor.action('processWorkGroupItems',[groups[0].id,groups[0].itemIds,'complete']);

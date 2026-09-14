@@ -569,12 +569,10 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
                             {/* Exception / Hold Button */}
                             {isHeld ? (
-                              <button
-                                onClick={() => handleOpenCompliance(item.id)}
-                                className="px-2.5 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50 border border-sky-200 rounded-lg transition-colors"
-                              >
-                                Record Compliance
-                              </button>
+                              <div className="flex items-center gap-2">
+                                {canSubmitCompliance && <button onClick={() => handleOpenCompliance(item.id)} className="px-2.5 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50 border border-sky-200 rounded-lg transition-colors">Submit Compliance</button>}
+                                <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded-lg transition-colors">Clear Hold &amp; Resume</button>
+                              </div>
                             ) : isReadyForRecheck ? (
                               <div className="flex items-center gap-2">
                                 <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded-lg transition-colors">Verify / Recheck</button>
@@ -770,6 +768,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                                   </>
                                  )}
                                 {item.status === 'On_Hold' && canSubmitCompliance && <button onClick={() => handleOpenCompliance(item.id)} className="px-2.5 py-1 text-xs font-medium text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-md border border-sky-200">Submit Compliance</button>}
+                                {(isUserAssigned || can('canSupervise')) && item.status === 'On_Hold' && <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200">Clear Hold &amp; Resume</button>}
                                 {(isUserAssigned || can('canSupervise')) && item.status === 'Ready_For_Recheck' && <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200">Recheck &amp; Resume</button>}
                               </div>
                             </div>
@@ -821,6 +820,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                         <div className="flex gap-2">
                           {item.status === 'Ready_For_Release' && phaseAllowsHold(4) && <button type="button" onClick={() => handleOpenHoldModal(item.id)} className="px-2.5 py-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-md">Hold</button>}
                           {item.status === 'On_Hold' && canSubmitCompliance && <button type="button" onClick={() => handleOpenCompliance(item.id)} className="px-2.5 py-1 text-xs font-medium text-sky-700 bg-sky-50 border border-sky-200 rounded-md">Submit Compliance</button>}
+                          {item.status === 'On_Hold' && <button type="button" onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md">Clear Hold &amp; Resume</button>}
                           {item.status === 'Ready_For_Recheck' && <button type="button" onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md">Recheck &amp; Resume</button>}
                         </div>
                       </div>
