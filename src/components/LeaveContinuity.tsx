@@ -157,9 +157,9 @@ export const LeaveContinuity: React.FC = () => {
 
   return <div className="space-y-4 pb-12">
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">HRMDO Registry</p><h1 className="mt-1 text-xl font-bold tracking-tight text-slate-900">Leave Records</h1>
+      <div className="flex flex-col gap-4 px-5 pb-5 pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase leading-none tracking-widest text-blue-600">HRMDO Registry</p><h1 className="mt-1.5 text-xl font-bold tracking-tight text-slate-900">Leave Records</h1>
           <p className="mt-1 text-sm text-slate-500">Register and track employee Leave Applications through HRMDO processing.</p>
         </div>
         {canRegister && <button id="btn-file-new-leave" aria-label="Register Leave Application" onClick={() => { resetForm(); setIsModalOpen(true); }} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-2xs transition-colors hover:bg-blue-700">
@@ -167,8 +167,8 @@ export const LeaveContinuity: React.FC = () => {
         </button>}
       </div>
       <div className="grid grid-cols-2 border-t border-slate-100 sm:grid-cols-3 lg:grid-cols-6">
-        {summaries.map(([label, count, color]) => <div key={String(label)} className="border-r border-slate-100 px-5 py-4 last:border-r-0">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+        {summaries.map(([label, count, color]) => <div key={String(label)} className="min-w-0 overflow-hidden border-r border-slate-100 px-5 py-4 last:border-r-0">
+          <p title={String(label)} className="truncate whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
           <p className={`mt-1 text-2xl font-bold ${color}`}>{count}</p>
         </div>)}
       </div>
@@ -191,9 +191,9 @@ export const LeaveContinuity: React.FC = () => {
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
       <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3"><div><h2 className="text-sm font-bold text-slate-900">Leave Registry</h2><p className="mt-0.5 text-[11px] text-slate-500">{pagination.totalRecords} matching {pagination.totalRecords===1?'record':'records'}</p></div>{isQuerying&&<span className="text-xs font-semibold text-blue-600">Updating…</span>}</div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1040px] text-left text-sm">
+        <table className="w-full min-w-[1120px] text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            <tr><th className="px-5 py-3">Tracking Number</th><th className="px-4 py-3">Employee / Applicant</th><th className="px-4 py-3">Office</th><th className="px-4 py-3">Leave Type</th><th className="px-4 py-3">Inclusive Dates</th><th className="px-4 py-3 text-center">Days</th><th className="px-4 py-3">Status</th><th className="px-5 py-3 text-right">Actions</th></tr>
+            <tr><th className="px-5 py-3">Tracking Number</th><th className="px-4 py-3">Employee / Applicant</th><th className="px-4 py-3">Office</th><th className="px-4 py-3">Leave Type</th><th className="px-4 py-3">Inclusive Dates</th><th className="px-4 py-3 text-center">Days</th><th className="min-w-[132px] whitespace-nowrap px-4 py-3">Status</th><th className="min-w-[132px] whitespace-nowrap px-5 py-3 text-right">Actions</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {records.map(record => <tr key={record.id} className="hover:bg-slate-50/70">
@@ -202,7 +202,7 @@ export const LeaveContinuity: React.FC = () => {
               <td className="px-4 py-3 text-xs text-slate-600">{record.office || record.department || 'Not recorded'}</td>
               <td className="px-4 py-3 font-medium text-slate-800">{record.leaveType}</td>
               <td className="px-4 py-3 text-xs font-medium text-slate-700">{compactDates(record)}</td><td className="px-4 py-3 text-center font-bold text-slate-800">{record.totalLeaveDays ?? record.workingDaysNumber}</td>
-              <td className="px-4 py-3"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusStyle(record.status)}`}>{statusLabel(record.status)}</span></td>
+              <td className="whitespace-nowrap px-4 py-3"><span className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-bold leading-none ${statusStyle(record.status)}`}>{statusLabel(record.status)}</span></td>
               <td className="px-5 py-3 text-right"><div className="inline-flex items-center gap-1.5"><button aria-label="View" onClick={() => setSelectedRecord(record)} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 shadow-xs hover:bg-blue-50"><Eye className="h-3.5 w-3.5" /> Open</button>{canRegister && record.status === 'For_Computation' && !!record.dateRanges?.length && <button aria-label={`Edit ${record.barcode || record.trackingNumber}`} title="Edit Leave Application" onClick={() => openEdit(record)} className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:border-blue-200 hover:text-blue-700"><Pencil className="h-3.5 w-3.5" /></button>}</div></td>
             </tr>)}
             {!isQuerying && records.length === 0 && <tr><td colSpan={8} className="px-6 py-14 text-center"><FileCheck2 className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 font-semibold text-slate-700">No Leave Applications found</p><p className="mt-1 text-xs text-slate-400">{searchQuery||filterType!=='all'||filterStatus!=='all'||filterOffice||filedFrom||filedTo||leaveDate?'No Leave Applications match the current search/filters.':'Registered V2 Leave Applications will appear here.'}</p></td></tr>}
