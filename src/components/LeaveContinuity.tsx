@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { LeaveApplicationRecord, LeaveDateRange, LeaveType } from '../types';
 import { CalendarClock, Eye, FileCheck2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { queryLeaveRegistry } from '../services/leaveApi';
 
 const LEAVE_TYPES: LeaveType[] = [
   'COC', 'Vacation Leave', 'Mandatory / Forced Leave', 'Sick Leave', 'Wellness Leave',
@@ -70,10 +71,15 @@ const compactDates = (record: LeaveApplicationRecord) => {
 };
 
 export const LeaveContinuity: React.FC = () => {
-  const { leaveApplications, users, auditLogs, currentUser, fileLeaveApplication, updateLeaveApplication, completeLeaveComputation, sendLeaveForSignature, releaseLeaveApplication, placeLeaveOnHold, recordLeaveCompliance, resumeLeaveProcessing, cancelLeaveApplication, can } = useApp();
+  const { users, auditLogs, currentUser, fileLeaveApplication, updateLeaveApplication, completeLeaveComputation, sendLeaveForSignature, releaseLeaveApplication, placeLeaveOnHold, recordLeaveCompliance, resumeLeaveProcessing, cancelLeaveApplication, can } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [filterOffice, setFilterOffice] = useState('');
+  const [filedFrom, setFiledFrom] = useState(''); const [filedTo, setFiledTo] = useState(''); const [leaveDate, setLeaveDate] = useState('');
+  const [sort, setSort] = useState('registered_desc'); const [page, setPage] = useState(1); const [pageSize, setPageSize] = useState(10);
+  const [records, setRecords] = useState<LeaveApplicationRecord[]>([]); const [summary, setSummary] = useState({total:0,forComputation:0,processing:0,forSignature:0,onHold:0,released:0});
+  const [pagination, setPagination] = useState({page:1,pageSize:10,totalRecords:0,totalPages:1}); const [offices,setOffices]=useState<string[]>([]); const [queryError,setQueryError]=useState(''); const [isQuerying,setIsQuerying]=useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<LeaveApplicationRecord | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<LeaveApplicationRecord | null>(null);
@@ -90,15 +96,8 @@ export const LeaveContinuity: React.FC = () => {
   const [commutation, setCommutation] = useState<'Requested' | 'Not Requested'>('Not Requested');
   const [remarks, setRemarks] = useState('');
 
-  const activeRecords = useMemo(() => leaveApplications.filter(record => !record.isLegacyV1), [leaveApplications]);
-  const filteredRecords = useMemo(() => activeRecords.filter(record => {
-    if (filterType !== 'all' && record.leaveType !== filterType) return false;
-    if (filterStatus !== 'all' && record.status !== filterStatus) return false;
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return true;
-    return [record.barcode, record.trackingNumber, record.employeeName, record.office, record.department, record.leaveType]
-      .some(value => value?.toLowerCase().includes(query));
-  }), [activeRecords, filterStatus, filterType, searchQuery]);
+  const loadRegistry=useCallback(async()=>{ setIsQuerying(true); setQueryError(''); try { const result=await queryLeaveRegistry({q:searchQuery,status:filterStatus==='all'?'':filterStatus,leaveType:filterType==='all'?'':filterType,office:filterOffice,filedFrom,filedTo,leaveDate,page,pageSize,sort}); setRecords(result.items); setSummary(result.summary); setPagination(result.pagination); setOffices(result.offices); if(result.pagination.page!==page)setPage(result.pagination.page); } catch(error){setQueryError(error instanceof Error?error.message:'Leave records could not be loaded.');} finally {setIsQuerying(false);}},[filedFrom,filedTo,filterOffice,filterStatus,filterType,leaveDate,page,pageSize,searchQuery,sort]);
+  useEffect(()=>{const timer=setTimeout(()=>void loadRegistry(),300);return()=>clearTimeout(timer);},[loadRegistry]);
   const matchingEmployees = useMemo(() => {
     const query = employeeSearch.trim().toLowerCase();
     if (!query) return users.slice(0, 8);
@@ -115,7 +114,7 @@ export const LeaveContinuity: React.FC = () => {
       cancel: () => cancelLeaveApplication(selectedRecord.id,{reason:actionRemarks}),
     };
     const saved = await calls[workflowAction]() as LeaveApplicationRecord | null;
-    if (saved) { setSelectedRecord(saved); setWorkflowAction(null); setActionRemarks(''); }
+    if (saved) { setSelectedRecord(saved); setWorkflowAction(null); setActionRemarks(''); await loadRegistry(); }
   };
 
   const resetForm = () => {
@@ -139,7 +138,7 @@ export const LeaveContinuity: React.FC = () => {
     };
     const saved = editingRecord ? await updateLeaveApplication(payload) : await fileLeaveApplication(payload);
     if (!saved) return;
-    setIsModalOpen(false); resetForm();
+    setIsModalOpen(false); resetForm(); setPage(1); await loadRegistry();
   };
   const openEdit = (record: LeaveApplicationRecord) => {
     setEditingRecord(record); setEmployeeId(record.employeeId); setEmployeeSearch(record.employeeName);
@@ -150,12 +149,7 @@ export const LeaveContinuity: React.FC = () => {
   const changeRange = (index: number, field: keyof DateRangeDraft, value: string) => setDateRanges(previous => previous.map((range,i) => i===index ? { ...range, [field]: value, ...(field==='dayType' && value!=='WHOLE_DAY' ? { endDate: range.startDate } : {}), ...(field==='startDate' && range.dayType!=='WHOLE_DAY' ? { endDate: value } : {}) } as DateRangeDraft : range));
 
   const summaries = [
-    ['Total Leave Records', activeRecords.length, 'text-slate-900'],
-    ['For Computation', activeRecords.filter(record => record.status === 'For_Computation').length, 'text-amber-700'],
-    ['Processing', activeRecords.filter(record => record.status === 'For_Processing').length, 'text-blue-700'],
-    ['For Signature', activeRecords.filter(record => record.status === 'For_Signature').length, 'text-violet-700'],
-    ['On Hold', activeRecords.filter(record => record.status === 'On_Hold').length, 'text-orange-700'],
-    ['Released', activeRecords.filter(record => record.status === 'Released').length, 'text-emerald-700'],
+    ['Total Leave Records', summary.total, 'text-slate-900'], ['For Computation', summary.forComputation, 'text-amber-700'], ['Processing', summary.processing, 'text-blue-700'], ['For Signature', summary.forSignature, 'text-violet-700'], ['On Hold', summary.onHold, 'text-orange-700'], ['Released', summary.released, 'text-emerald-700'],
   ];
 
   return <div className="space-y-5 pb-12">
@@ -180,13 +174,18 @@ export const LeaveContinuity: React.FC = () => {
     <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs sm:flex-row">
       <div className="relative flex-1">
         <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-        <input id="leave-search-input" value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="Search employee name, barcode, office, leave type..." className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+        <input id="leave-search-input" value={searchQuery} onChange={event => {setSearchQuery(event.target.value);setPage(1);}} placeholder="Search employee, barcode, office, leave type, status..." className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
       </div>
-      <select id="leave-filter-type" value={filterType} onChange={event => setFilterType(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-blue-100">
+      <select id="leave-filter-type" value={filterType} onChange={event => {setFilterType(event.target.value);setPage(1);}} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-blue-100">
         <option value="all">All Leave Types</option>
         {LEAVE_TYPES.map(type => <option key={type}>{type}</option>)}
       </select>
-      <select id="leave-filter-status" value={filterStatus} onChange={event => setFilterStatus(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-blue-100"><option value="all">All Statuses</option><option value="For_Computation">For Computation</option><option value="For_Processing">Processing</option><option value="For_Signature">For Signature</option><option value="On_Hold">On Hold</option><option value="Released">Released</option><option value="Cancelled">Cancelled</option></select>
+      <select id="leave-filter-status" value={filterStatus} onChange={event => {setFilterStatus(event.target.value);setPage(1);}} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"><option value="all">All Statuses</option><option value="For_Computation">For Computation</option><option value="For_Processing">Processing</option><option value="For_Signature">For Signature</option><option value="On_Hold">On Hold</option><option value="Released">Released</option><option value="Cancelled">Cancelled</option></select>
+      <select aria-label="Office" value={filterOffice} onChange={e=>{setFilterOffice(e.target.value);setPage(1);}} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><option value="">All Offices</option>{offices.map(value=><option key={value}>{value}</option>)}</select>
+      <input aria-label="Filed From" title="Filed From" type="date" value={filedFrom} onChange={e=>{setFiledFrom(e.target.value);setPage(1);}} className="rounded-lg border border-slate-200 px-2 py-2 text-xs"/><input aria-label="Filed To" title="Filed To" type="date" value={filedTo} onChange={e=>{setFiledTo(e.target.value);setPage(1);}} className="rounded-lg border border-slate-200 px-2 py-2 text-xs"/>
+      <input aria-label="Leave Date" title="Leave Date" type="date" value={leaveDate} onChange={e=>{setLeaveDate(e.target.value);setPage(1);}} className="rounded-lg border border-slate-200 px-2 py-2 text-xs"/>
+      <select aria-label="Sort Leave Records" value={sort} onChange={e=>{setSort(e.target.value);setPage(1);}} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><option value="registered_desc">Newest Registered</option><option value="registered_asc">Oldest Registered</option><option value="employee_asc">Employee A–Z</option><option value="employee_desc">Employee Z–A</option><option value="status_asc">Status</option><option value="type_asc">Leave Type</option></select>
+      <button onClick={()=>{setSearchQuery('');setFilterType('all');setFilterStatus('all');setFilterOffice('');setFiledFrom('');setFiledTo('');setLeaveDate('');setSort('registered_desc');setPage(1);}} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">Clear Filters</button>
     </section>
 
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
@@ -196,7 +195,7 @@ export const LeaveContinuity: React.FC = () => {
             <tr><th className="px-4 py-3">Barcode / Tracking No.</th><th className="px-4 py-3">Employee / Applicant</th><th className="px-4 py-3">Office</th><th className="px-4 py-3">Leave Type</th><th className="px-4 py-3">Inclusive Dates</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredRecords.map(record => <tr key={record.id} className="hover:bg-slate-50/70">
+            {records.map(record => <tr key={record.id} className="hover:bg-slate-50/70">
               <td className="px-4 py-3 font-mono text-xs font-semibold text-blue-700">{record.barcode || record.trackingNumber || 'Not recorded'}</td>
               <td className="px-4 py-3"><p className="font-semibold text-slate-900">{record.employeeName}</p><p className="text-[11px] text-slate-500">{record.position || 'Position not recorded'}</p></td>
               <td className="px-4 py-3 text-xs text-slate-600">{record.office || record.department || 'Not recorded'}</td>
@@ -205,10 +204,13 @@ export const LeaveContinuity: React.FC = () => {
               <td className="px-4 py-3"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusStyle(record.status)}`}>{statusLabel(record.status)}</span></td>
               <td className="px-4 py-3 text-right"><div className="inline-flex items-center gap-1"><button aria-label="View" onClick={() => setSelectedRecord(record)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><Eye className="h-3.5 w-3.5" /> View & Process</button>{canRegister && record.status === 'For_Computation' && !!record.dateRanges?.length && <button aria-label={`Edit ${record.barcode || record.trackingNumber}`} onClick={() => openEdit(record)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Pencil className="h-3.5 w-3.5" /></button>}</div></td>
             </tr>)}
-            {filteredRecords.length === 0 && <tr><td colSpan={7} className="px-6 py-14 text-center"><FileCheck2 className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 font-semibold text-slate-700">No Leave Applications found</p><p className="mt-1 text-xs text-slate-400">Registered V2 Leave Applications will appear here.</p></td></tr>}
+            {!isQuerying && records.length === 0 && <tr><td colSpan={7} className="px-6 py-14 text-center"><FileCheck2 className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 font-semibold text-slate-700">No Leave Applications found</p><p className="mt-1 text-xs text-slate-400">{searchQuery||filterType!=='all'||filterStatus!=='all'||filterOffice||filedFrom||filedTo||leaveDate?'No Leave Applications match the current search/filters.':'Registered V2 Leave Applications will appear here.'}</p></td></tr>}
+            {isQuerying&&<tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-blue-600">Loading Leave Applications…</td></tr>}
           </tbody>
         </table>
       </div>
+      {queryError&&<div className="border-t border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">{queryError}</div>}
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-600"><span>{pagination.totalRecords?`Showing ${(pagination.page-1)*pagination.pageSize+1}–${Math.min(pagination.page*pagination.pageSize,pagination.totalRecords)} of ${pagination.totalRecords}`:'Showing 0 records'}</span><div className="flex items-center gap-2"><select aria-label="Page Size" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1);}} className="rounded border border-slate-200 px-2 py-1"><option>10</option><option>25</option><option>50</option></select><button disabled={page<=1||isQuerying} onClick={()=>setPage(value=>value-1)} className="rounded border px-3 py-1.5 disabled:opacity-40">Previous</button><strong>Page {pagination.page} of {pagination.totalPages}</strong><button disabled={page>=pagination.totalPages||isQuerying} onClick={()=>setPage(value=>value+1)} className="rounded border px-3 py-1.5 disabled:opacity-40">Next</button></div></footer>
     </section>
 
     {isModalOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">

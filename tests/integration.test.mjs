@@ -385,13 +385,22 @@ test('HRMDO leave registry separates applicant and encoder, validates barcodes, 
   const cancelled=(await admin.action('cancelLeaveApplication',[pm.id,{reason:'Duplicate filing'}])).result;
   assert.equal(cancelled.status,'Cancelled'); assert(cancelled.cancelledAt); assert.equal(cancelled.cancellationReason,'Duplicate filing');
   await admin.action('cancelLeaveApplication',[other.id,{reason:''}],422);
+  for(let index=0;index<20;index++) await receiver.action('fileLeaveApplication',[{...data,barcode:`LEAVE-PAGE-${String(index).padStart(2,'0')}`,leaveType:index%2?'Vacation Leave':'COC',leaveSubtype:index%2?'WITHIN_PHILIPPINES':null,leaveDetails:index%2?'Cebu':null}]);
   await admin.refresh();
   for (const event of ['LEAVE_COMPUTATION_COMPLETED','LEAVE_SENT_FOR_SIGNATURE','LEAVE_PLACED_ON_HOLD','LEAVE_COMPLIANCE_RECEIVED','LEAVE_PROCESSING_RESUMED','LEAVE_RELEASED','LEAVE_CANCELLED']) assert(admin.state.auditLogs.some(entry=>entry.actionType===event));
-  assert(admin.state.leaveApplications.some(entry=>entry.id===pm.id && entry.status==='Cancelled'));
-  const processorAccount=admin.state.users.find(user=>user.role==='processor');
+  assert.equal(admin.state.leaveApplications.filter(entry=>!entry.isLegacyV1).length,0); // active records use the paginated endpoint
+  const firstPage=await admin.request('leave.php?page=1&pageSize=10','GET'); assert.equal(firstPage.items.length,10); assert(firstPage.pagination.totalRecords>=35); assert(firstPage.pagination.totalPages>=4);
+  const fourthPage=await admin.request('leave.php?page=4&pageSize=10','GET'); assert(fourthPage.items.length>=1); assert.equal(fourthPage.summary.total,firstPage.summary.total);
+  const exact=await admin.request('leave.php?q=LEAVE-TEST-0001&page=1&pageSize=10','GET'); assert.equal(exact.pagination.totalRecords,1); assert.equal(exact.items[0].id,leave.id);
+  const combined=await admin.request('leave.php?status=For_Computation&leaveType=Vacation%20Leave&sort=employee_asc&page=1&pageSize=10','GET'); assert(combined.items.every(entry=>entry.status==='For_Computation'&&entry.leaveType==='Vacation Leave'));
+  const filed=await admin.request('leave.php?filedFrom=2026-09-01&filedTo=2026-09-30&page=1&pageSize=10','GET'); assert(filed.items.every(entry=>entry.filingDate.slice(0,10)>='2026-09-01'&&entry.filingDate.slice(0,10)<='2026-09-30'));
+  const leaveDay=await admin.request('leave.php?q=LEAVE-TEST-0001&leaveDate=2026-09-14&page=1&pageSize=10','GET'); assert.equal(leaveDay.items[0].id,leave.id);
+  const cancelledQuery=await admin.request('leave.php?status=Cancelled&page=1&pageSize=10','GET'); assert(cancelledQuery.items.some(entry=>entry.id===pm.id));
+  const processorAccount=admin.state.users.find(user=>user.email==='processor@example.test');
   await admin.action('updateUser',[{...processorAccount,password:'',sidebarModules:['dashboard']}]); await processor.refresh();
   assert.deepEqual(processor.state.users.find(user=>user.id===processorAccount.id).sidebarModules,['dashboard']);
   await processor.action('fileLeaveApplication',[{...data,barcode:'LEAVE-NO-ACCESS'}],403);
+  await processor.request('leave.php?q=LEAVE-TEST-0001&page=1&pageSize=10','GET',undefined,403);
 });
 test('role and designation management, migration checks and password revocation',async()=>{
   const role=(await admin.action('addSystemRole',[{id:'custom_role',name:'Custom role',code:'CUSTOM',description:'Test',badgeClass:'bg-blue-100',canProcess:true}])).result;

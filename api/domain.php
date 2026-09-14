@@ -110,8 +110,9 @@ function filter_state_for_view(array $s,array $u): array {
     // A limited work-group viewer may see parent metadata but not its batch-wide
     // audit timeline. Their item and work-group histories remain available.
     $fullBatchIds=array_column(array_values(array_filter($visibleBatches,fn($batch)=>can_view_full_payroll_batch($s,$u,$batch))),'id');
-    $visibleLeaves=array_values(array_filter($s['leaveApplications'],fn($leave)=>can_view_leave_application($s,$u,$leave)));
-    $visibleIds=array_merge(array_column($visibleDocuments,'id'),$fullBatchIds,array_column($visibleItems,'id'),array_column($visibleGroups,'id'),array_column($visibleLeaves,'id'));
+    $authorizedLeaves=array_values(array_filter($s['leaveApplications'],fn($leave)=>can_view_leave_application($s,$u,$leave)));
+    $visibleLeaves=array_values(array_filter($authorizedLeaves,fn($leave)=>!empty($leave['isLegacyV1'])));
+    $visibleIds=array_merge(array_column($visibleDocuments,'id'),$fullBatchIds,array_column($visibleItems,'id'),array_column($visibleGroups,'id'),array_column($authorizedLeaves,'id'));
     $s['documents']=$visibleDocuments; $s['payrollItems']=$visibleItems; $s['workGroups']=$visibleGroups; $s['payrollBatches']=$visibleBatches;
     $s['leaveApplications']=$visibleLeaves;
     $s['auditLogs']=array_values(array_filter($s['auditLogs'],fn($event)=>($event['actorId']??null)===$u['id'] || in_array($event['documentId']??'', $visibleIds,true)));
