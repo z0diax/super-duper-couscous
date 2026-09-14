@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { LeaveApplicationRecord, LeaveDateRange, LeaveType } from '../types';
-import { CalendarClock, Eye, FileCheck2, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
+import { CalendarClock, Eye, FileCheck2, Filter, Pencil, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { queryLeaveRegistry } from '../services/leaveApi';
 
 const LEAVE_TYPES: LeaveType[] = [
@@ -63,10 +63,11 @@ const calculatedDays = (ranges: DateRangeDraft[]) => ranges.reduce((total, range
 const dayTypeLabel = (type?: LeaveDateRange['dayType']) => type ? ({ WHOLE_DAY: 'Whole Day', AM_HALF_DAY: 'AM Half-Day', PM_HALF_DAY: 'PM Half-Day' }[type]) : 'Legacy Date Range';
 const formatDays = (days: number) => `${days} day${days === 1 ? '' : 's'}`;
 const rangeDays = (range: LeaveDateRange) => range.leaveDayUnits !== undefined ? range.leaveDayUnits / 2 : range.dayType && range.dayType !== 'WHOLE_DAY' ? 0.5 : Math.floor((new Date(`${range.endDate}T00:00:00Z`).getTime() - new Date(`${range.startDate}T00:00:00Z`).getTime()) / 86400000) + 1;
+const displayDate = (date: string) => new Intl.DateTimeFormat('en-PH',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(`${date}T00:00:00Z`));
 const compactDates = (record: LeaveApplicationRecord) => {
-  if (!record.dateRanges?.length) return `${record.startDate} to ${record.endDate}`;
+  if (!record.dateRanges?.length) return `${displayDate(record.startDate)} – ${displayDate(record.endDate)}`;
   const ranges=[...record.dateRanges].sort((a,b)=>a.startDate.localeCompare(b.startDate));
-  const first=ranges[0].startDate===ranges[0].endDate?ranges[0].startDate:`${ranges[0].startDate} to ${ranges[0].endDate}`;
+  const first=ranges[0].startDate===ranges[0].endDate?displayDate(ranges[0].startDate):`${displayDate(ranges[0].startDate)} – ${displayDate(ranges[0].endDate)}`;
   return ranges.length===1?first:`${first} + ${ranges.length-1} more range${ranges.length===2?'':'s'}`;
 };
 
@@ -152,48 +153,47 @@ export const LeaveContinuity: React.FC = () => {
   const summaries = [
     ['Total Leave Records', summary.total, 'text-slate-900'], ['For Computation', summary.forComputation, 'text-amber-700'], ['Processing', summary.processing, 'text-blue-700'], ['For Signature', summary.forSignature, 'text-violet-700'], ['On Hold', summary.onHold, 'text-orange-700'], ['Released', summary.released, 'text-emerald-700'],
   ];
+  const hasActiveFilters=!!(searchQuery||filterType!=='all'||filterStatus!=='all'||filterOffice||filedFrom||filedTo||leaveDate||sort!=='registered_desc');
 
-  return <div className="space-y-5 pb-12">
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+  return <div className="space-y-4 pb-12">
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">Leave Management</h1>
-          <p className="mt-1 text-sm text-slate-500">Register and manage official employee Leave Applications processed by HRMDO.</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-blue-600">HRMDO Registry</p><h1 className="mt-1 text-xl font-bold tracking-tight text-slate-900">Leave Records</h1>
+          <p className="mt-1 text-sm text-slate-500">Register and track employee Leave Applications through HRMDO processing.</p>
         </div>
-        {canRegister && <button id="btn-file-new-leave" onClick={() => { resetForm(); setIsModalOpen(true); }} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-2xs transition-colors hover:bg-blue-700">
-          <Plus className="h-4 w-4" /> Register Leave Application
+        {canRegister && <button id="btn-file-new-leave" aria-label="Register Leave Application" onClick={() => { resetForm(); setIsModalOpen(true); }} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-2xs transition-colors hover:bg-blue-700">
+          <Plus className="h-4 w-4" /> Register Leave
         </button>}
       </div>
-      <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 lg:grid-cols-6">
-        {summaries.map(([label, count, color]) => <div key={String(label)} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <div className="grid grid-cols-2 border-t border-slate-100 sm:grid-cols-3 lg:grid-cols-6">
+        {summaries.map(([label, count, color]) => <div key={String(label)} className="border-r border-slate-100 px-5 py-4 last:border-r-0">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
           <p className={`mt-1 text-2xl font-bold ${color}`}>{count}</p>
         </div>)}
       </div>
     </section>
 
-    <section className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-xs sm:flex-row">
-      <div className="relative flex-1">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-        <input id="leave-search-input" value={searchQuery} onChange={event => {setSearchQuery(event.target.value);setPage(1);}} placeholder="Search employee, barcode, office, leave type, status..." className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-4 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+      <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Filter className="h-4 w-4 text-slate-500"/><h2 className="text-sm font-bold text-slate-800">Find Leave Applications</h2></div>{hasActiveFilters&&<button onClick={()=>{setSearchQuery('');setFilterType('all');setFilterStatus('all');setFilterOffice('');setFiledFrom('');setFiledTo('');setLeaveDate('');setSort('registered_desc');setPage(1);}} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><RotateCcw className="h-3.5 w-3.5"/>Reset filters</button>}</div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-12">
+        <label className="md:col-span-2 xl:col-span-5"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Search</span><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400"/><input id="leave-search-input" value={searchQuery} onChange={event=>{setSearchQuery(event.target.value);setPage(1);}} placeholder="Employee, barcode, office, leave type or status" className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"/></div></label>
+        <label className="xl:col-span-3"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Leave Type</span><select id="leave-filter-type" value={filterType} onChange={event=>{setFilterType(event.target.value);setPage(1);}} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="all">All Leave Types</option>{LEAVE_TYPES.map(type=><option key={type}>{type}</option>)}</select></label>
+        <label className="xl:col-span-2"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Status</span><select id="leave-filter-status" value={filterStatus} onChange={event=>{setFilterStatus(event.target.value);setPage(1);}} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="all">All Statuses</option><option value="For_Computation">For Computation</option><option value="For_Processing">Processing</option><option value="For_Signature">For Signature</option><option value="On_Hold">On Hold</option><option value="Released">Released</option><option value="Cancelled">Cancelled</option></select></label>
+        <label className="xl:col-span-2"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Sort By</span><select aria-label="Sort Leave Records" value={sort} onChange={e=>{setSort(e.target.value);setPage(1);}} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="registered_desc">Newest Registered</option><option value="registered_asc">Oldest Registered</option><option value="employee_asc">Employee A–Z</option><option value="employee_desc">Employee Z–A</option><option value="status_asc">Status</option><option value="type_asc">Leave Type</option></select></label>
+        <label className="xl:col-span-5"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Office</span><select aria-label="Office" value={filterOffice} onChange={e=>{setFilterOffice(e.target.value);setPage(1);}} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="">All Offices</option>{offices.map(value=><option key={value}>{value}</option>)}</select></label>
+        <label className="xl:col-span-2"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Filed From</span><input aria-label="Filed From" type="date" value={filedFrom} onChange={e=>{setFiledFrom(e.target.value);setPage(1);}} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm"/></label>
+        <label className="xl:col-span-2"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Filed To</span><input aria-label="Filed To" type="date" value={filedTo} onChange={e=>{setFiledTo(e.target.value);setPage(1);}} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm"/></label>
+        <label className="xl:col-span-3"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Leave Date Covered</span><input aria-label="Leave Date" type="date" value={leaveDate} onChange={e=>{setLeaveDate(e.target.value);setPage(1);}} className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm"/></label>
       </div>
-      <select id="leave-filter-type" value={filterType} onChange={event => {setFilterType(event.target.value);setPage(1);}} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-blue-100">
-        <option value="all">All Leave Types</option>
-        {LEAVE_TYPES.map(type => <option key={type}>{type}</option>)}
-      </select>
-      <select id="leave-filter-status" value={filterStatus} onChange={event => {setFilterStatus(event.target.value);setPage(1);}} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"><option value="all">All Statuses</option><option value="For_Computation">For Computation</option><option value="For_Processing">Processing</option><option value="For_Signature">For Signature</option><option value="On_Hold">On Hold</option><option value="Released">Released</option><option value="Cancelled">Cancelled</option></select>
-      <select aria-label="Office" value={filterOffice} onChange={e=>{setFilterOffice(e.target.value);setPage(1);}} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><option value="">All Offices</option>{offices.map(value=><option key={value}>{value}</option>)}</select>
-      <input aria-label="Filed From" title="Filed From" type="date" value={filedFrom} onChange={e=>{setFiledFrom(e.target.value);setPage(1);}} className="rounded-lg border border-slate-200 px-2 py-2 text-xs"/><input aria-label="Filed To" title="Filed To" type="date" value={filedTo} onChange={e=>{setFiledTo(e.target.value);setPage(1);}} className="rounded-lg border border-slate-200 px-2 py-2 text-xs"/>
-      <input aria-label="Leave Date" title="Leave Date" type="date" value={leaveDate} onChange={e=>{setLeaveDate(e.target.value);setPage(1);}} className="rounded-lg border border-slate-200 px-2 py-2 text-xs"/>
-      <select aria-label="Sort Leave Records" value={sort} onChange={e=>{setSort(e.target.value);setPage(1);}} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><option value="registered_desc">Newest Registered</option><option value="registered_asc">Oldest Registered</option><option value="employee_asc">Employee A–Z</option><option value="employee_desc">Employee Z–A</option><option value="status_asc">Status</option><option value="type_asc">Leave Type</option></select>
-      <button onClick={()=>{setSearchQuery('');setFilterType('all');setFilterStatus('all');setFilterOffice('');setFiledFrom('');setFiledTo('');setLeaveDate('');setSort('registered_desc');setPage(1);}} className="rounded-lg px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">Clear Filters</button>
     </section>
 
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
+      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3"><div><h2 className="text-sm font-bold text-slate-900">Leave Registry</h2><p className="mt-0.5 text-[11px] text-slate-500">{pagination.totalRecords} matching {pagination.totalRecords===1?'record':'records'}</p></div>{isQuerying&&<span className="text-xs font-semibold text-blue-600">Updating…</span>}</div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left text-sm">
+        <table className="w-full min-w-[1040px] text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            <tr><th className="px-4 py-3">Barcode / Tracking No.</th><th className="px-4 py-3">Employee / Applicant</th><th className="px-4 py-3">Office</th><th className="px-4 py-3">Leave Type</th><th className="px-4 py-3">Inclusive Dates</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th></tr>
+            <tr><th className="px-5 py-3">Tracking Number</th><th className="px-4 py-3">Employee / Applicant</th><th className="px-4 py-3">Office</th><th className="px-4 py-3">Leave Type</th><th className="px-4 py-3">Inclusive Dates</th><th className="px-4 py-3 text-center">Days</th><th className="px-4 py-3">Status</th><th className="px-5 py-3 text-right">Actions</th></tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {records.map(record => <tr key={record.id} className="hover:bg-slate-50/70">
@@ -201,12 +201,12 @@ export const LeaveContinuity: React.FC = () => {
               <td className="px-4 py-3"><p className="font-semibold text-slate-900">{record.employeeName}</p><p className="text-[11px] text-slate-500">{record.position || 'Position not recorded'}</p></td>
               <td className="px-4 py-3 text-xs text-slate-600">{record.office || record.department || 'Not recorded'}</td>
               <td className="px-4 py-3 font-medium text-slate-800">{record.leaveType}</td>
-              <td className="px-4 py-3 text-xs text-slate-700">{compactDates(record)}<p className="text-[10px] text-slate-400">{formatDays(record.totalLeaveDays ?? record.workingDaysNumber)}</p></td>
+              <td className="px-4 py-3 text-xs font-medium text-slate-700">{compactDates(record)}</td><td className="px-4 py-3 text-center font-bold text-slate-800">{record.totalLeaveDays ?? record.workingDaysNumber}</td>
               <td className="px-4 py-3"><span className={`rounded-full border px-2 py-1 text-[10px] font-bold ${statusStyle(record.status)}`}>{statusLabel(record.status)}</span></td>
-              <td className="px-4 py-3 text-right"><div className="inline-flex items-center gap-1"><button aria-label="View" onClick={() => setSelectedRecord(record)} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><Eye className="h-3.5 w-3.5" /> View & Process</button>{canRegister && record.status === 'For_Computation' && !!record.dateRanges?.length && <button aria-label={`Edit ${record.barcode || record.trackingNumber}`} onClick={() => openEdit(record)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Pencil className="h-3.5 w-3.5" /></button>}</div></td>
+              <td className="px-5 py-3 text-right"><div className="inline-flex items-center gap-1.5"><button aria-label="View" onClick={() => setSelectedRecord(record)} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 shadow-xs hover:bg-blue-50"><Eye className="h-3.5 w-3.5" /> Open</button>{canRegister && record.status === 'For_Computation' && !!record.dateRanges?.length && <button aria-label={`Edit ${record.barcode || record.trackingNumber}`} title="Edit Leave Application" onClick={() => openEdit(record)} className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:border-blue-200 hover:text-blue-700"><Pencil className="h-3.5 w-3.5" /></button>}</div></td>
             </tr>)}
-            {!isQuerying && records.length === 0 && <tr><td colSpan={7} className="px-6 py-14 text-center"><FileCheck2 className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 font-semibold text-slate-700">No Leave Applications found</p><p className="mt-1 text-xs text-slate-400">{searchQuery||filterType!=='all'||filterStatus!=='all'||filterOffice||filedFrom||filedTo||leaveDate?'No Leave Applications match the current search/filters.':'Registered V2 Leave Applications will appear here.'}</p></td></tr>}
-            {isQuerying&&<tr><td colSpan={7} className="px-6 py-12 text-center text-sm text-blue-600">Loading Leave Applications…</td></tr>}
+            {!isQuerying && records.length === 0 && <tr><td colSpan={8} className="px-6 py-14 text-center"><FileCheck2 className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 font-semibold text-slate-700">No Leave Applications found</p><p className="mt-1 text-xs text-slate-400">{searchQuery||filterType!=='all'||filterStatus!=='all'||filterOffice||filedFrom||filedTo||leaveDate?'No Leave Applications match the current search/filters.':'Registered V2 Leave Applications will appear here.'}</p></td></tr>}
+            {isQuerying&&<tr><td colSpan={8} className="px-6 py-12 text-center text-sm text-blue-600">Loading Leave Applications…</td></tr>}
           </tbody>
         </table>
       </div>
