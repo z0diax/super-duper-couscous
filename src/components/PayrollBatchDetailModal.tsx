@@ -76,6 +76,10 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const [complianceItemId, setComplianceItemId] = useState<string | null>(null);
   const [complianceRemarks, setComplianceRemarks] = useState('');
   const [complianceFiles, setComplianceFiles] = useState<File[]>([]);
+  const [auditQuery, setAuditQuery] = useState('');
+  const [auditFilter, setAuditFilter] = useState<'all' | 'hold' | 'routing' | 'release'>('all');
+  const [auditPage, setAuditPage] = useState(1);
+  const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
 
   // Release form state
   const [releasedTo, setReleasedTo] = useState(batch?.receivedFromLiaison || 'Office Liaison Officer');
@@ -142,6 +146,18 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     ...(batch.workflowHistory || []).map(entry => ({ ...entry, itemBarcode: 'BATCH' })),
     ...items.flatMap(item => item.auditHistory.map(entry => ({ ...entry, itemBarcode: item.barcode }))),
   ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const normalizedAuditQuery = auditQuery.trim().toLowerCase();
+  const filteredAudit = lifecycleAudit.filter(entry => {
+    const action = entry.action.toLowerCase();
+    const matchesType = auditFilter === 'all'
+      || (auditFilter === 'hold' && (action.includes('hold') || action.includes('compliance') || action.includes('exception')))
+      || (auditFilter === 'routing' && (action.includes('route') || action.includes('assign') || action.includes('stage') || action.includes('group')))
+      || (auditFilter === 'release' && action.includes('release'));
+    const matchesQuery = !normalizedAuditQuery || [entry.actorName, entry.actorRole, entry.itemBarcode, entry.details, entry.action].some(value => String(value || '').toLowerCase().includes(normalizedAuditQuery));
+    return matchesType && matchesQuery;
+  });
+  const auditPageCount = Math.max(1, Math.ceil(filteredAudit.length / 10));
+  const visibleAudit = filteredAudit.slice((Math.min(auditPage, auditPageCount) - 1) * 10, Math.min(auditPage, auditPageCount) * 10);
 
   const allWorkGroupsCompleted = batchWorkGroups.length > 0 && batchWorkGroups.every(w => w.status === 'Completed');
   const batchStatusClass = progress.derivedStatus === 'PROCESSING_WITH_HOLDS' || progress.derivedStatus === 'ON_HOLD'
@@ -656,7 +672,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                       </div>
                       <div>
                         <h4 className="text-sm font-bold text-blue-900">
-                          Stage 3: Employee Verification &amp; Signing (Parallel Work Groups)
+                          Stage 3: Employee Verification &amp; Signing
                         </h4>
                         <p className="text-xs text-blue-800">
                           Items have been segmented by employment classification. Processors verify attendance, check claims, certify signatures, and conclude work groups in parallel.
@@ -977,28 +993,29 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
           {/* TAB 3: AUDIT TRAIL */}
           {activeTab === 'audit' && (
-            <div className="space-y-4">
-              <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Full Lifecycle History &amp; Transition Log
-              </h4>
-              <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 overflow-hidden bg-white">
-                {lifecycleAudit.map(aud => (
-                  <div key={aud.id} className="p-3 text-xs flex items-start gap-3 hover:bg-slate-50">
-                    <div className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1.5" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-slate-900">{aud.actorName}</span>
-                        <span className="text-slate-400 text-[11px]">({aud.actorRole})</span>
-                        <span className="font-mono text-[11px] text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded-sm">{aud.itemBarcode}</span>
-                      </div>
-                      <p className="text-slate-600 mt-0.5">{aud.details}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        {new Date(aud.timestamp).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+            <div className="space-y-3">
+              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div><h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">Audit Trail</h4><p className="mt-0.5 text-[11px] text-slate-500">{filteredAudit.length} of {lifecycleAudit.length} events · newest first</p></div>
+                <div className="flex flex-1 flex-col gap-2 sm:max-w-2xl sm:flex-row">
+                  <input value={auditQuery} onChange={event => { setAuditQuery(event.target.value); setAuditPage(1); }} placeholder="Search person, item, or activity…" className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-hidden focus:border-blue-400 focus:ring-2 focus:ring-blue-100" />
+                  <select value={auditFilter} onChange={event => { setAuditFilter(event.target.value as typeof auditFilter); setAuditPage(1); }} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 outline-hidden focus:border-blue-400">
+                    <option value="all">All activities</option><option value="hold">Holds &amp; compliance</option><option value="routing">Routing &amp; assignments</option><option value="release">Releases</option>
+                  </select>
+                </div>
               </div>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                {visibleAudit.length === 0 ? <div className="p-8 text-center text-xs text-slate-500">No audit events match these filters.</div> : visibleAudit.map(aud => {
+                  const expanded = expandedAuditId === aud.id;
+                  const isHoldEvent = /hold|compliance|exception/i.test(aud.action);
+                  const isReleaseEvent = /release/i.test(aud.action);
+                  return <button type="button" key={aud.id} onClick={() => setExpandedAuditId(expanded ? null : aud.id)} className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 border-b border-slate-100 px-3 py-2.5 text-left text-xs last:border-b-0 hover:bg-slate-50">
+                    <span className={`mt-1 h-2 w-2 rounded-full ${isHoldEvent ? 'bg-amber-500' : isReleaseEvent ? 'bg-emerald-500' : 'bg-blue-500'}`} />
+                    <span className="min-w-0"><span className="flex min-w-0 items-center gap-2"><strong className="shrink-0 text-slate-900">{aud.actorName}</strong><span className="truncate text-[11px] text-slate-400">{aud.actorRole}</span><span className="shrink-0 rounded bg-blue-50 px-1.5 py-0.5 font-mono text-[10px] text-blue-700">{aud.itemBarcode}</span></span><span className={`mt-0.5 block text-slate-600 ${expanded ? '' : 'truncate'}`}>{aud.details}</span>{expanded && <span className="mt-1 block font-mono text-[10px] uppercase tracking-wide text-slate-400">{aud.action.replaceAll('_', ' ')}</span>}</span>
+                    <span className="whitespace-nowrap text-[10px] text-slate-400">{new Date(aud.timestamp).toLocaleString()}</span>
+                  </button>;
+                })}
+              </div>
+              {auditPageCount > 1 && <div className="flex items-center justify-between text-xs text-slate-500"><span>Page {Math.min(auditPage, auditPageCount)} of {auditPageCount}</span><div className="flex gap-2"><button type="button" disabled={auditPage <= 1} onClick={() => setAuditPage(page => page - 1)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">Previous</button><button type="button" disabled={auditPage >= auditPageCount} onClick={() => setAuditPage(page => page + 1)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 disabled:opacity-40">Next</button></div></div>}
             </div>
           )}
 
