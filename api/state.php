@@ -20,13 +20,23 @@ try {
         elseif (in_array($action,['claimTask','completeStep','returnStep','reassignTask','approveDocument','releaseDocument','addDocumentRemark','uploadSupportingFile','placeDocumentHold','submitDocumentCompliance','recheckDocumentHold','recordExternalHandoff','recordExternalReturn'],true)) $result=document_action($pdo,$state,$user,$action,$args);
         elseif (in_array($action,['registerSinglePayroll','registerPayrollBatch','updatePayrollBatch','deletePayrollBatch','updatePayrollItemClassification','bulkClassifyPayrollItems','markPayrollItemException','clearPayrollItemException','recordPayrollItemCompliance','recheckPayrollItem','placePayrollItemHold','submitPayrollItemCompliance','resumePayrollItemHold','completeInitialCheckingAndRoute','completePayrollItemInitialCheckingAndRoute','processWorkGroupItems','releasePayrollBatch'],true)) $result=payroll_action($pdo,$state,$user,$action,$args);
         elseif ($action==='fileLeaveApplication') {
+            $modules=$user['sidebarModules']??null;
+            fail_unless(has_cap($state,$user,'canIntake') && ($modules===null || in_array('leave',$modules,true)),'Your account is not authorized to register Leave Applications.',403);
             $d=$args[0]??[]; $start=required($d,'startDate',10); $end=required($d,'endDate',10);
             foreach ([$start,$end] as $date) { $parsed=DateTimeImmutable::createFromFormat('!Y-m-d',$date); fail_unless($parsed!==false && $parsed->format('Y-m-d')===$date,'Enter valid leave dates.'); }
             fail_unless($start<=$end,'End date must be on or after start date.');
             $days=positive($d['workingDaysNumber']??0,'Working days',366); fail_unless($days<=(strtotime($end)-strtotime($start))/86400+1,'Working days exceed the date range.');
-            choice($d['leaveType']??null,['Vacation Leave','Sick Leave','Maternity Leave','Paternity Leave','Solo Parent Leave','Mandatory / Forced Leave','Special Privilege Leave','Terminal Leave'],'leave type');
-            choice($d['commutation']??null,['Requested','Not Requested'],'commutation');
-            $result=array_merge($d,['id'=>uid('leave'),'isLegacyV1'=>false,'employeeId'=>$user['id'],'employeeName'=>$user['name'],'department'=>$user['division'],'position'=>$user['position'],'filingDate'=>now(),'status'=>'Pending']); $state['leaveApplications'][]=$result;
+            $leaveType=choice($d['leaveType']??null,['COC','Vacation Leave','Mandatory / Forced Leave','Sick Leave','Wellness Leave','Maternity Leave','Paternity Leave','Special Privilege Leave','Solo Parent Leave','Study Leave','10-Day VAWC Leave','Rehabilitation Privilege','Special Leave Benefits for Women','Special Emergency / Calamity Leave','Adoption Leave','Others','Terminal Leave'],'leave type');
+            $commutation=choice($d['commutation']??'Not Requested',['Requested','Not Requested'],'commutation');
+            $employeeId=required($d,'employeeId',64); $applicant=null;
+            foreach ($state['users'] as $candidate) if ($candidate['id']===$employeeId) { $applicant=$candidate; break; }
+            fail_unless((bool)$applicant,'Select an employee from the personnel directory.',404);
+            $office=required($d,'office',190); $barcode=required($d,'barcode',190); assert_barcode($state,$barcode);
+            fail_unless(!isset($d['remarks']) || is_string($d['remarks']),'Invalid remarks.');
+            $remarks=trim($d['remarks']??''); fail_unless(mb_strlen($remarks)<=2000,'Remarks must be at most 2000 characters.');
+            $createdAt=now();
+            $result=['id'=>uid('leave'),'trackingNumber'=>$barcode,'barcode'=>$barcode,'isLegacyV1'=>false,'employeeId'=>$applicant['id'],'employeeName'=>$applicant['name'],'office'=>$office,'department'=>$office,'position'=>$applicant['position'],'leaveType'=>$leaveType,'leaveSubtype'=>null,'leaveDetails'=>null,'filingDate'=>$createdAt,'startDate'=>$start,'endDate'=>$end,'dateRanges'=>[['startDate'=>$start,'endDate'=>$end]],'workingDaysNumber'=>$days,'commutation'=>$commutation,'remarks'=>$remarks,'status'=>'For_Computation','createdByUserId'=>$user['id'],'createdByName'=>$user['name'],'createdAt'=>$createdAt,'updatedAt'=>$createdAt,'releasedAt'=>null];
+            $state['leaveApplications'][]=$result;
         } elseif ($action==='approveLeaveApplication') {
             fail_unless(has_cap($state,$user,'canApprove') || has_cap($state,$user,'canSupervise'),'Leave approval permission is required.',403);
             $i=index_of($state['leaveApplications'],(string)($args[0]??'')); $leave=&$state['leaveApplications'][$i];
@@ -57,6 +67,9 @@ try {
             $stages=$result['workflowStages']??[]; $initial=$result['initialCheckingDesk']??[];
             $details='Docketed by '.($result['encodedBy']['userName']??$user['name']).'. Stage 1 - '.($stages[0]['name']??'Docketing').' completed. Stage 2 - '.($stages[1]['name']??'Initial Checking').' assigned to '.($initial['userName']??'configured desk').'.';
         }
+        elseif ($action==='fileLeaveApplication' && is_array($result)) {
+            $details='Applicant: '.$result['employeeName'].'. Office: '.$result['office'].'. Encoded by: '.$user['name'].'. Initial status: For Computation. Barcode: '.$result['barcode'].'.';
+        }
         elseif (is_array($args[0]??null)) {
             $parts=[];
             foreach (['title','name','classification','documentType','office','sourceOffice','leaveType','startDate','endDate','remarks','description'] as $field) if (isset($args[0][$field]) && is_string($args[0][$field]) && $args[0][$field]!=='') $parts[]=ucfirst($field).': '.$args[0][$field];
@@ -69,8 +82,9 @@ try {
             $details=implode('. ',$parts);
         }
         $auditAction=['registerDocument'=>'DOCUMENT_REGISTERED','registerSinglePayroll'=>'DOCUMENT_REGISTERED','registerPayrollBatch'=>'PAYROLL_BATCH_DOCKETED','deleteDocument'=>'DOCUMENT_DELETED','completeStep'=>'STEP_COMPLETED','returnStep'=>'STEP_RETURNED','approveDocument'=>'DOCUMENT_APPROVED','releaseDocument'=>'DOCUMENT_RELEASED','claimTask'=>'TASK_CLAIMED','reassignTask'=>'TASK_REASSIGNED','addDocumentRemark'=>'REMARK_ADDED','uploadSupportingFile'=>'ATTACHMENT_UPLOADED','placeDocumentHold'=>'DOCUMENT_PLACED_ON_HOLD','submitDocumentCompliance'=>'DOCUMENT_COMPLIANCE_SUBMITTED','recheckDocumentHold'=>'DOCUMENT_HOLD_RESOLVED','runMigrationCheck'=>'MIGRATION_VERIFIED'][$action]??'WORKFLOW_CONFIG_UPDATED';
-        $auditAction=['updatePayrollBatch'=>'PAYROLL_BATCH_UPDATED','deletePayrollBatch'=>'PAYROLL_BATCH_DELETED','updatePayrollItemClassification'=>'EMPLOYMENT_CLASSIFICATION_SET','bulkClassifyPayrollItems'=>'BULK_CLASSIFICATION_SET','markPayrollItemException'=>'PAYROLL_ITEM_PLACED_ON_HOLD','clearPayrollItemException'=>'PAYROLL_COMPLIANCE_RECEIVED','recordPayrollItemCompliance'=>'PAYROLL_COMPLIANCE_RECEIVED','recheckPayrollItem'=>'PAYROLL_ITEM_RECHECK_COMPLETED','placePayrollItemHold'=>'PAYROLL_ITEM_PLACED_ON_HOLD','submitPayrollItemCompliance'=>'PAYROLL_COMPLIANCE_RECEIVED','resumePayrollItemHold'=>'PAYROLL_HOLD_RESOLVED','completeInitialCheckingAndRoute'=>'INITIAL_CHECK_COMPLETED','completePayrollItemInitialCheckingAndRoute'=>'INITIAL_CHECK_ITEM_COMPLETED','processWorkGroupItems'=>($args[2]??'')==='exception'?'PAYROLL_ITEM_PLACED_ON_HOLD':'PAYROLL_ITEM_COMPLETED','releasePayrollBatch'=>'PAYROLL_RELEASED','fileLeaveApplication'=>'LEAVE_FILED','approveLeaveApplication'=>'LEAVE_APPROVED','addUser'=>'USER_CREATED','updateUser'=>'USER_UPDATED','deleteUser'=>'USER_DELETED','deleteClassificationType'=>'CLASSIFICATION_TYPE_DELETED','recordExternalHandoff'=>'DOCUMENT_SENT_OUTSIDE_HRMDO','recordExternalReturn'=>'DOCUMENT_RETURNED_TO_HRMDO','changePassword'=>'PASSWORD_CHANGED'][$action]??$auditAction;
-        audit($pdo,$user,$auditAction,$id,ucfirst(strtolower(preg_replace('/(?<!^)[A-Z]/',' $0',$action))),$details,is_array($result)?($result['trackingNumber']??$result['batchNumber']??''):'');
+        $auditAction=['updatePayrollBatch'=>'PAYROLL_BATCH_UPDATED','deletePayrollBatch'=>'PAYROLL_BATCH_DELETED','updatePayrollItemClassification'=>'EMPLOYMENT_CLASSIFICATION_SET','bulkClassifyPayrollItems'=>'BULK_CLASSIFICATION_SET','markPayrollItemException'=>'PAYROLL_ITEM_PLACED_ON_HOLD','clearPayrollItemException'=>'PAYROLL_COMPLIANCE_RECEIVED','recordPayrollItemCompliance'=>'PAYROLL_COMPLIANCE_RECEIVED','recheckPayrollItem'=>'PAYROLL_ITEM_RECHECK_COMPLETED','placePayrollItemHold'=>'PAYROLL_ITEM_PLACED_ON_HOLD','submitPayrollItemCompliance'=>'PAYROLL_COMPLIANCE_RECEIVED','resumePayrollItemHold'=>'PAYROLL_HOLD_RESOLVED','completeInitialCheckingAndRoute'=>'INITIAL_CHECK_COMPLETED','completePayrollItemInitialCheckingAndRoute'=>'INITIAL_CHECK_ITEM_COMPLETED','processWorkGroupItems'=>($args[2]??'')==='exception'?'PAYROLL_ITEM_PLACED_ON_HOLD':'PAYROLL_ITEM_COMPLETED','releasePayrollBatch'=>'PAYROLL_RELEASED','fileLeaveApplication'=>'LEAVE_APPLICATION_REGISTERED','approveLeaveApplication'=>'LEAVE_APPROVED','addUser'=>'USER_CREATED','updateUser'=>'USER_UPDATED','deleteUser'=>'USER_DELETED','deleteClassificationType'=>'CLASSIFICATION_TYPE_DELETED','recordExternalHandoff'=>'DOCUMENT_SENT_OUTSIDE_HRMDO','recordExternalReturn'=>'DOCUMENT_RETURNED_TO_HRMDO','changePassword'=>'PASSWORD_CHANGED'][$action]??$auditAction;
+        $auditSummary=$action==='fileLeaveApplication'?'Register leave application':ucfirst(strtolower(preg_replace('/(?<!^)[A-Z]/',' $0',$action)));
+        audit($pdo,$user,$auditAction,$id,$auditSummary,$details,is_array($result)?($result['trackingNumber']??$result['batchNumber']??''):'');
         $pdo->exec('UPDATE app_meta SET revision=revision+1 WHERE id=1'); $revision++;
         $state=load_state($pdo); payroll_attach_batch_progress($state);
     }

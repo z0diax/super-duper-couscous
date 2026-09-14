@@ -329,13 +329,24 @@ test('only the system administrator can delete an ordinary document',async()=>{
   await admin.action('deleteDocument',[record.id]);
   assert.equal(admin.state.documents.some(document=>document.id===record.id),false);
 });
-test('leave validation, privacy and approval are stored with audit evidence',async()=>{
-  const data={leaveType:'Vacation Leave',startDate:'2026-10-01',endDate:'2026-10-02',workingDaysNumber:2,commutation:'Not Requested'};
-  await employee.action('fileLeaveApplication',[{...data,endDate:'2026-09-01'}],422);
-  const leave=(await employee.action('fileLeaveApplication',[data])).result;
-  await employee.action('approveLeaveApplication',[leave.id],403); await processor.refresh(); assert.equal(processor.state.leaveApplications.length,0);
-  await approver.action('approveLeaveApplication',[leave.id]); await employee.refresh(); assert.equal(employee.state.leaveApplications[0].status,'Approved');
-  const own=(await approver.action('fileLeaveApplication',[data])).result; await approver.action('approveLeaveApplication',[own.id],422);
+test('HRMDO leave registry separates applicant and encoder, validates barcodes, and audits registration',async()=>{
+  const applicant=admin.state.users.find(user=>user.role==='employee');
+  const data={employeeId:applicant.id,office:'City Engineering Office',barcode:'LEAVE-TEST-0001',leaveType:'Vacation Leave',startDate:'2026-10-01',endDate:'2026-10-02',workingDaysNumber:2,commutation:'Not Requested',remarks:'Official application received'};
+  await receiver.action('fileLeaveApplication',[{...data,endDate:'2026-09-01'}],422);
+  const leave=(await receiver.action('fileLeaveApplication',[data])).result;
+  const encoder=receiver.state.users.find(user=>user.role==='receiving_officer');
+  assert.equal(leave.employeeId,applicant.id); assert.equal(leave.employeeName,applicant.name); assert.equal(leave.createdByUserId,encoder.id); assert.notEqual(leave.employeeId,leave.createdByUserId);
+  assert.equal(leave.office,'City Engineering Office'); assert.equal(leave.barcode,'LEAVE-TEST-0001'); assert.equal(leave.trackingNumber,'LEAVE-TEST-0001'); assert.equal(leave.status,'For_Computation');
+  assert.deepEqual(leave.dateRanges,[{startDate:'2026-10-01',endDate:'2026-10-02'}]);
+  await receiver.action('fileLeaveApplication',[data],409);
+  await receiver.refresh(); assert(receiver.state.auditLogs.some(event=>event.actionType==='LEAVE_APPLICATION_REGISTERED' && event.documentId===leave.id && event.details.includes(applicant.name)));
+  await approver.action('approveLeaveApplication',[leave.id],409);
+  const types=['COC','Mandatory / Forced Leave','Sick Leave','Wellness Leave','Maternity Leave','Paternity Leave','Special Privilege Leave','Solo Parent Leave','Study Leave','10-Day VAWC Leave','Rehabilitation Privilege','Special Leave Benefits for Women','Special Emergency / Calamity Leave','Adoption Leave','Others'];
+  for (const [index,leaveType] of types.entries()) await receiver.action('fileLeaveApplication',[{...data,barcode:`LEAVE-TYPE-${index}`,leaveType}]);
+  const processorAccount=admin.state.users.find(user=>user.role==='processor');
+  await admin.action('updateUser',[{...processorAccount,password:'',sidebarModules:['dashboard']}]); await processor.refresh();
+  assert.deepEqual(processor.state.users.find(user=>user.id===processorAccount.id).sidebarModules,['dashboard']);
+  await processor.action('fileLeaveApplication',[{...data,barcode:'LEAVE-NO-ACCESS'}],403);
 });
 test('role and designation management, migration checks and password revocation',async()=>{
   const role=(await admin.action('addSystemRole',[{id:'custom_role',name:'Custom role',code:'CUSTOM',description:'Test',badgeClass:'bg-blue-100',canProcess:true}])).result;

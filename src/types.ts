@@ -381,6 +381,7 @@ export interface AuditEvent {
   actorRole: string;
   actionType: 
     | 'LEAVE_FILED'
+    | 'LEAVE_APPLICATION_REGISTERED'
     | 'LEAVE_APPROVED'
     | 'USER_CREATED'
     | 'USER_UPDATED'
@@ -487,33 +488,43 @@ export interface DocumentRecord {
 
 export interface LeaveApplicationRecord {
   id: string;
+  trackingNumber?: string;
+  barcode?: string;
   legacyId?: string;
   isLegacyV1: boolean;
   employeeId: string;
   employeeName: string;
+  office?: string;
   department: string;
   position: string;
-  leaveType: 
-    | 'Vacation Leave'
-    | 'Sick Leave'
-    | 'Maternity Leave'
-    | 'Paternity Leave'
-    | 'Solo Parent Leave'
-    | 'Mandatory / Forced Leave'
-    | 'Special Privilege Leave'
-    | 'Terminal Leave';
+  leaveType: LeaveType;
+  leaveSubtype?: string | null;
+  leaveDetails?: string | null;
   filingDate: string;
   startDate: string;
   endDate: string;
+  dateRanges?: Array<{ startDate: string; endDate: string }>;
   workingDaysNumber: number;
   commutation: 'Requested' | 'Not Requested';
-  status: 'Pending' | 'Approved' | 'Disapproved' | 'Cancelled';
+  status: 'For_Computation' | 'For_Signature' | 'Released' | 'Pending' | 'Approved' | 'Disapproved' | 'Cancelled';
+  createdByUserId?: string;
+  createdByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  releasedAt?: string | null;
   approvalDate?: string;
   approvedBy?: string;
   disapprovalReason?: string;
   remarks?: string;
   v1MigrationStatus?: 'Reconciled' | 'Historical Reference';
 }
+
+export type LeaveType =
+  | 'COC' | 'Vacation Leave' | 'Mandatory / Forced Leave' | 'Sick Leave' | 'Wellness Leave'
+  | 'Maternity Leave' | 'Paternity Leave' | 'Special Privilege Leave' | 'Solo Parent Leave'
+  | 'Study Leave' | '10-Day VAWC Leave' | 'Rehabilitation Privilege'
+  | 'Special Leave Benefits for Women' | 'Special Emergency / Calamity Leave'
+  | 'Adoption Leave' | 'Others' | 'Terminal Leave';
 
 export interface ClassificationCategory {
   id: string;

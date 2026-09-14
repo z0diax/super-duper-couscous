@@ -76,7 +76,9 @@ function can_view_full_payroll_batch(array $s,array $u,array $batch): bool {
         || payroll_desk_allows_view($s,$u,$batch['initialCheckingDesk']??$batch['assignedDesk']??[]);
 }
 function can_view_leave_application(array $s,array $u,array $leave): bool {
-    return can_view_all_operational_records($s,$u) || ($leave['employeeId']??null)===$u['id'];
+    $modules=$u['sidebarModules']??null;
+    return can_view_all_operational_records($s,$u)
+        || ($modules===null || in_array('leave',$modules,true));
 }
 function can_view_attachment_owner(array $s,array $u,?string $ownerId,?string $uploadedBy=null): bool {
     if ($ownerId===null || $ownerId==='') return $uploadedBy===$u['id'];
@@ -108,9 +110,10 @@ function filter_state_for_view(array $s,array $u): array {
     // A limited work-group viewer may see parent metadata but not its batch-wide
     // audit timeline. Their item and work-group histories remain available.
     $fullBatchIds=array_column(array_values(array_filter($visibleBatches,fn($batch)=>can_view_full_payroll_batch($s,$u,$batch))),'id');
-    $visibleIds=array_merge(array_column($visibleDocuments,'id'),$fullBatchIds,array_column($visibleItems,'id'),array_column($visibleGroups,'id'));
+    $visibleLeaves=array_values(array_filter($s['leaveApplications'],fn($leave)=>can_view_leave_application($s,$u,$leave)));
+    $visibleIds=array_merge(array_column($visibleDocuments,'id'),$fullBatchIds,array_column($visibleItems,'id'),array_column($visibleGroups,'id'),array_column($visibleLeaves,'id'));
     $s['documents']=$visibleDocuments; $s['payrollItems']=$visibleItems; $s['workGroups']=$visibleGroups; $s['payrollBatches']=$visibleBatches;
-    $s['leaveApplications']=array_values(array_filter($s['leaveApplications'],fn($leave)=>can_view_leave_application($s,$u,$leave)));
+    $s['leaveApplications']=$visibleLeaves;
     $s['auditLogs']=array_values(array_filter($s['auditLogs'],fn($event)=>($event['actorId']??null)===$u['id'] || in_array($event['documentId']??'', $visibleIds,true)));
     return $s;
 }
@@ -120,6 +123,7 @@ function assert_barcode(array $s,string $barcode,array $additional=[]): void {
     foreach ($s['documents'] as $r) { $codes[]=$r['barcode']??''; $codes[]=$r['trackingNumber']; }
     foreach ($s['payrollBatches'] as $r) { $codes[]=$r['batchBarcode']??''; $codes[]=$r['batchNumber']; }
     foreach ($s['payrollItems'] as $r) $codes[]=$r['barcode'];
+    foreach ($s['leaveApplications'] as $r) { $codes[]=$r['barcode']??''; $codes[]=$r['trackingNumber']??''; }
     fail_unless(!in_array(strtolower($barcode),array_map('strtolower',$codes),true),'Barcode is already in use.',409);
 }
 function validated_workflow(array $s,array $d): array {
