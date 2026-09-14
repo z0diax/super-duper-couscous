@@ -96,15 +96,16 @@ export const LeaveContinuity: React.FC = () => {
   const [commutation, setCommutation] = useState<'Requested' | 'Not Requested'>('Not Requested');
   const [remarks, setRemarks] = useState('');
 
+  const canViewLeave = currentUser.role === 'admin' || currentUser.sidebarModules === undefined || currentUser.sidebarModules.includes('leave');
   const loadRegistry=useCallback(async()=>{ setIsQuerying(true); setQueryError(''); try { const result=await queryLeaveRegistry({q:searchQuery,status:filterStatus==='all'?'':filterStatus,leaveType:filterType==='all'?'':filterType,office:filterOffice,filedFrom,filedTo,leaveDate,page,pageSize,sort}); setRecords(result.items); setSummary(result.summary); setPagination(result.pagination); setOffices(result.offices); if(result.pagination.page!==page)setPage(result.pagination.page); } catch(error){setQueryError(error instanceof Error?error.message:'Leave records could not be loaded.');} finally {setIsQuerying(false);}},[filedFrom,filedTo,filterOffice,filterStatus,filterType,leaveDate,page,pageSize,searchQuery,sort]);
-  useEffect(()=>{const timer=setTimeout(()=>void loadRegistry(),300);return()=>clearTimeout(timer);},[loadRegistry]);
+  useEffect(()=>{if(!canViewLeave)return;const timer=setTimeout(()=>void loadRegistry(),300);return()=>clearTimeout(timer);},[canViewLeave,loadRegistry]);
   const matchingEmployees = useMemo(() => {
     const query = employeeSearch.trim().toLowerCase();
     if (!query) return users.slice(0, 8);
     return users.filter(user => [user.name, user.office, user.division, user.position].some(value => value.toLowerCase().includes(query))).slice(0, 8);
   }, [employeeSearch, users]);
   const selectedEmployee = users.find(user => user.id === employeeId);
-  const canRegister = can('canIntake') && (currentUser.role === 'admin' || currentUser.sidebarModules === undefined || currentUser.sidebarModules.includes('leave'));
+  const canRegister = can('canIntake') && canViewLeave;
   const runWorkflowAction = async (event: React.FormEvent) => {
     event.preventDefault(); if (!selectedRecord || !workflowAction) return;
     const calls = {

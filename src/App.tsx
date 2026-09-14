@@ -40,6 +40,7 @@ const MainLayout: React.FC = () => {
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-document', false);
   const [isRegisterPayrollModalOpen, setIsRegisterPayrollModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-payroll', false);
   const operationTabs = currentUser.role === 'admin' ? ['dashboard','queues','payroll','registry','leave'] : currentUser.sidebarModules || ['dashboard','queues','payroll','registry','leave'];
+  const canViewLeaveTab = operationTabs.includes('leave');
 
   React.useEffect(() => {
     const privilegedTab = ['workflows','catalogue','users','migration'].includes(activeTab) && can('canAdmin');
@@ -115,7 +116,7 @@ const MainLayout: React.FC = () => {
             <DocumentRegistry onOpenRegisterModal={() => setIsRegisterModalOpen(true)} />
           )}
 
-          {activeTab === 'leave' && (
+          {activeTab === 'leave' && canViewLeaveTab && (
             <LeaveContinuity />
           )}
 

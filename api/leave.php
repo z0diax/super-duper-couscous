@@ -5,7 +5,7 @@ require_once __DIR__.'/domain.php';
 $pdo=database(); $user=authenticated_user($pdo); $state=load_state($pdo);
 fail_unless($_SERVER['REQUEST_METHOD']==='GET','Use GET to query Leave Applications.',405);
 $modules=$user['sidebarModules']??null;
-fail_unless(can_view_all_operational_records($state,$user) || $modules===null || in_array('leave',$modules,true),'Your account is not authorized to view Leave Applications.',403);
+fail_unless($user['role']==='admin' || has_cap($state,$user,'canAdmin') || $modules===null || in_array('leave',$modules,true),'Your account is not authorized to view Leave Applications.',403);
 
 $page=max(1,filter_var($_GET['page']??1,FILTER_VALIDATE_INT)?:1);
 $pageSize=filter_var($_GET['pageSize']??10,FILTER_VALIDATE_INT)?:10;
