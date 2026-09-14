@@ -19,14 +19,15 @@ import {
 import { queryLeaveRegistry } from '../services/leaveApi';
 
 export const MyTasksQueue: React.FC = () => {
-  const { documents, currentUser, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, setActiveTab, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
+  const { documents, currentUser, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, can, setActiveTab, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
 
   const [activeQueue, setActiveQueue] = useState<'my_tasks' | 'team_queue' | 'returned' | 'waiting' | 'ready_for_release' | 'completed'>('my_tasks');
   const [filterClass, setFilterClass] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [complianceRemarks, setComplianceRemarks] = useState<Record<string, string>>({});
   const [leaveTaskCount,setLeaveTaskCount]=useState(0);
-  useEffect(()=>{let active=true;queryLeaveRegistry({page:1,pageSize:10}).then(result=>{if(active)setLeaveTaskCount(result.taskCount);}).catch(()=>{if(active)setLeaveTaskCount(0);});return()=>{active=false;};},[currentUser.id]);
+  const mayViewLeave=currentUser.sidebarModules===undefined||currentUser.sidebarModules.includes('leave')||can('canSupervise')||can('canAdmin');
+  useEffect(()=>{let active=true;if(!mayViewLeave){setLeaveTaskCount(0);return()=>{active=false;};}queryLeaveRegistry({page:1,pageSize:10}).then(result=>{if(active)setLeaveTaskCount(result.taskCount);}).catch(()=>{if(active)setLeaveTaskCount(0);});return()=>{active=false;};},[currentUser.id,mayViewLeave]);
   const displayStatus = (status: DocumentRecord['status']) => status === 'In_Progress' ? 'Processing' : status.replace(/_/g, ' ');
 
   const isAssignedDesk = (desk: { userId?: string; assignmentType?: string; roleId?: string; team?: string }) => {
