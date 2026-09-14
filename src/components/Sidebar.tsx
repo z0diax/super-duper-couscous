@@ -183,6 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
         <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-5">
           {sections.map(section => {
             const items = navItems.filter(item => item.section === section && (!['workflows', 'catalogue', 'users', 'migration'].includes(item.id) || can('canAdmin')));
+            if (items.length === 0) return null;
             return (
               <div key={section} className="space-y-1">
                 <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
