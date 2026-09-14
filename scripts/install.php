@@ -6,6 +6,8 @@ $c=app_config(); $pdo=database(false);
 $pdo->exec('CREATE DATABASE IF NOT EXISTS `'.$c['database'].'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
 $pdo->exec('USE `'.$c['database'].'`');
 foreach (explode(';',file_get_contents(dirname(__DIR__).'/database/schema.sql')) as $sql) if (trim($sql)!=='') $pdo->exec($sql);
+$columns=$pdo->query("SHOW COLUMNS FROM app_users LIKE 'sidebar_modules'")->fetchAll();
+if (!$columns) $pdo->exec('ALTER TABLE app_users ADD COLUMN sidebar_modules LONGTEXT NULL AFTER avatar_initials');
 $pdo->beginTransaction();
 try {
     $version=(int)$pdo->query('SELECT schema_version FROM app_meta WHERE id=1 FOR UPDATE')->fetchColumn();

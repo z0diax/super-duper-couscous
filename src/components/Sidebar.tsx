@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
+import { SidebarModule } from '../types';
 import { 
   LayoutDashboard, 
   Inbox, 
@@ -37,6 +38,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
   const { activeTab, setActiveTab, documents, currentUser, payrollBatches, payrollItems, workGroups, can } = useApp();
   const showConfiguration = can('canAdmin');
   const showComplianceHistory = can('canAdmin') || can('canSupervise');
+  const allOperationModules: SidebarModule[] = ['dashboard','queues','payroll','registry','leave'];
+  const visibleOperationModules = currentUser.role === 'admin' ? allOperationModules : currentUser.sidebarModules || allOperationModules;
 
   const isAssignedDesk = (desk: { userId?: string; assignmentType?: string; roleId?: string; team?: string }) => {
     if (desk.userId) return desk.userId === currentUser.id;
@@ -66,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
     return false;
   }).length;
 
-  const navItems: NavItem[] = [
+  const navItems: NavItem[] = ([
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Operations' },
     { 
       id: 'queues', 
@@ -94,7 +97,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
       ...(showConfiguration ? [{ id: 'migration' as const, label: 'V1 Historical Archive', icon: DatabaseBackup, section: 'Compliance & History' }] : []),
       { id: 'audit' as const, label: 'Audit Trail & Reports', icon: History, section: 'Compliance & History' },
     ] : []),
-  ];
+  ] as NavItem[]).filter(item => item.section !== 'Operations' || visibleOperationModules.includes(item.id as SidebarModule));
 
   const handleNavClick = (tabId: NavItem['id']) => {
     setActiveTab(tabId);
@@ -152,7 +155,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
 
         {/* Quick Action Button */}
         <div className="p-4 pb-2 shrink-0 space-y-2">
-          <button
+          {visibleOperationModules.includes('registry') && <button
             id="btn-sidebar-register-doc"
             onClick={() => {
               onOpenRegisterModal();
@@ -162,9 +165,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
           >
             <Plus className="w-4 h-4" />
             <span>Register Document</span>
-          </button>
+          </button>}
 
-          {onOpenPayrollModal && (
+          {onOpenPayrollModal && visibleOperationModules.includes('payroll') && (
             <button
               id="btn-sidebar-register-payroll"
               onClick={() => {

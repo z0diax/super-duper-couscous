@@ -26,6 +26,9 @@ test('user accounts can sign in; non-admin accounts cannot alter configuration',
   receiver=await new Client(fixture.base).login('receiving_officer@example.test');
   approver=await new Client(fixture.base).login('approver@example.test'); releaser=await new Client(fixture.base).login('releasing_officer@example.test');
   await employee.action('addUser',[userData('admin')],403);
+  const employeeAccount=admin.state.users.find(user=>user.role==='employee');
+  await admin.action('updateUser',[{...employeeAccount,password:'',sidebarModules:['leave']}]);
+  await employee.refresh(); assert.deepEqual(employee.state.users.find(user=>user.id===employeeAccount.id).sidebarModules,['leave']);
   await admin.action('addUser',[userData('processor')],409);
   await admin.action('deleteUser',[admin.state.users.find(u=>u.role==='admin').id],422);
   assert(!JSON.stringify(admin.state).includes(testPassword)); assert(!JSON.stringify(admin.state).includes('password_hash'));

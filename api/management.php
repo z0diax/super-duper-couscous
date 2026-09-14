@@ -26,7 +26,13 @@ function management_action(PDO $pdo,array &$s,array $u,string $action,array $arg
         $hash=$password!==''?password_hash($password,PASSWORD_DEFAULT):$old['password_hash'];
         $initials=mb_substr(implode('',array_map(fn($word)=>mb_substr($word,0,1),preg_split('/\s+/',$d['name']))),0,3);
         $q=$pdo->prepare('SELECT id FROM app_users WHERE email=? AND id<>?'); $q->execute([$d['email'],$id]); fail_unless(!$q->fetch(),'An account already uses this email.',409);
-        $pdo->prepare('INSERT INTO app_users (id,email,password_hash,name,role,role_title,office,division,position,avatar_initials) VALUES (?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE email=VALUES(email),password_hash=VALUES(password_hash),name=VALUES(name),role=VALUES(role),role_title=VALUES(role_title),office=VALUES(office),division=VALUES(division),position=VALUES(position),avatar_initials=VALUES(avatar_initials)')->execute([$id,$d['email'],$hash,$d['name'],$d['role'],$d['roleTitle'],$d['office'],$d['division'],$d['position'],$initials]);
+        $allowedModules=['dashboard','queues','payroll','registry','leave']; $modules=$d['sidebarModules']??null;
+        if ($modules===null && $action==='updateUser' && !empty($old['sidebar_modules'])) $modules=json_decode($old['sidebar_modules'],true);
+        if ($modules===null) $modules=$allowedModules;
+        fail_unless(is_array($modules),'Invalid sidebar module selection.'); $modules=array_values(array_unique(array_filter($modules,fn($module)=>is_string($module) && in_array($module,$allowedModules,true))));
+        fail_unless(count($modules)>0,'Select at least one sidebar module.'); if ($d['role']==='admin') $modules=$allowedModules;
+        $d['sidebarModules']=$modules; $modulesJson=json_encode($modules,JSON_THROW_ON_ERROR);
+        $pdo->prepare('INSERT INTO app_users (id,email,password_hash,name,role,role_title,office,division,position,avatar_initials,sidebar_modules) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE email=VALUES(email),password_hash=VALUES(password_hash),name=VALUES(name),role=VALUES(role),role_title=VALUES(role_title),office=VALUES(office),division=VALUES(division),position=VALUES(position),avatar_initials=VALUES(avatar_initials),sidebar_modules=VALUES(sidebar_modules)')->execute([$id,$d['email'],$hash,$d['name'],$d['role'],$d['roleTitle'],$d['office'],$d['division'],$d['position'],$initials,$modulesJson]);
         unset($d['password']); return array_merge($d,['id'=>$id,'avatarInitials'=>$initials]);
     }
     if ($action==='changePassword') throw new ApiError('Unsupported management action.');

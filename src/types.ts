@@ -9,6 +9,8 @@ export type UserRole =
   | 'employee'
   | (string & {});
 
+export type SidebarModule = 'dashboard' | 'queues' | 'payroll' | 'registry' | 'leave';
+
 export interface SystemRoleDefinition {
   id: string;
   name: string;
@@ -35,6 +37,7 @@ export interface UserAccount {
   division: string;
   position: string;
   avatarInitials: string;
+  sidebarModules?: SidebarModule[];
   isMigratedV1?: boolean;
   legacyId?: string;
 }

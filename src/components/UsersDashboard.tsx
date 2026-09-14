@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { UserAccount, UserRole } from '../types';
+import { SidebarModule, UserAccount, UserRole } from '../types';
 import { AssigneeDesignationsModal } from './AssigneeDesignationsModal';
 import { SystemRolesModal } from './SystemRolesModal';
 import { 
@@ -112,6 +112,7 @@ export const UsersDashboard: React.FC = () => {
     position: string;
     division: string;
     office: string;
+    sidebarModules: SidebarModule[];
   }>({
     name: '',
     email: '',
@@ -120,6 +121,7 @@ export const UsersDashboard: React.FC = () => {
     position: 'Human Resource Management Officer I',
     division: 'Compensation & Benefits Division',
     office: 'Human Resource Management and Development Office',
+    sidebarModules: ['dashboard','queues','payroll','registry','leave'],
   });
 
   // Calculate active tasks per user
@@ -205,6 +207,7 @@ export const UsersDashboard: React.FC = () => {
       position: 'HR Management Officer I',
       division: 'Compensation & Benefits Division',
       office: 'Human Resource Management and Development Office',
+      sidebarModules: ['dashboard','queues','payroll','registry','leave'],
     });
     setIsUserFormOpen(true);
   };
@@ -220,6 +223,7 @@ export const UsersDashboard: React.FC = () => {
       position: user.position,
       division: user.division,
       office: user.office,
+      sidebarModules: user.sidebarModules || ['dashboard','queues','payroll','registry','leave'],
     });
     setIsUserFormOpen(true);
   };
@@ -240,6 +244,7 @@ export const UsersDashboard: React.FC = () => {
         position: formData.position.trim(),
         division: formData.division.trim(),
         office: formData.office.trim(),
+        sidebarModules: formData.sidebarModules,
       }))) return;
     } else {
       if (!(await addUser({
@@ -251,6 +256,7 @@ export const UsersDashboard: React.FC = () => {
         position: formData.position.trim(),
         division: formData.division.trim(),
         office: formData.office.trim(),
+        sidebarModules: formData.sidebarModules,
       }))) return;
     }
 
@@ -957,6 +963,20 @@ export const UsersDashboard: React.FC = () => {
                 </div>
               </div>
 
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div><h4 className="text-xs font-bold text-slate-800">Sidebar Modules</h4><p className="mt-0.5 text-[11px] text-slate-500">Choose which Operations pages this account can open from the sidebar.</p></div>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {([
+                    ['dashboard','Dashboard'],['queues','My Tasks & Queues'],['payroll','Payroll Management'],['registry','Document Registry'],['leave','Leave Continuity'],
+                  ] as Array<[SidebarModule,string]>).map(([module,label]) => {
+                    const checked = formData.role === 'admin' || formData.sidebarModules.includes(module);
+                    return <label key={module} className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs ${checked ? 'border-blue-200 bg-white text-slate-800' : 'border-slate-200 bg-slate-100 text-slate-500'}`}><span className="font-medium">{label}</span><input type="checkbox" checked={checked} disabled={formData.role === 'admin'} onChange={event => setFormData(previous => ({ ...previous, sidebarModules: event.target.checked ? [...previous.sidebarModules, module] : previous.sidebarModules.filter(item => item !== module) }))} className="h-4 w-4 rounded border-slate-300 text-blue-600" /></label>;
+                  })}
+                </div>
+                {formData.role === 'admin' && <p className="mt-2 text-[10px] text-blue-700">System Administrators always retain all Operations modules.</p>}
+                {formData.role !== 'admin' && formData.sidebarModules.length === 0 && <p className="mt-2 text-[10px] font-semibold text-rose-600">Select at least one module.</p>}
+              </div>
+
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200">
                 <button
                   type="button"
@@ -967,6 +987,7 @@ export const UsersDashboard: React.FC = () => {
                 </button>
                 <button
                   type="submit"
+                  disabled={formData.role !== 'admin' && formData.sidebarModules.length === 0}
                   className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-xs transition-colors flex items-center gap-1.5"
                 >
                   <Check className="w-3.5 h-3.5" />

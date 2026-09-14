@@ -20,7 +20,9 @@ function request_json(): array {
     fail_unless(is_array($body), 'A JSON object is required.'); return $body;
 }
 function public_user(array $r): array {
-    return ['id'=>$r['id'],'email'=>$r['email'],'name'=>$r['name'],'role'=>$r['role'], 'roleTitle'=>$r['role_title'],'office'=>$r['office'],'division'=>$r['division'], 'position'=>$r['position'],'avatarInitials'=>$r['avatar_initials']];
+    $modules=null;
+    if (!empty($r['sidebar_modules'])) { $decoded=json_decode($r['sidebar_modules'],true); if (is_array($decoded)) $modules=$decoded; }
+    return ['id'=>$r['id'],'email'=>$r['email'],'name'=>$r['name'],'role'=>$r['role'], 'roleTitle'=>$r['role_title'],'office'=>$r['office'],'division'=>$r['division'], 'position'=>$r['position'],'avatarInitials'=>$r['avatar_initials'],'sidebarModules'=>$modules];
 }
 function authenticated_user(PDO $pdo): array {
     fail_unless(!empty($_SESSION['user_id']), 'Please sign in again.', 401);

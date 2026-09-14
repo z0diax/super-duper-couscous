@@ -1,6 +1,7 @@
 import { PasswordForm } from './PasswordForm';
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { SidebarModule } from '../types';
 import { 
   Search, 
   Plus, 
@@ -32,6 +33,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
 
   const [searchInput, setSearchInput] = useState('');
   const [isPersonaOpen, setIsPersonaOpen] = useState(false);
+  const allOperationModules: SidebarModule[] = ['dashboard', 'queues', 'payroll', 'registry', 'leave'];
+  const visibleOperationModules = currentUser.role === 'admin'
+    ? allOperationModules
+    : currentUser.sidebarModules || allOperationModules;
 
   // Compute pending tasks for current active persona
   const myPendingCount = documents.filter(doc => {
@@ -127,16 +132,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
           
           {/* Quick Register Buttons */}
           <div className="hidden sm:flex items-center gap-1.5 shrink-0">
-            <button
-              id="btn-register-doc-header"
-              onClick={onOpenRegisterModal}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Register Doc</span>
-            </button>
+            {visibleOperationModules.includes('registry') && (
+              <button
+                id="btn-register-doc-header"
+                onClick={onOpenRegisterModal}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Register Doc</span>
+              </button>
+            )}
 
-            {onOpenPayrollModal && (
+            {onOpenPayrollModal && visibleOperationModules.includes('payroll') && (
               <button
                 id="btn-register-payroll-header"
                 onClick={onOpenPayrollModal}
@@ -149,19 +156,21 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
           </div>
 
           {/* Pending Tasks Notification Bell */}
-          <button
-            id="btn-header-tasks-badge"
-            onClick={() => setActiveTab('queues')}
-            className="relative p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
-            title={`${myPendingCount} tasks pending for your queue`}
-          >
-            <Bell className="w-4 h-4" />
-            {myPendingCount > 0 && (
-              <span className="absolute 1 top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white ring-2 ring-slate-900">
-                {myPendingCount}
-              </span>
-            )}
-          </button>
+          {visibleOperationModules.includes('queues') && (
+            <button
+              id="btn-header-tasks-badge"
+              onClick={() => setActiveTab('queues')}
+              className="relative p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+              title={`${myPendingCount} tasks pending for your queue`}
+            >
+              <Bell className="w-4 h-4" />
+              {myPendingCount > 0 && (
+                <span className="absolute 1 top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white ring-2 ring-slate-900">
+                  {myPendingCount}
+                </span>
+              )}
+            </button>
+          )}
 
           {/* Persona Switcher Dropdown */}
           <div className="relative shrink-0">

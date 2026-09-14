@@ -23,6 +23,7 @@ import { useWorkspaceState } from './services/workspace';
 const MainLayout: React.FC = () => {
   const { 
     activeTab, 
+    setActiveTab,
     authReady,
     isAuthenticated,
     databaseReady,
@@ -38,6 +39,13 @@ const MainLayout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-document', false);
   const [isRegisterPayrollModalOpen, setIsRegisterPayrollModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-payroll', false);
+  const operationTabs = currentUser.role === 'admin' ? ['dashboard','queues','payroll','registry','leave'] : currentUser.sidebarModules || ['dashboard','queues','payroll','registry','leave'];
+
+  React.useEffect(() => {
+    const privilegedTab = ['workflows','catalogue','users','migration'].includes(activeTab) && can('canAdmin');
+    const complianceTab = activeTab === 'audit' && (can('canAdmin') || can('canSupervise'));
+    if (!privilegedTab && !complianceTab && !operationTabs.includes(activeTab)) setActiveTab((operationTabs[0] || 'leave') as typeof activeTab);
+  }, [activeTab, currentUser.id, currentUser.sidebarModules, can, setActiveTab]);
 
   if (!authReady) {
     return <StartupMessage title="Checking your login session..." />;
