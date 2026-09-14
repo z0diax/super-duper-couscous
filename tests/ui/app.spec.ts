@@ -126,7 +126,7 @@ test('leave registration switches dynamic fields without retaining stale values'
   await page.locator('#select-leave-subtype').selectOption('OUT_PATIENT'); await page.locator('#input-leave-specific-details').fill('Flu');
   await page.locator('#btn-submit-filing').click();
   const row=page.getByText('BROWSER-LEAVE-001', { exact: true }).locator('xpath=ancestor::tr');
-  await expect(row).toContainText('Sick Leave'); await expect(row).toContainText('+ 2 more ranges');
+  await expect(row).toContainText('Sick Leave'); await row.getByRole('button',{name:'Multiple Dates Selected'}).click(); await expect(page.getByRole('dialog',{name:'Inclusive Dates'})).toContainText('Sep 14, 2026'); await expect(page.getByRole('dialog',{name:'Inclusive Dates'})).toContainText('Sep 17, 2026'); await page.getByRole('button',{name:'Close Inclusive Dates'}).click();
   await page.reload(); const persistedRow=page.getByText('BROWSER-LEAVE-001', { exact: true }).locator('xpath=ancestor::tr'); await persistedRow.getByRole('button', { name: 'View', exact: true }).click();
   await expect(page.getByText('Medical Setting', { exact: true })).toBeVisible(); await expect(page.getByText('Out Patient', { exact: true })).toBeVisible(); await expect(page.getByText('Flu', { exact: true })).toBeVisible();
   await expect(page.getByText('AM Half-Day', { exact: true })).toBeVisible(); await expect(page.locator('strong').filter({ hasText: /^3\.5 days$/ })).toBeVisible();

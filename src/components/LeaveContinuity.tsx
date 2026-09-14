@@ -72,6 +72,20 @@ const compactDates = (record: LeaveApplicationRecord) => {
   const first=ranges[0].startDate===ranges[0].endDate?displayDate(ranges[0].startDate):`${displayDate(ranges[0].startDate)} – ${displayDate(ranges[0].endDate)}`;
   return ranges.length===1?first:`${first} + ${ranges.length-1} more range${ranges.length===2?'':'s'}`;
 };
+const selectedDates = (record: LeaveApplicationRecord) => {
+  const ranges = record.dateRanges?.length ? record.dateRanges : [{ startDate: record.startDate, endDate: record.endDate, dayType: 'WHOLE_DAY' as const }];
+  return ranges.flatMap(range => {
+    const start = parseDateValue(range.startDate); const end = parseDateValue(range.endDate);
+    if (!start || !end || start > end) return [];
+    const dates: { date: string; dayType: LeaveDateRange['dayType'] }[] = [];
+    for (const current = new Date(start); current <= end; current.setUTCDate(current.getUTCDate() + 1)) dates.push({ date: current.toISOString().slice(0,10), dayType: range.dayType || 'WHOLE_DAY' });
+    return dates;
+  }).sort((a,b) => a.date.localeCompare(b.date));
+};
+const parseDateValue = (value: string) => {
+  const date = new Date(`${value}T00:00:00Z`);
+  return value && !Number.isNaN(date.getTime()) ? date : null;
+};
 
 export const LeaveContinuity: React.FC = () => {
   const { auditLogs, currentUser, fileLeaveApplication, updateLeaveApplication, completeLeaveComputation, sendLeaveForSignature, releaseLeaveApplication, placeLeaveOnHold, recordLeaveCompliance, resumeLeaveProcessing, cancelLeaveApplication, can } = useApp();
@@ -86,6 +100,7 @@ export const LeaveContinuity: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState<LeaveApplicationRecord | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<LeaveApplicationRecord | null>(null);
+  const [datesRecord, setDatesRecord] = useState<LeaveApplicationRecord | null>(null);
   const [workflowAction, setWorkflowAction] = useState<'compute'|'signature'|'release'|'hold'|'compliance'|'resume'|'cancel'|null>(null);
   const [actionRemarks, setActionRemarks] = useState('');
   const [employeeName, setEmployeeName] = useState('');
@@ -190,7 +205,7 @@ export const LeaveContinuity: React.FC = () => {
               <td className="px-4 py-3"><p className="font-semibold text-slate-900">{record.employeeName}</p><p className="text-[11px] text-slate-500">{record.position || 'Position not recorded'}</p></td>
               <td className="px-4 py-3 text-xs text-slate-600">{record.office || record.department || 'Not recorded'}</td>
               <td className="px-4 py-3 font-medium text-slate-800">{record.leaveType}</td>
-              <td className="px-4 py-3 text-xs font-medium text-slate-700">{compactDates(record)}</td><td className="px-4 py-3 text-center font-bold text-slate-800">{record.totalLeaveDays ?? record.workingDaysNumber}</td>
+              <td className="px-4 py-3 text-xs font-medium text-slate-700">{selectedDates(record).length > 1 ? <button type="button" onClick={() => setDatesRecord(record)} className="inline-flex whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-700 transition hover:border-blue-300 hover:bg-blue-100">Multiple Dates Selected</button> : compactDates(record)}</td><td className="px-4 py-3 text-center font-bold text-slate-800">{record.totalLeaveDays ?? record.workingDaysNumber}</td>
               <td className="whitespace-nowrap px-4 py-3"><span className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-bold leading-none ${statusStyle(record.status)}`}>{statusLabel(record.status)}</span></td>
               <td className="px-5 py-3 text-right"><div className="inline-flex items-center gap-1.5"><button aria-label="View" onClick={() => setSelectedRecord(record)} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 shadow-xs hover:bg-blue-50"><Eye className="h-3.5 w-3.5" /> Open</button>{canRegister && record.status === 'For_Computation' && !!record.dateRanges?.length && <button aria-label={`Edit ${record.barcode || record.trackingNumber}`} title="Edit Leave Application" onClick={() => openEdit(record)} className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:border-blue-200 hover:text-blue-700"><Pencil className="h-3.5 w-3.5" /></button>}</div></td>
             </tr>)}
@@ -244,6 +259,14 @@ export const LeaveContinuity: React.FC = () => {
           <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] text-blue-800">The new record will enter the Leave Registry with a <strong>For Computation</strong> status. Encoder: {currentUser.name}.</p>
           <footer className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button id="btn-submit-filing" type="submit" disabled={!employeeName.trim()} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{editingRecord ? 'Save Changes' : 'Register Leave Application'}</button></footer>
         </form>
+      </div>
+    </div>}
+
+    {datesRecord && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="leave-dates-title">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <header className="flex items-center justify-between bg-slate-900 px-5 py-4 text-white"><div><p className="font-mono text-[10px] font-bold text-blue-300">{datesRecord.barcode || datesRecord.trackingNumber || 'N/A'}</p><h2 id="leave-dates-title" className="mt-1 text-base font-bold">Inclusive Dates</h2><p className="mt-0.5 text-xs text-slate-300">{datesRecord.employeeName}</p></div><button type="button" aria-label="Close Inclusive Dates" onClick={() => setDatesRecord(null)} className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-white"><X className="h-4 w-4" /></button></header>
+        <div className="max-h-[60vh] overflow-y-auto p-5"><div className="mb-3 flex items-center justify-between"><span className="text-xs font-semibold text-slate-500">Selected leave dates</span><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{selectedDates(datesRecord).length} dates</span></div><div className="grid gap-2 sm:grid-cols-2">{selectedDates(datesRecord).map(({date,dayType}) => <div key={`${date}-${dayType}`} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5"><div><p className="text-xs font-bold text-slate-800">{displayDate(date)}</p><p className="mt-0.5 text-[10px] text-slate-500">{dayTypeLabel(dayType)}</p></div><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-slate-200">{dayType === 'WHOLE_DAY' ? '1 day' : '½ day'}</span></div>)}</div></div>
+        <footer className="flex justify-end border-t border-slate-200 bg-slate-50 px-5 py-3"><button type="button" onClick={() => setDatesRecord(null)} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Close</button></footer>
       </div>
     </div>}
 
