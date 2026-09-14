@@ -400,7 +400,8 @@ test('HRMDO leave registry separates applicant and encoder, validates barcodes, 
   await admin.action('updateUser',[{...processorAccount,password:'',sidebarModules:['dashboard']}]); await processor.refresh();
   assert.deepEqual(processor.state.users.find(user=>user.id===processorAccount.id).sidebarModules,['dashboard']);
   await processor.action('fileLeaveApplication',[{...data,barcode:'LEAVE-NO-ACCESS'}],403);
-  await processor.request('leave.php?q=LEAVE-TEST-0001&page=1&pageSize=10','GET',undefined,403);
+  const hiddenLeaveQuery=await processor.request('leave.php?q=LEAVE-TEST-0001&page=1&pageSize=10');
+  assert.equal(hiddenLeaveQuery.items.length,0); assert.equal(hiddenLeaveQuery.pagination.totalRecords,0); assert.equal(hiddenLeaveQuery.taskCount,0);
 });
 test('role and designation management, migration checks and password revocation',async()=>{
   const role=(await admin.action('addSystemRole',[{id:'custom_role',name:'Custom role',code:'CUSTOM',description:'Test',badgeClass:'bg-blue-100',canProcess:true}])).result;

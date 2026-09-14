@@ -5,7 +5,13 @@ require_once __DIR__.'/domain.php';
 $pdo=database(); $user=authenticated_user($pdo); $state=load_state($pdo);
 fail_unless($_SERVER['REQUEST_METHOD']==='GET','Use GET to query Leave Applications.',405);
 $modules=$user['sidebarModules']??null;
-fail_unless($user['role']==='admin' || has_cap($state,$user,'canAdmin') || $modules===null || in_array('leave',$modules,true),'Your account is not authorized to view Leave Applications.',403);
+$canViewLeave=$user['role']==='admin' || has_cap($state,$user,'canAdmin') || $modules===null || in_array('leave',$modules,true);
+if (!$canViewLeave) respond([
+    'items'=>[],
+    'pagination'=>['page'=>1,'pageSize'=>10,'totalRecords'=>0,'totalPages'=>1],
+    'summary'=>['total'=>0,'forComputation'=>0,'processing'=>0,'forSignature'=>0,'onHold'=>0,'released'=>0],
+    'taskCount'=>0,'offices'=>[],'leaveTypes'=>[],'statuses'=>[],
+]);
 
 $page=max(1,filter_var($_GET['page']??1,FILTER_VALIDATE_INT)?:1);
 $pageSize=filter_var($_GET['pageSize']??10,FILTER_VALIDATE_INT)?:10;
