@@ -183,6 +183,7 @@ export interface PayrollBatch {
     completedBy?: { userId: string; userName: string; userRole: string };
     completedAt?: string;
     dynamic?: boolean;
+    allowHold?: boolean;
   }>;
   workflowHistory?: PayrollItemAuditEntry[];
   /** Server-derived aggregate. Individual PayrollItem state controls routing. */
@@ -245,6 +246,8 @@ export type DocumentStatus =
   | 'Awaiting_External_Return'
   | 'Approved'
   | 'Returned'
+  | 'On_Hold'
+  | 'Ready_For_Recheck'
   | 'Ready_For_Release'
   | 'Released'
   | 'Archived';
@@ -274,6 +277,7 @@ export interface WorkflowStepTemplate {
   slaHours: number;
   requiredAction: 'Receive' | 'Verify & Process' | 'Review & Recommend' | 'Approve & Sign' | 'Release & Archive' | 'External Handoff';
   allowReturn: boolean;
+  allowHold?: boolean;
   requiresAttachment: boolean;
   externalPurpose?: 'Approval' | 'Comments' | 'Signature' | 'Review' | 'Recommendation' | 'Certification' | 'Other';
   externalDestinationMode?: 'FIXED_DESTINATION' | 'SELECT_AT_HANDOFF';
@@ -305,6 +309,7 @@ export interface WorkflowStepInstance {
   stageType?: WorkflowStepTemplate['stageType'];
   requiredAction?: WorkflowStepTemplate['requiredAction'];
   allowReturn?: boolean;
+  allowHold?: boolean;
   requiresAttachment?: boolean;
   stepNumber: number;
   name: string;
@@ -315,7 +320,7 @@ export interface WorkflowStepInstance {
     userId?: string;
     displayName: string;
   };
-  status: 'Pending' | 'In_Progress' | 'Completed' | 'Returned' | 'Skipped';
+  status: 'Pending' | 'In_Progress' | 'Completed' | 'Returned' | 'On_Hold' | 'Ready_For_Recheck' | 'Skipped';
   slaHours: number;
   startedAt?: string;
   completedAt?: string;
@@ -432,6 +437,15 @@ export interface DocumentRecord {
   dateEncoded: string;
   description: string;
   status: DocumentStatus;
+  holdReason?: string;
+  holdRemarks?: string;
+  heldAt?: string;
+  heldByUserId?: string;
+  heldByName?: string;
+  holdPhaseNumber?: number;
+  complianceRemarks?: string;
+  complianceAttachments?: FileAttachment[];
+  complianceSubmittedAt?: string;
   currentStepNumber: number;
   totalSteps: number;
   workflowTemplateId: string;

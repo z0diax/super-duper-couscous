@@ -48,7 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
     if (doc.status === 'Released' || doc.status === 'Archived') return false;
     const step = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
     if (!step) return false;
-    return step.assignedTo.userId === currentUser.id || (!step.assignedTo.userId && step.assignedTo.role === currentUser.role);
+    return (doc.status === 'On_Hold' && doc.encodedBy.userId === currentUser.id) || step.assignedTo.userId === currentUser.id || (!step.assignedTo.userId && step.assignedTo.role === currentUser.role);
   }).length;
 
   const payrollTaskCount = payrollBatches.filter(b => {
@@ -60,7 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
     const myGroup = workGroups.find(w => w.batchId === b.id && w.assignedProcessorId === currentUser.id && w.status === 'In_Progress');
     if (myGroup) return true;
     const releaseDesk = b.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
-    if (payrollItems.some(item => item.batchId === b.id && item.status === 'Ready_For_Release') && releaseDesk && isAssignedDesk(releaseDesk)) return true;
+    if (payrollItems.some(item => item.batchId === b.id && item.currentStage === 'release' && ['Ready_For_Release','On_Hold','Ready_For_Recheck'].includes(item.status)) && releaseDesk && isAssignedDesk(releaseDesk)) return true;
     return false;
   }).length;
 

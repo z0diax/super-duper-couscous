@@ -55,9 +55,9 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     users,
     updatePayrollItemClassification, 
     bulkClassifyPayrollItems, 
-    markPayrollItemException, 
-    recordPayrollItemCompliance,
-    recheckPayrollItem,
+    placePayrollItemHold,
+    submitPayrollItemCompliance,
+    resumePayrollItemHold,
     completeInitialCheckingAndRoute, 
     processWorkGroupItems, 
     releasePayrollBatch,
@@ -98,6 +98,8 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
           ? !!initialCheckingDesk.team && [currentUser.division, currentUser.office].includes(initialCheckingDesk.team)
           : false
   );
+  const canSubmitCompliance = batch.encodedBy.userId === currentUser.id || can('canAdmin');
+  const phaseAllowsHold = (phaseNumber: number) => batch.workflowStages?.find(stage => stage.stageNumber === phaseNumber)?.allowHold !== false;
 
   // Set default active workgroup tab if not set
   if (!activeWorkGroupTab && batchWorkGroups.length > 0) {
@@ -173,13 +175,13 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
   const handleConfirmHold = async () => {
     if (!holdingItemId) return;
-    if (!(await markPayrollItemException(holdingItemId, exceptionReason, exceptionNotes))) return;
+    if (!(await placePayrollItemHold(holdingItemId, { reason: exceptionReason, remarks: exceptionNotes, files: [] }))) return;
     setHoldingItemId(null);
   };
 
   const handleConfirmCompliance = async () => {
     if (!complianceItemId) return;
-    if (!(await recordPayrollItemCompliance(complianceItemId, complianceRemarks, complianceFiles))) return;
+    if (!(await submitPayrollItemCompliance(complianceItemId, { remarks: complianceRemarks, files: complianceFiles }))) return;
     setComplianceItemId(null);
   };
 
@@ -566,7 +568,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                               </button>
                             ) : isReadyForRecheck ? (
                               <div className="flex items-center gap-2">
-                                <button onClick={async () => await recheckPayrollItem(item.id)} className="px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded-lg transition-colors">Verify / Recheck</button>
+                                <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded-lg transition-colors">Verify / Recheck</button>
                                 <button onClick={() => handleOpenHoldModal(item.id)} className="px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors">Hold Again</button>
                               </div>
                             ) : (
@@ -579,6 +581,9 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                               </button>
                             )}
                           </div>}
+                          {!canInitialCheck && isHeld && canSubmitCompliance && (
+                            <button onClick={() => handleOpenCompliance(item.id)} className="self-end sm:self-center px-2.5 py-1 text-xs font-semibold text-sky-700 hover:bg-sky-50 border border-sky-200 rounded-lg">Submit Compliance</button>
+                          )}
                         </div>
                       );
                     })}
@@ -744,14 +749,19 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                               </div>
 
                               <div className="flex items-center gap-2 shrink-0">
-                                {item.status === 'In_Progress' && (
+                                 {item.status === 'In_Progress' && (
+                                  <>
                                   <button
                                     onClick={async () => await processWorkGroupItems(wg.id, [item.id], 'complete')}
                                     className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200 transition-colors"
                                   >
                                     Verify &amp; Sign
                                   </button>
-                                )}
+                                  {phaseAllowsHold(3) && <button onClick={() => handleOpenHoldModal(item.id)} className="px-2.5 py-1 text-xs font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-md border border-red-200 transition-colors">Hold</button>}
+                                  </>
+                                 )}
+                                {item.status === 'On_Hold' && canSubmitCompliance && <button onClick={() => handleOpenCompliance(item.id)} className="px-2.5 py-1 text-xs font-medium text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-md border border-sky-200">Submit Compliance</button>}
+                                {item.status === 'Ready_For_Recheck' && <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200">Recheck &amp; Resume</button>}
                               </div>
                             </div>
                           ))}
@@ -779,7 +789,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
               )}
 
               {/* STAGE 4: RELEASE OF PAYROLL DESK */}
-              {readyForReleaseCount > 0 && (
+              {items.some(item => item.currentStage === 'release' && item.status !== 'Released') && (
                 <div className="space-y-4">
                   <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex items-start gap-3">
                     <div className="w-9 h-9 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 mt-0.5">
@@ -793,6 +803,19 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                         {readyForReleaseCount} payroll(s) have completed Stage 3 and are ready for official dispatch. Earlier-stage holds remain in this batch.
                       </p>
                     </div>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 bg-white overflow-hidden">
+                    {items.filter(item => item.currentStage === 'release' && item.status !== 'Released').map(item => (
+                      <div key={item.id} className="p-3 flex items-center justify-between gap-3">
+                        <div><span className="font-mono text-xs font-bold text-slate-900">{item.barcode}</span><p className="text-xs text-slate-600">{item.title} · {item.status.replaceAll('_', ' ')}</p></div>
+                        <div className="flex gap-2">
+                          {item.status === 'Ready_For_Release' && phaseAllowsHold(4) && <button type="button" onClick={() => handleOpenHoldModal(item.id)} className="px-2.5 py-1 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-md">Hold</button>}
+                          {item.status === 'On_Hold' && canSubmitCompliance && <button type="button" onClick={() => handleOpenCompliance(item.id)} className="px-2.5 py-1 text-xs font-medium text-sky-700 bg-sky-50 border border-sky-200 rounded-md">Submit Compliance</button>}
+                          {item.status === 'Ready_For_Recheck' && <button type="button" onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md">Recheck &amp; Resume</button>}
+                        </div>
+                      </div>
+                    ))}
                   </div>
 
                   <form onSubmit={handleReleaseSubmit} className="space-y-4 border border-slate-200 rounded-xl p-5 bg-white">
@@ -1044,9 +1067,9 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
           <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md p-5 space-y-4">
             <div className="flex items-center gap-2.5 text-sky-700">
               <FileCheck2 className="w-5 h-5" />
-              <h3 className="text-sm font-bold text-slate-900">Record Compliance Received</h3>
+              <h3 className="text-sm font-bold text-slate-900">Submit Hold Compliance</h3>
             </div>
-            <p className="text-xs text-slate-500">This keeps the payroll item in Initial Checking and marks it ready for an explicit recheck. It will not route yet.</p>
+            <p className="text-xs text-slate-500">The item remains in its current phase and is marked ready for the assigned processor to recheck.</p>
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">Compliance Remarks</label>
               <textarea rows={3} value={complianceRemarks} onChange={e => setComplianceRemarks(e.target.value)} placeholder="e.g. Missing DTR submitted by liaison." className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:outline-hidden" />
@@ -1054,7 +1077,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
             <div><label className="block text-xs font-semibold text-slate-700 mb-1">Compliance Attachment (Optional)</label><input type="file" multiple onChange={event => setComplianceFiles(Array.from(event.target.files || []))} className="block w-full text-xs text-slate-600" /></div>
             <div className="flex justify-end gap-2 pt-2">
               <button onClick={() => setComplianceItemId(null)} className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg">Cancel</button>
-              <button onClick={handleConfirmCompliance} className="px-4 py-1.5 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700">Record Compliance</button>
+              <button onClick={handleConfirmCompliance} disabled={!complianceRemarks.trim()} className="px-4 py-1.5 bg-sky-600 text-white text-xs font-bold rounded-lg hover:bg-sky-700 disabled:opacity-50">Submit Compliance</button>
             </div>
           </div>
         </div>

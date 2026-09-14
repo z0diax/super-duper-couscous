@@ -56,6 +56,11 @@ function can_view_payroll_item(array $s,array $u,array $item): bool {
     if (($batch['encodedBy']['userId']??null)===$u['id']) return true;
     $stage=$item['currentStage']??(empty($item['workGroupId'])?'initial_checking':'verification_signing');
     if ($stage==='initial_checking' && payroll_desk_allows_view($s,$u,$batch['initialCheckingDesk']??$batch['assignedDesk']??[])) return true;
+    if ($stage==='release') {
+        foreach ($batch['workflowStages']??[] as $workflowStage) {
+            if (($workflowStage['stageNumber']??0)===4 && payroll_desk_allows_view($s,$u,$workflowStage['assignedTo']??[])) return true;
+        }
+    }
     if (($item['assignedToUserId']??null)===$u['id']) return true;
     foreach ($s['workGroups'] as $group) if (in_array($item['id'],$group['itemIds']??[],true) && can_view_work_group($s,$u,$group)) return true;
     return in_array(($item['status']??''),['Ready_For_Release','Released'],true) && has_cap($s,$u,'canRelease');
@@ -152,7 +157,7 @@ function validated_workflow(array $s,array $d): array {
             $turnaround=$step['expectedTurnaroundHours']??null;
             if ($turnaround!==null && $turnaround!=='') $step['expectedTurnaroundHours']=positive($turnaround,'Expected turnaround hours'); else unset($step['expectedTurnaroundHours']);
             $step['requiresReturnedAttachment']=(bool)($step['requiresReturnedAttachment']??false); $step['requiresExternalResult']=(bool)($step['requiresExternalResult']??false);
-            $step['allowReturn']=false; $step['requiresAttachment']=false;
+            $step['allowReturn']=false; $step['allowHold']=false; $step['requiresAttachment']=false;
             continue;
         }
         $step['requiredAction']=choice($step['requiredAction']??null,['Receive','Verify & Process','Review & Recommend','Approve & Sign','Release & Archive'],'required action');
@@ -172,7 +177,7 @@ function validated_workflow(array $s,array $d): array {
             fail_unless(count(array_filter($s['users'],fn($u)=>in_array($team,[$u['division'],$u['office']],true)))>0,'A team must match an existing user division or office.');
             $step['assigneeName']=$team;
         }
-        $step['allowReturn']=(bool)($step['allowReturn']??false); $step['requiresAttachment']=(bool)($step['requiresAttachment']??false);
+        $step['allowReturn']=(bool)($step['allowReturn']??false); $step['allowHold']=(bool)($step['allowHold']??true); $step['requiresAttachment']=(bool)($step['requiresAttachment']??false);
     } unset($step);
     $d['isActive']=(bool)($d['isActive']??false); return $d;
 }
@@ -217,7 +222,7 @@ function register_document(PDO $pdo,array &$s,array $u,array $d): array {
     foreach ($wf['steps'] as $i=>$st) {
         $stageType=$st['stageType']??(($st['requiredAction']??'')==='Release & Archive'?'FINAL_RELEASE':'INTERNAL_PROCESSING');
         $isExternal=$stageType==='EXTERNAL_HANDOFF_REVIEW';
-        $instance=['stepNumber'=>$i+1,'name'=>$st['name'],'stageType'=>$stageType,'assignedTo'=>$isExternal?['type'=>'System','displayName'=>'System / awaiting HRMDO handoff']:['type'=>$st['assigneeType'],'role'=>$st['assigneeRole']??null,'team'=>$st['assigneeTeam']??null,'userId'=>$st['assigneeType']==='Person'?($st['assigneeUserId']??null):null,'displayName'=>$st['assigneeName']], 'requiredAction'=>$st['requiredAction'],'allowReturn'=>$st['allowReturn'],'requiresAttachment'=>$st['requiresAttachment'],'status'=>$i===0?'In_Progress':'Pending','slaHours'=>$st['slaHours'],'startedAt'=>$i===0?$registeredAt:null,'isCurrent'=>$i===0];
+        $instance=['stepNumber'=>$i+1,'name'=>$st['name'],'stageType'=>$stageType,'assignedTo'=>$isExternal?['type'=>'System','displayName'=>'System / awaiting HRMDO handoff']:['type'=>$st['assigneeType'],'role'=>$st['assigneeRole']??null,'team'=>$st['assigneeTeam']??null,'userId'=>$st['assigneeType']==='Person'?($st['assigneeUserId']??null):null,'displayName'=>$st['assigneeName']], 'requiredAction'=>$st['requiredAction'],'allowReturn'=>$st['allowReturn'],'allowHold'=>$st['allowHold']??true,'requiresAttachment'=>$st['requiresAttachment'],'status'=>$i===0?'In_Progress':'Pending','slaHours'=>$st['slaHours'],'startedAt'=>$i===0?$registeredAt:null,'isCurrent'=>$i===0];
         if ($isExternal) {
             $instance=array_merge($instance,['externalPurpose'=>$st['externalPurpose'],'externalDestinationMode'=>$st['externalDestinationMode'],'externalDestinationOffice'=>$st['externalDestinationOffice']??null,'returnReceiver'=>['type'=>$st['returnReceiverType'],'role'=>$st['returnReceiverRole']??null,'team'=>$st['returnReceiverTeam']??null,'userId'=>$st['returnReceiverType']==='Person'?($st['returnReceiverUserId']??null):null,'displayName'=>$st['returnReceiverName']],'expectedTurnaroundHours'=>$st['expectedTurnaroundHours']??null,'requiresReturnedAttachment'=>(bool)($st['requiresReturnedAttachment']??false),'requiresExternalResult'=>(bool)($st['requiresExternalResult']??false),'externalStatus'=>$i===0?'PENDING_HANDOFF':null]);
             if ($i===0) $instance['handoffOwner']=['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']];
@@ -305,10 +310,32 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
         return $doc;
     }
     fail_unless(!$isExternal,'Use the external handoff and return actions for this workflow stage.',409);
+    if ($action==='submitDocumentCompliance') {
+        fail_unless(($doc['status']??'')==='On_Hold','This document is not awaiting compliance.',409);
+        fail_unless(($doc['encodedBy']['userId']??null)===$u['id'] || has_cap($s,$u,'canAdmin'),'Only the document creator can submit compliance.',403);
+        $submission=$args[1]??[]; fail_unless(is_array($submission),'Compliance details are required.');
+        $files=$submission['files']??[]; fail_unless(is_array($files),'Invalid compliance attachments.');
+        if ($files) { $added=attach_files($pdo,$u,$files,$doc['id'],$n+1); $doc['attachments']=array_merge($doc['attachments'],$added); $doc['complianceAttachments']=$added; }
+        $doc['complianceRemarks']=required(['remarks'=>$submission['remarks']??''],'remarks',4000); $doc['complianceSubmittedAt']=now(); $doc['status']='Ready_For_Recheck'; $step['status']='Ready_For_Recheck';
+        return $doc;
+    }
+    if ($action==='recheckDocumentHold') {
+        fail_unless(($doc['status']??'')==='Ready_For_Recheck','Compliance has not been submitted for recheck.',409);
+        fail_unless(can_assign($s,$u,$step['assignedTo']) || has_cap($s,$u,'canAdmin'),'Only the assigned phase processor can recheck this document.',403);
+        $doc['status']=$doc['preHoldStatus']??'In_Progress'; $step['status']='In_Progress'; $doc['holdResolvedAt']=now(); $doc['holdResolvedByUserId']=$u['id']; $doc['holdResolvedByName']=$u['name'];
+        unset($doc['preHoldStatus']); return $doc;
+    }
+    fail_unless(!in_array($doc['status'],['On_Hold','Ready_For_Recheck'],true) || in_array($action,['addDocumentRemark','uploadSupportingFile'],true),'Resolve the current hold before processing this phase.',409);
     if ($action==='reassignTask') require_cap($s,$u,'canSupervise');
     elseif (!in_array($action,['addDocumentRemark','uploadSupportingFile'],true)) fail_unless(can_assign($s,$u,$step['assignedTo']) || ($action==='releaseDocument' && $doc['status']==='Ready_For_Release' && $step['status']==='Completed' && has_cap($s,$u,'canRelease')),'This task is assigned to another officer.',403);
     else fail_unless(can_assign($s,$u,$step['assignedTo']) || $doc['encodedBy']['userId']===$u['id'],'Only the encoder or assigned officer can add supporting information.',403);
-    if ($action==='claimTask') {
+    if ($action==='placeDocumentHold') {
+        fail_unless(!empty($step['allowHold']),'Holding is disabled for this workflow phase.',409);
+        fail_unless(!in_array($doc['status'],['On_Hold','Ready_For_Recheck'],true),'This document is already in a hold cycle.',409);
+        $hold=$args[1]??[]; fail_unless(is_array($hold),'Hold details are required.'); $reason=required($hold,'reason',2000); $notes=trim((string)($hold['remarks']??''));
+        $files=$hold['files']??[]; fail_unless(is_array($files),'Invalid hold attachments.'); if ($files) $doc['attachments']=array_merge($doc['attachments'],attach_files($pdo,$u,$files,$doc['id'],$n+1));
+        $doc['preHoldStatus']=$doc['status']; $doc['status']='On_Hold'; $doc['holdReason']=$reason; $doc['holdRemarks']=$notes; $doc['holdPhaseNumber']=$n+1; $doc['heldAt']=now(); $doc['heldByUserId']=$u['id']; $doc['heldByName']=$u['name']; $step['status']='On_Hold';
+    } elseif ($action==='claimTask') {
         fail_unless(empty($step['assignedTo']['userId']) || $step['assignedTo']['userId']===$u['id'],'Task has already been claimed.',409);
         $step['assignedTo']['userId']=$u['id']; $step['assignedTo']['displayName']=$u['name'];
     } elseif ($action==='reassignTask') {

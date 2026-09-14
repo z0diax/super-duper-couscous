@@ -4,12 +4,12 @@ import { useApp } from '../context/AppContext';
 import { OFFICE_OPTIONS } from '../data/offices';
 
 type Tab = 'workflow' | 'details' | 'attachments' | 'audit' | 'slip';
-type Dialog = 'claim' | 'complete' | 'return' | 'approve' | 'release' | 'reassign' | 'remark' | 'upload' | 'handoff' | 'external-return' | null;
+type Dialog = 'claim' | 'complete' | 'hold' | 'compliance' | 'recheck' | 'return' | 'approve' | 'release' | 'reassign' | 'remark' | 'upload' | 'handoff' | 'external-return' | null;
 
 export const DocumentDetailModal: React.FC = () => {
   const {
     selectedDocument: doc, setSelectedDocument, currentUser, users, payrollItems, auditLogs, can,
-    claimTask, completeStep, returnStep, reassignTask, approveDocument, releaseDocument,
+    claimTask, completeStep, returnStep, reassignTask, approveDocument, releaseDocument, placeDocumentHold, submitDocumentCompliance, recheckDocumentHold,
     addDocumentRemark, uploadSupportingFile, updatePayrollItemClassification,
     recordExternalHandoff, recordExternalReturn,
   } = useApp();
@@ -30,6 +30,8 @@ export const DocumentDetailModal: React.FC = () => {
   const [returnFile, setReturnFile] = useState<File | null>(null);
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [employmentClassification, setEmploymentClassification] = useState('');
+  const [holdReason, setHoldReason] = useState('');
+  const [holdFile, setHoldFile] = useState<File | null>(null);
 
   const current = doc?.workflowSteps.find(step => step.stepNumber === doc.currentStepNumber);
   const isExternal = current?.stageType === 'EXTERNAL_HANDOFF_REVIEW';
@@ -39,18 +41,20 @@ export const DocumentDetailModal: React.FC = () => {
   const canClaim = !!current && !doc?.isLegacyV1 && !current.assignedTo.userId && !isAssigned && current.status !== 'Completed' && ((current.assignedTo.type === 'Team' && !!current.assignedTo.team && [currentUser.division, currentUser.office].includes(current.assignedTo.team)) || current.assignedTo.role === currentUser.role);
   const canManage = canProcess && !isExternal && can('canSupervise');
   const canExternal = !!isExternal && (current?.handoffOwner?.userId === currentUser.id || can('canIntake') || can('canSupervise') || isAdmin);
-  const canSeeControls = canProcess || canClaim || canManage || canExternal;
+  const canSeeControls = canProcess || canClaim || canManage || canExternal || (!!doc && ['On_Hold','Ready_For_Recheck'].includes(doc.status) && (doc.encodedBy.userId === currentUser.id || isAdmin));
   const audit = useMemo(() => doc ? auditLogs.filter(event => event.documentId === doc.id) : [], [auditLogs, doc]);
   const payrollItem = doc ? payrollItems.find(item => item.documentId === doc.id) : undefined;
 
   if (!doc || !current) return null;
 
   const close = () => { setDialog(null); setSelectedDocument(null); };
-  const resetDialog = () => { setDialog(null); setRemarks(''); setActionTaken(''); setReturnReason(''); setReleasedTo(''); setReassignUserId(''); setReassignReason(''); setAttachmentFile(null); setHandoffFile(null); setReturnFile(null); setEmploymentClassification(''); };
+  const resetDialog = () => { setDialog(null); setRemarks(''); setActionTaken(''); setReturnReason(''); setReleasedTo(''); setReassignUserId(''); setReassignReason(''); setAttachmentFile(null); setHandoffFile(null); setReturnFile(null); setEmploymentClassification(''); setHoldReason(''); setHoldFile(null); };
   const saved = async (operation: () => Promise<unknown>) => { const result = await operation(); if (result) resetDialog(); };
   const phaseLabel = `Phase ${doc.currentStepNumber}`;
   const requiresPayrollClassification = !!payrollItem && doc.classification === 'Payroll' && current.requiredAction === 'Verify & Process';
   const selectedClassification = employmentClassification || payrollItem?.employmentClassification || '';
+  const isHeld = doc.status === 'On_Hold';
+  const isReadyForRecheck = doc.status === 'Ready_For_Recheck';
   const execute = async () => {
     if (requiresPayrollClassification) {
       if (!selectedClassification) return;
@@ -59,12 +63,15 @@ export const DocumentDetailModal: React.FC = () => {
     await saved(() => completeStep(doc.id, remarks, actionTaken.trim() || current.requiredAction || 'Processed'));
   };
   const dialogTitle: Record<Exclude<Dialog, null>, string> = {
-    claim: 'Claim task', complete: 'Complete and advance', return: 'Return for rework', approve: 'Approve and sign', release: 'Release document', reassign: 'Reassign task', remark: 'Add remark', upload: 'Upload file', handoff: 'Record external handoff', 'external-return': 'Record return to HRMDO',
+    claim: 'Claim task', complete: 'Complete and advance', hold: 'Place document on hold', compliance: 'Submit compliance', recheck: 'Recheck and resume', return: 'Return for rework', approve: 'Approve and sign', release: 'Release document', reassign: 'Reassign task', remark: 'Add remark', upload: 'Upload file', handoff: 'Record external handoff', 'external-return': 'Record return to HRMDO',
   };
   const submitDialog = async (event: React.FormEvent) => {
     event.preventDefault();
     if (dialog === 'claim') await saved(() => claimTask(doc.id));
     if (dialog === 'complete') await execute();
+    if (dialog === 'hold' && holdReason.trim()) await saved(() => placeDocumentHold(doc.id, { reason: holdReason, remarks, files: holdFile ? [holdFile] : [] }));
+    if (dialog === 'compliance' && remarks.trim()) await saved(() => submitDocumentCompliance(doc.id, { remarks, files: holdFile ? [holdFile] : [] }));
+    if (dialog === 'recheck') await saved(() => recheckDocumentHold(doc.id));
     if (dialog === 'return' && returnReason.trim()) await saved(() => returnStep(doc.id, returnReason));
     if (dialog === 'approve') await saved(() => approveDocument(doc.id, remarks || 'Approved'));
     if (dialog === 'release' && releasedTo.trim()) await saved(() => releaseDocument(doc.id, { releasedTo, releaseMode, receiptRemarks: remarks }));
@@ -115,12 +122,16 @@ export const DocumentDetailModal: React.FC = () => {
 
             {!doc.isLegacyV1 && doc.status !== 'Released' && canSeeControls && <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div><h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">Workflow actions</h3><p className="mt-1 text-xs text-slate-500">Actions available for {phaseLabel} ({current.name})</p></div>
+              {(isHeld || isReadyForRecheck) && <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><strong>{isHeld ? 'On hold — awaiting compliance' : 'Compliance submitted — ready for recheck'}</strong><p className="mt-1">{doc.holdReason}{doc.holdRemarks ? ` — ${doc.holdRemarks}` : ''}</p></div>}
               <div className="mt-4 flex flex-wrap gap-2">
                 {canClaim && <button type="button" onClick={() => setDialog('claim')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Claim task</button>}
-                {canProcess && !isExternal && current.status !== 'Completed' && current.requiredAction !== 'Approve & Sign' && current.requiredAction !== 'Release & Archive' && <button type="button" onClick={() => setDialog('complete')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"><CheckCircle2 className="h-4 w-4" />Complete and advance</button>}
-                {canProcess && !isExternal && current.requiredAction === 'Approve & Sign' && <button type="button" onClick={() => setDialog('approve')} className="rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white">Approve and sign</button>}
-                {canProcess && !isExternal && current.requiredAction === 'Release & Archive' && <button type="button" onClick={() => setDialog('release')} className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold text-white">Release document</button>}
-                {canProcess && !isExternal && current.allowReturn && doc.currentStepNumber > 1 && <button type="button" onClick={() => setDialog('return')} className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"><RotateCcw className="h-4 w-4" />Return for rework</button>}
+                {canProcess && !isExternal && !isHeld && !isReadyForRecheck && current.status !== 'Completed' && current.requiredAction !== 'Approve & Sign' && current.requiredAction !== 'Release & Archive' && <button type="button" onClick={() => setDialog('complete')} className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"><CheckCircle2 className="h-4 w-4" />Complete and advance</button>}
+                {canProcess && !isExternal && !isHeld && !isReadyForRecheck && current.requiredAction === 'Approve & Sign' && <button type="button" onClick={() => setDialog('approve')} className="rounded-lg bg-purple-600 px-3 py-2 text-xs font-semibold text-white">Approve and sign</button>}
+                {canProcess && !isExternal && !isHeld && !isReadyForRecheck && current.requiredAction === 'Release & Archive' && <button type="button" onClick={() => setDialog('release')} className="rounded-lg bg-cyan-600 px-3 py-2 text-xs font-semibold text-white">Release document</button>}
+                {canProcess && !isExternal && !isHeld && !isReadyForRecheck && current.allowReturn && doc.currentStepNumber > 1 && <button type="button" onClick={() => setDialog('return')} className="inline-flex items-center gap-1 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700"><RotateCcw className="h-4 w-4" />Return for rework</button>}
+                {canProcess && !isExternal && !isHeld && !isReadyForRecheck && current.allowHold && <button type="button" onClick={() => setDialog('hold')} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">Place on hold</button>}
+                {isHeld && (doc.encodedBy.userId === currentUser.id || isAdmin) && <button type="button" onClick={() => setDialog('compliance')} className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white">Submit compliance</button>}
+                {isReadyForRecheck && (canProcess || isAdmin) && <button type="button" onClick={() => setDialog('recheck')} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white">Recheck and resume</button>}
                 {(canProcess || doc.encodedBy.userId === currentUser.id) && <button type="button" onClick={() => setDialog('remark')} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700">Add remark</button>}
                 {(canProcess || doc.encodedBy.userId === currentUser.id) && <button type="button" onClick={() => setDialog('upload')} className="inline-flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700"><Upload className="h-4 w-4" />Upload file</button>}
                 {canManage && <button type="button" onClick={() => setDialog('reassign')} className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700"><UserCheck className="h-4 w-4" />Reassign</button>}
@@ -150,6 +161,9 @@ export const DocumentDetailModal: React.FC = () => {
               <input autoFocus={!requiresPayrollClassification} value={actionTaken} onChange={event => setActionTaken(event.target.value)} placeholder={`Action taken (defaults to ${current.requiredAction || 'complete'})`} className="w-full rounded-lg border border-slate-300 p-2 text-sm" />
               <textarea value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Remarks (optional)" className="min-h-24 w-full rounded-lg border border-slate-300 p-2 text-sm" />
             </>}
+            {dialog === 'hold' && <><input autoFocus required value={holdReason} onChange={event => setHoldReason(event.target.value)} placeholder="Hold reason or missing requirement" className="w-full rounded-lg border border-amber-300 p-2 text-sm" /><textarea value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Details and required action" className="min-h-24 w-full rounded-lg border border-amber-300 p-2 text-sm" /><label className="block rounded-lg border border-dashed border-amber-300 p-3 text-sm">Supporting file (optional)<input type="file" className="mt-2 block w-full text-xs" onChange={event => setHoldFile(event.target.files?.[0] || null)} /></label></>}
+            {dialog === 'compliance' && <><textarea autoFocus required value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Describe the submitted compliance" className="min-h-24 w-full rounded-lg border border-amber-300 p-2 text-sm" /><label className="block rounded-lg border border-dashed border-amber-300 p-3 text-sm">Compliance attachment (optional)<input type="file" className="mt-2 block w-full text-xs" onChange={event => setHoldFile(event.target.files?.[0] || null)} /></label></>}
+            {dialog === 'recheck' && <p className="text-sm text-slate-600">Confirm that the compliance is sufficient. The document will resume in {phaseLabel} with the same assigned processor.</p>}
             {dialog === 'return' && <textarea autoFocus required value={returnReason} onChange={event => setReturnReason(event.target.value)} placeholder="Reason for return" className="min-h-24 w-full rounded-lg border border-rose-300 p-2 text-sm" />}
             {dialog === 'approve' && <textarea autoFocus value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Approval remarks" className="min-h-24 w-full rounded-lg border border-slate-300 p-2 text-sm" />}
             {dialog === 'release' && <><input autoFocus required value={releasedTo} onChange={event => setReleasedTo(event.target.value)} placeholder="Released to" className="w-full rounded-lg border border-slate-300 p-2 text-sm" /><select value={releaseMode} onChange={event => setReleaseMode(event.target.value as typeof releaseMode)} className="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm">{['In-Person Pick-up','Official Courier','Electronic Copy','Internal Messenger'].map(option => <option key={option}>{option}</option>)}</select><textarea value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Receipt remarks (optional)" className="min-h-20 w-full rounded-lg border border-slate-300 p-2 text-sm" /></>}

@@ -49,7 +49,7 @@ export const MyTasksQueue: React.FC = () => {
     const myWorkGroup = workGroups.find(w => w.batchId === b.id && w.assignedProcessorId === currentUser.id && w.status === 'In_Progress');
     if (myWorkGroup) return true;
     const releaseDesk = b.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
-    if (payrollItems.some(item => item.batchId === b.id && item.status === 'Ready_For_Release') && releaseDesk && isAssignedDesk(releaseDesk)) return true;
+    if (payrollItems.some(item => item.batchId === b.id && item.currentStage === 'release' && ['Ready_For_Release','On_Hold','Ready_For_Recheck'].includes(item.status)) && releaseDesk && isAssignedDesk(releaseDesk)) return true;
     return false;
   });
 
@@ -58,7 +58,7 @@ export const MyTasksQueue: React.FC = () => {
     if (doc.isLegacyV1 || doc.status === 'Released' || doc.status === 'Archived') return false;
     const currentStep = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
     if (!currentStep) return false;
-    return currentStep.assignedTo.userId === currentUser.id || (!currentStep.assignedTo.userId && currentStep.assignedTo.role === currentUser.role);
+    return (doc.status === 'On_Hold' && doc.encodedBy.userId === currentUser.id) || currentStep.assignedTo.userId === currentUser.id || (!currentStep.assignedTo.userId && currentStep.assignedTo.role === currentUser.role);
   });
 
   // 2. Team Queue (assigned to user's division/team, can be claimed)

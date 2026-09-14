@@ -1113,7 +1113,8 @@ export const WorkflowManager: React.FC = () => {
                             }} className="w-full text-xs border rounded-lg p-2"><option value="">Use role or team queue</option>{users.map(u => <option key={u.id} value={u.id}>{u.name} — {u.roleTitle}</option>)}</select>
                         </div>
 
-                        <div className={`${stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''} sm:col-span-2 flex items-center gap-4 pt-1`}>
+                        <div className={`${stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''} sm:col-span-2 flex flex-wrap items-center gap-4 pt-1`}>
+                          <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" checked={step.allowHold ?? true} onChange={e => handleEditStepChange(idx, 'allowHold', e.target.checked)} className="w-3.5 h-3.5 text-amber-600 rounded cursor-pointer" /><span>Allow Hold at this Phase</span></label>
                           <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                             <input
                               type="checkbox"
@@ -1487,7 +1488,8 @@ export const WorkflowManager: React.FC = () => {
                             }} className="w-full text-xs border rounded-lg p-2"><option value="">Use role or team queue</option>{users.map(u => <option key={u.id} value={u.id}>{u.name} — {u.roleTitle}</option>)}</select>
                         </div>
 
-                        <div className={`${stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''} sm:col-span-2 flex items-center gap-4 pt-1`}>
+                        <div className={`${stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''} sm:col-span-2 flex flex-wrap items-center gap-4 pt-1`}>
+                          <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" checked={step.allowHold ?? true} onChange={e => handleCreateStepChange(idx, 'allowHold', e.target.checked)} className="w-3.5 h-3.5 text-amber-600 rounded cursor-pointer" /><span>Allow Hold at this Phase</span></label>
                           <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                             <input
                               type="checkbox"
