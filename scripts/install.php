@@ -33,6 +33,9 @@ try {
         foreach ($legacy['users']??[] as $u) $put->execute([$u['id'],$u['email'],password_hash(bin2hex(random_bytes(32)),PASSWORD_DEFAULT),$u['name'],$u['role'],$u['roleTitle'],$u['office'],$u['division'],$u['position'],$u['avatarInitials']]);
         $pdo->exec('UPDATE app_meta SET schema_version=1,revision=revision+1 WHERE id=1');
     }
+    if ($version<2) {
+        $pdo->exec('UPDATE app_meta SET schema_version=2,revision=revision+1 WHERE id=1');
+    }
     if ((int)$pdo->query("SELECT COUNT(*) FROM app_users WHERE role='admin'")->fetchColumn()===0) {
         $email=getenv('HRMDO_ADMIN_EMAIL')?:($c['admin_email']??''); $password=getenv('HRMDO_ADMIN_PASSWORD');
         $hash=$password?password_hash($password,PASSWORD_DEFAULT):($c['admin_password_hash']??'');
