@@ -121,6 +121,15 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const allItemsReleased = progress.derivedStatus === 'COMPLETED';
   const processorFor = (classification: string) => employmentRoutingRules.find(rule => rule.classification === classification)?.primaryProcessorName || 'Processor not configured';
   const releaseDesk = batch.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
+  const canReleaseBatch = can('canSupervise') || !!releaseDesk && (
+    releaseDesk.userId
+      ? releaseDesk.userId === currentUser.id
+      : releaseDesk.assignmentType === 'Role'
+        ? releaseDesk.roleId === currentUser.role
+        : releaseDesk.assignmentType === 'Team'
+          ? !!releaseDesk.team && [currentUser.division, currentUser.office].includes(releaseDesk.team)
+          : false
+  );
   const lifecycleAudit = [
     ...(batch.workflowHistory || []).map(entry => ({ ...entry, itemBarcode: 'BATCH' })),
     ...items.flatMap(item => item.auditHistory.map(entry => ({ ...entry, itemBarcode: item.barcode }))),
@@ -718,7 +727,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                               <></>
                             )}
 
-                            {!isCompleted && wgItems.some(item => item.status === 'In_Progress') && (
+                            {(isUserAssigned || can('canSupervise')) && !isCompleted && wgItems.some(item => item.status === 'In_Progress') && (
                               <button
                                 onClick={async () => await processWorkGroupItems(wg.id, wgItems.filter(item => item.status === 'In_Progress').map(i => i.id), 'complete')}
                                 className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 shadow-xs transition-colors"
@@ -749,7 +758,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                               </div>
 
                               <div className="flex items-center gap-2 shrink-0">
-                                 {item.status === 'In_Progress' && (
+                                 {(isUserAssigned || can('canSupervise')) && item.status === 'In_Progress' && (
                                   <>
                                   <button
                                     onClick={async () => await processWorkGroupItems(wg.id, [item.id], 'complete')}
@@ -761,7 +770,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                                   </>
                                  )}
                                 {item.status === 'On_Hold' && canSubmitCompliance && <button onClick={() => handleOpenCompliance(item.id)} className="px-2.5 py-1 text-xs font-medium text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-md border border-sky-200">Submit Compliance</button>}
-                                {item.status === 'Ready_For_Recheck' && <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200">Recheck &amp; Resume</button>}
+                                {(isUserAssigned || can('canSupervise')) && item.status === 'Ready_For_Recheck' && <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200">Recheck &amp; Resume</button>}
                               </div>
                             </div>
                           ))}
@@ -789,7 +798,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
               )}
 
               {/* STAGE 4: RELEASE OF PAYROLL DESK */}
-              {items.some(item => item.currentStage === 'release' && item.status !== 'Released') && (
+              {canReleaseBatch && items.some(item => item.currentStage === 'release' && item.status !== 'Released') && (
                 <div className="space-y-4">
                   <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 flex items-start gap-3">
                     <div className="w-9 h-9 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0 mt-0.5">
