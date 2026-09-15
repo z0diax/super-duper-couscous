@@ -12,13 +12,13 @@ import {
   Tags, 
   DatabaseBackup, 
   History,
-  FileText,
   X,
   ChevronRight,
   ShieldCheck,
   Plus,
   Users
 } from 'lucide-react';
+import { BrandLogo } from './BrandLogo';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -126,20 +126,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
         }`}
       >
         {/* Brand Header */}
-        <div className="h-16 px-4 sm:px-5 flex items-center justify-between border-b border-slate-800 shrink-0">
+        <div className="h-20 px-4 sm:px-5 flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-md ring-2 ring-blue-500/20 shrink-0">
-              <FileText className="w-5 h-5" />
-            </div>
+            <BrandLogo className="h-10 w-10 shrink-0 drop-shadow-md" title="HRMDO Records Management System" />
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-white tracking-tight text-xs sm:text-sm truncate">
-                  Document Tracking System
-                </span>
-              </div>
-              <p className="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate">
-                Document Routing &amp; Tracking
-              </p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-300">HRMDO Records</p>
+              <p className="mt-0.5 text-xs font-bold leading-tight text-white sm:text-sm">Management System</p>
+              <p className="mt-0.5 text-[10px] font-medium text-slate-400">Records · Workflow · Archives</p>
             </div>
           </div>
 

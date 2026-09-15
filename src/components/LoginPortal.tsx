@@ -1,6 +1,7 @@
 import React, { FormEvent, useState } from 'react';
-import { LockKeyhole, LogIn, ShieldCheck } from 'lucide-react';
+import { LockKeyhole, LogIn } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { BrandLogo } from './BrandLogo';
 
 export const LoginPortal: React.FC = () => {
   const { login } = useApp();
@@ -26,12 +27,10 @@ export const LoginPortal: React.FC = () => {
     <main className="min-h-screen bg-slate-950 flex items-center justify-center px-6 py-12">
       <section className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8 shadow-2xl">
         <div className="mb-8 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-white">
-            <ShieldCheck className="h-6 w-6" />
-          </div>
+          <BrandLogo className="h-12 w-12 shrink-0 drop-shadow-lg" title="HRMDO Records Management System" />
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-300">HRMDO</p>
-            <h1 className="text-lg font-semibold text-white">Document Tracking System</h1>
+            <h1 className="text-lg font-semibold leading-tight text-white">Records Management System</h1>
           </div>
         </div>
         <div className="mb-6">
