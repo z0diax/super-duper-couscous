@@ -36,7 +36,7 @@ try {
             $oldRanges=[]; foreach ($leave['dateRanges']??[] as $range) if (!empty($range['id'])) $oldRanges[$range['id']]=$range;
             foreach ($validated['dateRanges'] as &$range) { $old=$oldRanges[$range['id']]??[]; $range['leaveApplicationId']=$id; $range['createdAt']=$old['createdAt']??$updatedAt; } unset($range);
             $leave=array_merge($leave,$validated,['updatedAt'=>$updatedAt]); $result=$leave;
-        } elseif (in_array($action,['completeLeaveComputation','sendLeaveForSignature','releaseLeaveApplication','placeLeaveOnHold','recordLeaveCompliance','resumeLeaveProcessing','cancelLeaveApplication'],true)) {
+        } elseif (in_array($action,['changeLeaveApplicationStatus','completeLeaveComputation','sendLeaveForSignature','releaseLeaveApplication','placeLeaveOnHold','recordLeaveCompliance','resumeLeaveProcessing','cancelLeaveApplication'],true)) {
             $transition=transition_leave_application($state,$user,$action,$args); $result=$transition['record'];
         } elseif ($action==='approveLeaveApplication') {
             fail_unless(has_cap($state,$user,'canApprove') || has_cap($state,$user,'canSupervise'),'Leave approval permission is required.',403);

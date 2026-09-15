@@ -188,7 +188,21 @@ function transition_leave_application(array &$s,array $u,string $action,array $a
     fail_unless(empty($leave['isLegacyV1']),'Historical Leave records cannot enter the V2 workflow.',409);
     $before=(string)($leave['status']??''); $data=is_array($args[1]??null)?$args[1]:[]; $at=now();
     $event=''; $summary=''; $remarks='';
-    if ($action==='completeLeaveComputation') {
+    if ($action==='changeLeaveApplicationStatus') {
+        $next=choice($data['status']??null,['For_Computation','On_Hold','For_Signature','Released'],'Leave status');
+        fail_unless($next!==$before,'Choose a status different from the current status.',409);
+        fail_unless(!isset($data['remarks']) || is_string($data['remarks']),'Invalid status remarks.');
+        $remarks=trim((string)($data['remarks']??'')); fail_unless(mb_strlen($remarks)<=2000,'Status remarks must be at most 2000 characters.');
+        if ($next==='Released') fail_unless(has_cap($s,$u,'canRelease') || has_cap($s,$u,'canSupervise'),'Leave release permission is required.',403);
+        elseif ($next==='For_Computation') fail_unless(has_cap($s,$u,'canIntake') || has_cap($s,$u,'canProcess') || has_cap($s,$u,'canSupervise'),'Leave intake or processing permission is required.',403);
+        else fail_unless(has_cap($s,$u,'canProcess') || has_cap($s,$u,'canApprove') || has_cap($s,$u,'canSupervise'),'Leave processing or approval permission is required.',403);
+        $leave['status']=$next; $leave['statusRemarks']=$remarks; $leave['statusChangedAt']=$at; $leave['statusChangedByUserId']=$u['id']; $leave['statusChangedByName']=$u['name'];
+        if ($next==='On_Hold') { $leave['heldFromStatus']=in_array($before,['For_Computation','For_Processing','For_Signature'],true)?$before:'For_Computation'; $leave['holdReason']=$remarks!==''?$remarks:'No remarks provided.'; $leave['holdRemarks']=$remarks; $leave['heldAt']=$at; $leave['heldByUserId']=$u['id']; $leave['heldByName']=$u['name']; }
+        else unset($leave['heldFromStatus'],$leave['holdReason'],$leave['holdRemarks'],$leave['heldAt'],$leave['heldByUserId'],$leave['heldByName'],$leave['complianceRemarks'],$leave['complianceReceivedAt'],$leave['complianceReceivedByUserId'],$leave['complianceReceivedByName']);
+        if ($next==='Released') { $leave['releasedAt']=$at; $leave['releasedByUserId']=$u['id']; $leave['releasedByName']=$u['name']; $leave['releaseRemarks']=$remarks; }
+        else { $leave['releasedAt']=null; unset($leave['releasedByUserId'],$leave['releasedByName'],$leave['releaseRemarks']); }
+        $event='LEAVE_STATUS_CHANGED'; $summary='Leave status changed to '.str_replace('_',' ',$next);
+    } elseif ($action==='completeLeaveComputation') {
         fail_unless($before==='For_Computation','Only a Leave Application For Computation can complete computation.',409); require_leave_stage_authority($s,$u,$before);
         validated_leave_application($s,$leave,$id);
         $remarks=trim((string)($data['remarks']??'')); fail_unless(mb_strlen($remarks)<=2000,'Computation remarks must be at most 2000 characters.');

@@ -125,6 +125,7 @@ function useApplication() {
     fileLeaveApplication: operation('fileLeaveApplication'), updateLeaveApplication: operation('updateLeaveApplication'),
     completeLeaveComputation: operation<LeaveApplicationRecord>('completeLeaveComputation'), sendLeaveForSignature: operation<LeaveApplicationRecord>('sendLeaveForSignature'), releaseLeaveApplication: operation<LeaveApplicationRecord>('releaseLeaveApplication'),
     placeLeaveOnHold: operation<LeaveApplicationRecord>('placeLeaveOnHold'), recordLeaveCompliance: operation<LeaveApplicationRecord>('recordLeaveCompliance'), resumeLeaveProcessing: operation<LeaveApplicationRecord>('resumeLeaveProcessing'), cancelLeaveApplication: operation<LeaveApplicationRecord>('cancelLeaveApplication'),
+    changeLeaveApplicationStatus: operation<LeaveApplicationRecord>('changeLeaveApplicationStatus'),
     approveLeaveApplication: operation('approveLeaveApplication'), runMigrationCheck: operation<MigrationSummary>('runMigrationCheck'),
   };
 }
