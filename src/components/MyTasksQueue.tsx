@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { DocumentRecord, PayrollBatch } from '../types';
 import { 
@@ -16,7 +16,6 @@ import {
   Tag,
   Layers
 } from 'lucide-react';
-import { queryLeaveRegistry } from '../services/leaveApi';
 import { currentDocumentStep, isDocumentActionableForUser } from '../services/documentTaskAssignment';
 import { documentSenderLabel } from '../services/documentDisplay';
 
@@ -27,9 +26,6 @@ export const MyTasksQueue: React.FC = () => {
   const [filterClass, setFilterClass] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [complianceRemarks, setComplianceRemarks] = useState<Record<string, string>>({});
-  const [leaveTaskCount,setLeaveTaskCount]=useState(0);
-  const mayViewLeave=currentUser.role==='admin'||currentUser.sidebarModules===undefined||currentUser.sidebarModules.includes('leave');
-  useEffect(()=>{let active=true;if(!mayViewLeave){setLeaveTaskCount(0);return()=>{active=false;};}queryLeaveRegistry({page:1,pageSize:10}).then(result=>{if(active)setLeaveTaskCount(result.taskCount);}).catch(()=>{if(active)setLeaveTaskCount(0);});return()=>{active=false;};},[currentUser.id,mayViewLeave]);
   const displayStatus = (status: DocumentRecord['status']) => status === 'In_Progress' ? 'Processing' : status.replace(/_/g, ' ');
 
   const isAssignedDesk = (desk: { userId?: string; assignmentType?: string; roleId?: string; team?: string }) => {
@@ -155,7 +151,7 @@ export const MyTasksQueue: React.FC = () => {
   }
 
   const queueTabs: QueueTabItem[] = [
-    { id: 'my_tasks', label: 'My Tasks', count: myTasks.length + myPayrollBatches.length + leaveTaskCount, icon: Inbox },
+    { id: 'my_tasks', label: 'My Tasks', count: myTasks.length + myPayrollBatches.length, icon: Inbox },
     { id: 'team_queue', label: 'Team Queue', count: teamTasks.length, icon: Users },
     { id: 'returned', label: 'Returned / Rework', count: returnedTasks.length, icon: RotateCcw, isAlert: returnedTasks.length > 0 },
     { id: 'waiting', label: 'Waiting / Tracked', count: waitingTasks.length, icon: Hourglass },
