@@ -68,7 +68,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
 
   const handleExportCSV = () => {
     const headers = ['Tracking Number', 'Title', 'Classification', 'Document Type', 'Source Office', 'Sender', 'Priority', 'Status', 'Date Received', 'Dataset'];
-    const rows = filteredDocs.map(d => [d.trackingNumber, d.title, d.classification, d.documentType, d.sourceOffice, d.senderName, d.priority, d.status, d.dateReceived, d.isLegacyV1 ? 'V1 Historical Archive' : 'V2 Active']);
+    const rows = filteredDocs.map(d => [d.trackingNumber, d.title, d.classification, d.documentType, d.sourceOffice, d.senderName, d.priority, d.status, d.dateReceived, d.isLegacyV1 ? 'Historical Archive' : 'Active Records']);
     exportCsv(`HRMDO_DTS_${new Date().toISOString().slice(0,10)}.csv`, [headers, ...rows]);
 
     showToast('success', 'Export Generated', `Exported ${filteredDocs.length} records to CSV format.`);
@@ -89,7 +89,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Comprehensive authoritative repository of operational V2 documents and preserved V1 historical reference records.
+              Central repository for active documents and preserved historical records.
             </p>
           </div>
 
@@ -124,7 +124,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            All Datasets ({documents.length})
+            All Records ({documents.length})
           </button>
           <button
             id="tab-dataset-v2"
@@ -135,7 +135,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                 : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
             }`}
           >
-            V2 Operational Records ({documents.filter(d => !d.isLegacyV1).length})
+            Active Records ({documents.filter(d => !d.isLegacyV1).length})
           </button>
           <button
             id="tab-dataset-v1"
@@ -146,7 +146,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                 : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
             }`}
           >
-            V1 Historical Archive (Read-Only) ({documents.filter(d => d.isLegacyV1).length})
+            Historical Archive ({documents.filter(d => d.isLegacyV1).length})
           </button>
           <button
             id="tab-outside-hrmdo"
@@ -169,7 +169,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search tracking number, title, subject, office, or legacy V1 ID..."
+            placeholder="Search tracking number, title, subject, office, or archive ID..."
             className="w-full text-xs sm:text-sm pl-9 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -263,7 +263,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                         </div>
                         {doc.isLegacyV1 ? (
                           <span className="inline-block mt-0.5 text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 border border-indigo-200">
-                            V1 LEGACY ARCHIVE
+                            HISTORICAL ARCHIVE
                           </span>
                         ) : (
                           <div className="text-[10px] text-slate-400 font-normal mt-0.5">

@@ -93,7 +93,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
     ] : []),
 
     ...(showComplianceHistory ? [
-      ...(showConfiguration ? [{ id: 'migration' as const, label: 'V1 Historical Archive', icon: DatabaseBackup, section: 'Compliance & History' }] : []),
+      ...(showConfiguration ? [{ id: 'migration' as const, label: 'Historical Archive', icon: DatabaseBackup, section: 'Compliance & History' }] : []),
       { id: 'audit' as const, label: 'Audit Trail & Reports', icon: History, section: 'Compliance & History' },
     ] : []),
   ] as NavItem[]).filter(item => item.section !== 'Operations' || visibleOperationModules.includes(item.id as SidebarModule));

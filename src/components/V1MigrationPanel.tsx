@@ -27,7 +27,7 @@ export const V1MigrationPanel: React.FC = () => {
     setIsVerifying(true);
     const result = await runMigrationCheck();
     setIsVerifying(false);
-    if (result) setVerifiedStatus(result.totalV1Records === 0 ? 'No historical records have been imported.' : `Checked ${result.totalV1Records} historical documents. Attachment exceptions: ${result.exceptionsCount}. Original V1 checksums are required to verify source equivalence.`);
+    if (result) setVerifiedStatus(result.totalV1Records === 0 ? 'No historical records have been imported.' : `Checked ${result.totalV1Records} historical documents. Attachment exceptions: ${result.exceptionsCount}. Original archive checksums are required to verify source equivalence.`);
   };
 
   return (
@@ -38,15 +38,15 @@ export const V1MigrationPanel: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                V1 Historical Archive & Migration Integrity
+                Historical Archive & Integrity
               </h1>
               <span className="text-xs bg-indigo-100 text-indigo-800 font-semibold px-2 py-0.5 rounded border border-indigo-200 flex items-center gap-1">
                 <Lock className="w-3 h-3" />
-                <span>Proposal Section 9 & Appendix B</span>
+                <span>Read-Only Records</span>
               </span>
             </div>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Read-only institutional preservation of V1 legacy documents, employee leave records, and audit logs.
+              Read-only preservation of historical documents, employee leave records, and audit logs.
             </p>
           </div>
 
@@ -108,7 +108,7 @@ export const V1MigrationPanel: React.FC = () => {
       {/* Section 9 Principles & Policy Guarantees */}
       <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs space-y-4">
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-          Section 9 Mandated Transition Principles
+          Archive Preservation Rules
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
@@ -118,7 +118,7 @@ export const V1MigrationPanel: React.FC = () => {
               <span>1. Zero Re-Routing of Closed Docs</span>
             </div>
             <p className="text-slate-600 leading-relaxed">
-              Historical V1 documents are preserved as read-only historical references and are not forced into V2 multi-phase operational workflows.
+              Historical documents remain read-only references and are excluded from active operational workflows.
             </p>
           </div>
 
@@ -128,7 +128,7 @@ export const V1MigrationPanel: React.FC = () => {
               <span>2. Original Number Preservation</span>
             </div>
             <p className="text-slate-600 leading-relaxed">
-              Original V1 tracking numbers (e.g. <code>V1-COMM-2025-0982</code>) remain fully intact and instantly searchable alongside modern V2 codes.
+              Original tracking numbers remain intact and searchable alongside current document records.
             </p>
           </div>
 
@@ -138,7 +138,7 @@ export const V1MigrationPanel: React.FC = () => {
               <span>3. Leave Ledger Continuity</span>
             </div>
             <p className="text-slate-600 leading-relaxed">
-              V1 leave filings and credit balances seamlessly feed into the V2 Leave Continuity subsystem under verified employee IDs.
+              Historical leave filings and credit balances remain connected to verified employee records.
             </p>
           </div>
         </div>
@@ -149,10 +149,10 @@ export const V1MigrationPanel: React.FC = () => {
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div>
             <h3 className="text-base font-bold text-slate-900">
-              Preserved V1 Historical Records Sample ({legacyDocs.length} loaded in memory)
+              Preserved Historical Records ({legacyDocs.length})
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Click any preserved legacy record to inspect its archived metadata, attached scanned files, and immutable historical notes.
+              Open a preserved record to inspect its archived metadata, scanned files, and historical notes.
             </p>
           </div>
         </div>
@@ -170,7 +170,7 @@ export const V1MigrationPanel: React.FC = () => {
                     {doc.trackingNumber}
                   </span>
                   <span className="text-[10px] font-bold text-slate-500 uppercase">
-                    Legacy ID: {doc.legacyId}
+                    Archive ID: {doc.legacyId}
                   </span>
                 </div>
 

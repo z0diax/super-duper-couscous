@@ -499,7 +499,7 @@ export const UsersDashboard: React.FC = () => {
                       </button>
                       {user.isMigratedV1 && (
                         <span className="text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded font-mono">
-                          V1 Legacy
+                           Imported Account
                         </span>
                       )}
                     </div>
