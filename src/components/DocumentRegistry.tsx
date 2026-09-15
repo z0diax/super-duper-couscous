@@ -319,10 +319,10 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                         ) : (
                           <div>
                             <div className={`text-xs font-bold ${doc.status === 'Disapproved' ? 'text-rose-700' : 'text-slate-900'}`}>
-                              {doc.status === 'Disapproved' ? 'Processing stopped' : `Phase ${doc.currentStepNumber} of ${doc.totalSteps}`}
+                              {doc.status === 'Disapproved' ? 'Document was disapproved' : `Phase ${doc.currentStepNumber} of ${doc.totalSteps}`}
                             </div>
                             <div className={`text-[11px] truncate max-w-[180px] ${doc.status === 'Disapproved' ? 'font-semibold text-rose-600' : 'text-blue-600'}`}>
-                              {doc.status === 'Disapproved' ? `Disapproved at ${currentStep?.name || `Phase ${doc.currentStepNumber}`}` : currentStep?.name}
+                              {doc.status === 'Disapproved' ? 'Processing ended after external review' : currentStep?.name}
                             </div>
                             {doc.status === 'Awaiting_External_Return' && (
                               <div className="mt-1 text-[10px] font-semibold text-amber-700">Outside HRMDO: {doc.currentLocation || currentStep?.externalHandoff?.destinationOffice}</div>
