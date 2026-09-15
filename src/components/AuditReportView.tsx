@@ -16,7 +16,7 @@ export const AuditReportView: React.FC = () => {
   const completedSteps = documents.flatMap(document => document.workflowSteps).filter(step => step.startedAt && step.completedAt);
   const averageHours = completedSteps.length ? completedSteps.reduce((sum, step) => sum + (Date.parse(step.completedAt!) - Date.parse(step.startedAt!)) / 3600000, 0) / completedSteps.length : 0;
   const returnedIds = new Set(auditLogs.filter(event => event.actionType === 'STEP_RETURNED').map(event => event.documentId));
-  const concludedDocuments = documents.filter(document => ['Released', 'Archived'].includes(document.status));
+  const concludedDocuments = documents.filter(document => ['Released', 'Archived', 'Disapproved'].includes(document.status));
   const firstPassYield = concludedDocuments.length ? concludedDocuments.filter(document => !returnedIds.has(document.id)).length / concludedDocuments.length * 100 : 0;
   const actionTypes = useMemo(() => [...new Set(auditLogs.map(log => log.actionType))].sort(), [auditLogs]);
   const filteredLogs = useMemo(() => auditLogs.filter(log => {

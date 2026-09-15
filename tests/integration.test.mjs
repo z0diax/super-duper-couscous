@@ -486,6 +486,21 @@ test('external handoff preserves custody, waits for return, and activates the ne
   await receiver.refresh(); active=receiver.state.documents.find(d=>d.id===consecutive.id);
   assert.equal(active.workflowSteps[1].externalStatus,'OUTSIDE_HRMDO');
   await receiver.action('recordExternalReturn',[consecutive.id,{returnedFrom:"City Mayor's Office",returnedBy:'Office Records Clerk',files:[]}]);
+
+  const disapproved=(await admin.action('registerDocument',[{...documentData('EXTERNAL-DISAPPROVED-001'),classification:'Request',documentType:'Service Record'}])).result;
+  await processor.action('completeStep',[disapproved.id,'Prepared for external review']);
+  await processor.action('recordExternalHandoff',[disapproved.id,{destinationOffice:"City Mayor's Office",purpose:'Review',handedTo:'Office Records Clerk',files:[]}]);
+  await receiver.action('recordExternalReturn',[disapproved.id,{returnedFrom:"City Mayor's Office",returnedBy:'Office Records Clerk',result:'Disapproved',remarks:'External office declined the request',files:[]}]);
+  await admin.refresh();
+  const stopped=admin.state.documents.find(d=>d.id===disapproved.id);
+  assert.equal(stopped.status,'Disapproved');
+  assert.equal(stopped.currentStepNumber,2);
+  assert.equal(stopped.workflowSteps[1].status,'Completed');
+  assert.equal(stopped.workflowSteps[1].externalReturn.result,'Disapproved');
+  assert.equal(stopped.workflowSteps[2].status,'Skipped');
+  assert.equal(stopped.workflowSteps[2].isCurrent,false);
+  assert(admin.state.auditLogs.some(event=>event.documentId===disapproved.id && event.actionType==='DOCUMENT_DISAPPROVED'));
+  await processor.action('completeStep',[disapproved.id,'Must not resume'],409);
 });
 test('renaming a catalogue type updates future routing while preserving document history',async()=>{
   await admin.refresh();

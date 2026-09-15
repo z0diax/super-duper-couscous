@@ -51,7 +51,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
   // A phase becomes a task for its configured person, role, or team as soon as
   // it is active. Payroll tasks follow this exact rule just like documents.
   const documentTaskCount = documents.filter(doc => {
-    if (doc.status === 'Released' || doc.status === 'Archived') return false;
+    if (doc.status === 'Released' || doc.status === 'Archived' || doc.status === 'Disapproved') return false;
     return (doc.status === 'On_Hold' && doc.encodedBy.userId === currentUser.id) || isDocumentActionableForUser(doc, currentUser, true);
   }).length;
 

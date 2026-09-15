@@ -387,7 +387,7 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
     // known. Processing authorization remains more restrictive below.
     fail_unless(can_view_document($s,$u,$doc),'Record not found.',404);
     fail_unless(empty($doc['isLegacyV1']),'Historical documents are read only.');
-    fail_unless(!in_array($doc['status'],['Released','Archived'],true),'This document has already been released.',409);
+    fail_unless(!in_array($doc['status'],['Released','Archived','Disapproved'],true),'This document workflow has already concluded.',409);
     $n=$doc['currentStepNumber']-1; $step=&$doc['workflowSteps'][$n];
     fail_unless(is_array($step),'The document has no current workflow step.');
     $isExternal=($step['stageType']??'INTERNAL_PROCESSING')==='EXTERNAL_HANDOFF_REVIEW';
@@ -425,7 +425,15 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
         $step['completedBy']=['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']]; $step['actionTaken']='External return recorded'.($result?': '.$result:'');
         $step['externalReturn']=['returnedFrom'=>$returnedFrom,'returnedBy'=>isset($return['returnedBy'])?trim((string)$return['returnedBy']):'','result'=>$result?:null,'remarks'=>isset($return['remarks'])?trim((string)$return['remarks']):'','returnedAt'=>$returnedAt,'receivedBy'=>['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']]];
         $doc['currentLocation']='HRMDO'; $doc['custodyHistory'][]=['id'=>uid('custody'),'movementType'=>'RETURN_TO_HRMDO','fromLocation'=>$returnedFrom,'toLocation'=>'HRMDO','timestamp'=>$returnedAt,'stageNumber'=>$n+1,'purpose'=>$step['externalHandoff']['purpose']??$step['externalPurpose']??'','remarks'=>$step['externalReturn']['remarks'],'actorId'=>$u['id'],'actorName'=>$u['name'],'representative'=>$step['externalReturn']['returnedBy']];
-        if ($n+1<count($doc['workflowSteps'])) activate_document_step($doc,$n+1,$step['completedBy']); else $doc['status']='Ready_For_Release';
+        if ($result==='Disapproved') {
+            $doc['status']='Disapproved';
+            for ($future=$n+1;$future<count($doc['workflowSteps']);$future++) {
+                $doc['workflowSteps'][$future]['status']='Skipped';
+                $doc['workflowSteps'][$future]['isCurrent']=false;
+                $doc['workflowSteps'][$future]['actionTaken']='Skipped because the external review disapproved the document.';
+            }
+        } elseif ($n+1<count($doc['workflowSteps'])) activate_document_step($doc,$n+1,$step['completedBy']);
+        else $doc['status']='Ready_For_Release';
         return $doc;
     }
     fail_unless(!$isExternal,'Use the external handoff and return actions for this workflow stage.',409);

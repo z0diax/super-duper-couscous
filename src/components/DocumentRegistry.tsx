@@ -204,6 +204,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
             <option value="Returned">Returned</option>
             <option value="Ready_For_Release">Ready for Release</option>
             <option value="Released">Released</option>
+            <option value="Disapproved">Disapproved</option>
             <option value="Archived">Archived</option>
           </select>
 
@@ -316,11 +317,11 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                           </div>
                         ) : (
                           <div>
-                            <div className="text-xs font-bold text-slate-900">
-                              Phase {doc.currentStepNumber} of {doc.totalSteps}
+                            <div className={`text-xs font-bold ${doc.status === 'Disapproved' ? 'text-rose-700' : 'text-slate-900'}`}>
+                              {doc.status === 'Disapproved' ? 'Processing stopped' : `Phase ${doc.currentStepNumber} of ${doc.totalSteps}`}
                             </div>
-                            <div className="text-[11px] text-blue-600 truncate max-w-[150px]">
-                              {currentStep?.name}
+                            <div className={`text-[11px] truncate max-w-[180px] ${doc.status === 'Disapproved' ? 'font-semibold text-rose-600' : 'text-blue-600'}`}>
+                              {doc.status === 'Disapproved' ? `Disapproved at ${currentStep?.name || `Phase ${doc.currentStepNumber}`}` : currentStep?.name}
                             </div>
                             {doc.status === 'Awaiting_External_Return' && (
                               <div className="mt-1 text-[10px] font-semibold text-amber-700">Outside HRMDO: {doc.currentLocation || currentStep?.externalHandoff?.destinationOffice}</div>

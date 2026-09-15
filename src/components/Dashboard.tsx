@@ -30,13 +30,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
 
   const activeV2Docs = documents.filter(d => !d.isLegacyV1);
   const pendingApprovalDocs = activeV2Docs.filter(d => d.status === 'Pending_Approval');
-  const releasedDocs = activeV2Docs.filter(d => d.status === 'Released');
-  const inFlightDocs = activeV2Docs.filter(d => d.status !== 'Released' && d.status !== 'Archived');
+  const concludedDocs = activeV2Docs.filter(d => ['Released', 'Disapproved'].includes(d.status));
+  const inFlightDocs = activeV2Docs.filter(d => !['Released', 'Archived', 'Disapproved'].includes(d.status));
   const outsideHrmdoDocs = activeV2Docs.filter(d => d.status === 'Awaiting_External_Return');
 
   // Tasks assigned to current active user or role
   const myActionableTasks = activeV2Docs.filter(doc => {
-    if (doc.status === 'Released' || doc.status === 'Archived') return false;
+    if (doc.status === 'Released' || doc.status === 'Archived' || doc.status === 'Disapproved') return false;
     return isDocumentActionableForUser(doc, currentUser, true);
   });
 
@@ -154,7 +154,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
             <Send className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-emerald-600">
-            {releasedDocs.length}
+            {concludedDocs.length}
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
             Officially completed

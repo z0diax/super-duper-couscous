@@ -13,6 +13,7 @@ export const currentDocumentStep = (document: DocumentRecord) =>
   document.workflowSteps.find(step => step.stepNumber === document.currentStepNumber);
 
 export const isDocumentActionableForUser = (document: DocumentRecord, user: UserAccount, includeTeam = false) => {
+  if (['Released', 'Archived', 'Disapproved'].includes(document.status)) return false;
   const step = currentDocumentStep(document);
   if (!step) return false;
 

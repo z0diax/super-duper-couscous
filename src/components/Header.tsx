@@ -39,7 +39,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
 
   // Compute pending tasks for current active persona
   const myPendingCount = documents.filter(doc => {
-    if (doc.status === 'Released' || doc.status === 'Archived') return false;
+    if (doc.status === 'Released' || doc.status === 'Archived' || doc.status === 'Disapproved') return false;
     return isDocumentActionableForUser(doc, currentUser, true);
   }).length;
 

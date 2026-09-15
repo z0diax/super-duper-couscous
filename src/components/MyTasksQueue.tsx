@@ -60,7 +60,7 @@ export const MyTasksQueue: React.FC = () => {
 
   // 1. My Tasks (assigned to user specifically or role)
   const myTasks = documents.filter(doc => {
-    if (doc.isLegacyV1 || doc.status === 'Released' || doc.status === 'Archived') return false;
+    if (doc.isLegacyV1 || ['Released', 'Archived', 'Disapproved'].includes(doc.status)) return false;
     const currentStep = currentDocumentStep(doc);
     if (!currentStep) return false;
     return (doc.status === 'On_Hold' && doc.encodedBy.userId === currentUser.id) || isDocumentActionableForUser(doc, currentUser);
@@ -68,7 +68,7 @@ export const MyTasksQueue: React.FC = () => {
 
   // 2. Team Queue (assigned to user's division/team, can be claimed)
   const teamTasks = documents.filter(doc => {
-    if (doc.isLegacyV1 || doc.status === 'Released' || doc.status === 'Archived') return false;
+    if (doc.isLegacyV1 || ['Released', 'Archived', 'Disapproved'].includes(doc.status)) return false;
     const currentStep = currentDocumentStep(doc);
     if (!currentStep) return false;
     // If not already explicitly claimed by current user, but belongs to user's division/team or general queue
@@ -83,7 +83,7 @@ export const MyTasksQueue: React.FC = () => {
 
   // 4. Waiting / In-progress (tracked by user who participated in previous steps)
   const waitingTasks = documents.filter(doc => {
-    if (doc.isLegacyV1 || doc.status === 'Released' || doc.status === 'Archived') return false;
+    if (doc.isLegacyV1 || ['Released', 'Archived', 'Disapproved'].includes(doc.status)) return false;
     // Check if user was encoder or participated in earlier steps
     const isEncoder = doc.encodedBy.userId === currentUser.id;
     const participatedInStep = doc.workflowSteps.some(
@@ -96,7 +96,7 @@ export const MyTasksQueue: React.FC = () => {
   const readyForReleaseTasks = documents.filter(doc => !doc.isLegacyV1 && doc.status === 'Ready_For_Release');
 
   // 6. Completed / Released
-  const completedTasks = documents.filter(doc => !doc.isLegacyV1 && doc.status === 'Released');
+  const completedTasks = documents.filter(doc => !doc.isLegacyV1 && ['Released', 'Disapproved'].includes(doc.status));
 
   // Select which set to show
   let currentList: DocumentRecord[] = [];
@@ -172,6 +172,8 @@ export const MyTasksQueue: React.FC = () => {
         return 'bg-cyan-100 text-cyan-800 border-cyan-200';
       case 'Released':
         return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Disapproved':
+        return 'bg-rose-100 text-rose-800 border-rose-200';
       default:
         return 'bg-blue-100 text-blue-800 border-blue-200';
     }

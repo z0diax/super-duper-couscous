@@ -253,6 +253,7 @@ export type DocumentStatus =
   | 'Ready_For_Recheck'
   | 'Ready_For_Release'
   | 'Released'
+  | 'Disapproved'
   | 'Archived';
 
 export interface FileAttachment {
