@@ -309,9 +309,9 @@ test('single payroll follows configured workflow and synchronizes its item on re
   await processor.action('placeDocumentHold',[single.id,{reason:'Needs payroll clarification',remarks:'Confirm period',files:[]}]);
   assert.equal(processor.state.documents.find(d=>d.id===single.id).currentStepIndex,phaseBeforeHold);
   await processor.action('submitDocumentCompliance',[single.id,{remarks:'Unauthorized',files:[]}],403);
-  await processor.action('recheckDocumentHold',[single.id]);
+  await processor.action('recheckDocumentHold',[single.id,{remarks:'Required payroll clarification was provided',files:[]}]);
   let resumed=processor.state.documents.find(d=>d.id===single.id);
-  assert.equal(resumed.status,'In_Progress'); assert.equal(resumed.workflowSteps[0].status,'In_Progress'); assert.equal(resumed.currentStepIndex,phaseBeforeHold);
+  assert.equal(resumed.status,'In_Progress'); assert.equal(resumed.workflowSteps[0].status,'In_Progress'); assert.equal(resumed.currentStepIndex,phaseBeforeHold); assert.equal(resumed.complianceRemarks,'Required payroll clarification was provided');
   await processor.action('placeDocumentHold',[single.id,{reason:'Needs final confirmation',remarks:'Confirm period again',files:[]}]);
   await admin.action('submitDocumentCompliance',[single.id,{remarks:'Payroll period confirmed',files:[]}]);
   await processor.action('recheckDocumentHold',[single.id]);
