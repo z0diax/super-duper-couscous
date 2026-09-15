@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { DocumentRecord } from '../types';
 import { useWorkspaceState } from '../services/workspace';
+import { documentSenderLabel } from '../services/documentDisplay';
 import { 
   FileStack, 
   Search, 
@@ -289,7 +290,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                           {doc.sourceOffice}
                         </div>
                         <div className="text-[11px] text-slate-400 truncate max-w-[170px]">
-                          {doc.senderName}
+                          {documentSenderLabel(doc)}
                         </div>
                       </td>
 

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { queryLeaveRegistry } from '../services/leaveApi';
 import { currentDocumentStep, isDocumentActionableForUser } from '../services/documentTaskAssignment';
+import { documentSenderLabel } from '../services/documentDisplay';
 
 export const MyTasksQueue: React.FC = () => {
   const { documents, currentUser, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, setActiveTab, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
@@ -405,7 +406,7 @@ export const MyTasksQueue: React.FC = () => {
                           {doc.subject}
                         </div>
                         <div className="text-[11px] text-slate-400 mt-1">
-                          Source: <strong className="text-slate-700">{doc.sourceOffice}</strong> &bull; Sender: {doc.senderName}
+                          Source: <strong className="text-slate-700">{doc.sourceOffice}</strong> &bull; Sender: {documentSenderLabel(doc)}
                         </div>
                       </td>
 

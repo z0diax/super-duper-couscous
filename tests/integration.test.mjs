@@ -65,8 +65,8 @@ test('catalogue create/edit/toggle and routing validation persist',async()=>{
 });
 test('document creation is atomic, unique, and retains a workflow snapshot',async()=>{
   await employee.action('registerDocument',[documentData('FORBIDDEN')],403);
-  doc=(await admin.action('registerDocument',[documentData('DOC-TEST-001')])).result;
-  assert.equal(doc.workflowSteps.length,3); const revision=admin.revision;
+  doc=(await admin.action('registerDocument',[{...documentData('DOC-TEST-001'),senderName:'HRMDO Signatory'}])).result;
+  assert.equal(doc.workflowSteps.length,3); assert.equal(doc.senderName,'HRMDO'); const revision=admin.revision;
   await admin.action('registerDocument',[documentData('doc-test-001')],409); assert.equal(admin.revision,revision);
   await admin.action('updateWorkflowTemplate',[{...workflow,title:'Updated workflow',steps:workflow.steps.map(s=>({...s,slaHours:36}))}]);
   assert.equal(admin.state.documents.find(d=>d.id===doc.id).workflowSteps[0].slaHours,24);
