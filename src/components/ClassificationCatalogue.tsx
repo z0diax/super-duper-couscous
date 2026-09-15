@@ -63,16 +63,11 @@ export const ClassificationCatalogue: React.FC = () => {
       <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                Document Classification Catalogue
-              </h1>
-              <span className="text-xs bg-slate-100 text-slate-700 font-semibold px-2 py-0.5 rounded border border-slate-200">
-                Appendix A Baseline
-              </span>
-            </div>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              Document Types
+            </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Administratively configurable catalogue. Add or toggle document types without modifying source code or redeploying.
+              Manage the document types used when registering and routing records.
             </p>
           </div>
 
@@ -82,7 +77,7 @@ export const ClassificationCatalogue: React.FC = () => {
             className="px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4" />
-            <span>Add New Document Type</span>
+            <span>Add Document Type</span>
           </button>
         </div>
 
@@ -112,7 +107,7 @@ export const ClassificationCatalogue: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 line-clamp-1 mt-1">
-                  {cat.types.filter(t => t.isActive).length} active types
+                  {cat.types.filter(t => t.isActive).length} active
                 </p>
               </button>
             );
@@ -125,14 +120,14 @@ export const ClassificationCatalogue: React.FC = () => {
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div>
             <h2 className="text-base font-bold text-slate-900">
-              {selectedCategory.classification} Catalogue & Types
+              {selectedCategory.classification} Document Types
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               {selectedCategory.description}
             </p>
           </div>
           <span className="text-xs text-slate-500">
-            Total Types: <strong className="text-slate-800">{selectedCategory.types.length}</strong>
+            <strong className="text-slate-800">{selectedCategory.types.length}</strong> {selectedCategory.types.length === 1 ? 'type' : 'types'}
           </span>
         </div>
 
@@ -154,7 +149,7 @@ export const ClassificationCatalogue: React.FC = () => {
                     </h4>
                     {workflowTemplates.some(w => w.isActive && w.classification === selectedCategory.classification && (w.documentTypes?.length ? w.documentTypes : [w.documentType]).some(type => type.toLowerCase() === t.name.toLowerCase())) && (
                       <span className="bg-blue-50 text-blue-700 text-[10px] font-semibold px-2 py-0.2 rounded border border-blue-200">
-                        Dedicated Workflow
+                        Custom workflow
                       </span>
                     )}
                   </div>
