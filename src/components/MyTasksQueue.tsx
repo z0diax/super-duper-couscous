@@ -21,7 +21,7 @@ import { currentDocumentStep, isDocumentActionableForUser } from '../services/do
 import { documentSenderLabel } from '../services/documentDisplay';
 
 export const MyTasksQueue: React.FC = () => {
-  const { documents, currentUser, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, setActiveTab, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
+  const { documents, currentUser, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
 
   const [activeQueue, setActiveQueue] = useState<'my_tasks' | 'team_queue' | 'returned' | 'waiting' | 'ready_for_release' | 'completed'>('my_tasks');
   const [filterClass, setFilterClass] = useState<string>('all');
@@ -201,13 +201,6 @@ export const MyTasksQueue: React.FC = () => {
               <p className="text-xs text-blue-700 mt-0.5">Open the assigned task below to process its active phase.</p>
             </div>
           </div>
-        </div>
-      )}
-
-      {leaveTaskCount > 0 && activeQueue === 'my_tasks' && (
-        <div className="flex flex-col items-start justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50 p-4 shadow-2xs sm:flex-row sm:items-center">
-          <div><h2 className="text-sm font-bold text-violet-950">Leave Processing Required <span className="ml-1 rounded-full bg-violet-200 px-2 py-0.5 text-xs">{leaveTaskCount}</span></h2><p className="mt-1 text-xs text-violet-700">Leave Applications are waiting at a stage authorized for your role.</p></div>
-          <button onClick={() => setActiveTab('leave')} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white">Open Leave Records</button>
         </div>
       )}
 
