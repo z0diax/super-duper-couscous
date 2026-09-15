@@ -74,8 +74,8 @@ test('document creation is atomic, unique, and retains a workflow snapshot',asyn
   await employee.action('completeStep',[doc.id,'Forged completion'],404);
 });
 test('stale sessions cannot overwrite changes or complete the next step accidentally',async()=>{
-  const other=await new Client(fixture.base).login(); await admin.refresh(); const stale=other.revision;
-  await admin.action('addDocumentRemark',[doc.id,'First update'],200,{refresh:false});
+  const other=await new Client(fixture.base).login(); await processor.refresh(); const stale=other.revision;
+  await processor.action('addDocumentRemark',[doc.id,'First update'],200,{refresh:false});
   await other.request('state.php','POST',{action:'addDocumentRemark',args:[doc.id,'Stale update'],revision:stale},409);
   await other.refresh(); assert.equal(other.state.documents.find(d=>d.id===doc.id).remarks.length,1);
 });
@@ -308,13 +308,14 @@ test('single payroll follows configured workflow and synchronizes its item on re
   const phaseBeforeHold=processor.state.documents.find(d=>d.id===single.id).currentStepIndex;
   await processor.action('placeDocumentHold',[single.id,{reason:'Needs payroll clarification',remarks:'Confirm period',files:[]}]);
   assert.equal(processor.state.documents.find(d=>d.id===single.id).currentStepIndex,phaseBeforeHold);
-  await processor.action('submitDocumentCompliance',[single.id,{remarks:'Unauthorized',files:[]}],403);
+  await admin.refresh();
+  await admin.action('addDocumentRemark',[single.id,'Phase 1 personnel must not change Phase 2'],403);
+  await admin.action('recheckDocumentHold',[single.id,{remarks:'Administrator must not resume an assigned phase',files:[]}],403);
   await processor.action('recheckDocumentHold',[single.id,{remarks:'Required payroll clarification was provided',files:[]}]);
   let resumed=processor.state.documents.find(d=>d.id===single.id);
   assert.equal(resumed.status,'In_Progress'); assert.equal(resumed.workflowSteps[0].status,'In_Progress'); assert.equal(resumed.currentStepIndex,phaseBeforeHold); assert.equal(resumed.complianceRemarks,'Required payroll clarification was provided');
   await processor.action('placeDocumentHold',[single.id,{reason:'Needs final confirmation',remarks:'Confirm period again',files:[]}]);
-  await admin.action('submitDocumentCompliance',[single.id,{remarks:'Payroll period confirmed',files:[]}]);
-  await processor.action('recheckDocumentHold',[single.id]);
+  await processor.action('recheckDocumentHold',[single.id,{remarks:'Final confirmation was provided',files:[]}]);
   assert.equal(processor.state.documents.find(d=>d.id===single.id).currentStepIndex,phaseBeforeHold);
   await processor.action('completeStep',[single.id,'Checked without classification'],422);
   await processor.action('updatePayrollItemClassification',[item.id,'Regular']);
