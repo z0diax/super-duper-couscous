@@ -774,9 +774,9 @@ export const UsersDashboard: React.FC = () => {
 
       {/* Modal: Add / Edit User Form */}
       {isUserFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-150">
-            <div className="px-5 py-4 bg-slate-900 text-white flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-xs sm:p-6">
+          <div className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-150 sm:max-h-[calc(100vh-3rem)]">
+            <div className="flex shrink-0 items-center justify-between bg-slate-900 px-6 py-4 text-white">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
                   {editingUser ? <Edit3 className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
@@ -785,9 +785,7 @@ export const UsersDashboard: React.FC = () => {
                   <h3 className="text-base font-bold">
                     {editingUser ? 'Edit Personnel Profile' : 'Register New Personnel'}
                   </h3>
-                  <p className="text-xs text-slate-300">
-                    Human Resource Management & Development Office User Account
-                  </p>
+                  <p className="mt-0.5 text-xs text-slate-300">Personnel account and access details</p>
                 </div>
               </div>
               <button
@@ -798,14 +796,17 @@ export const UsersDashboard: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmitUser} className="p-5 space-y-4">
-              <label className="block text-xs font-semibold">{editingUser ? 'New password (leave blank to keep current)' : 'Initial password'}
-                <input aria-label="Account password" type="password" autoComplete="new-password" required={!editingUser} minLength={3} maxLength={72} value={password} onChange={e => setPassword(e.target.value)} className="mt-1 block w-full p-2 border rounded-lg" />
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <form onSubmit={handleSubmitUser} className="min-h-0 flex-1 overflow-y-auto">
+              <div className="space-y-6 p-5 sm:p-6">
+              <section>
+                <div className="mb-4">
+                  <h4 className="text-sm font-bold text-slate-900">Account information</h4>
+                  <p className="mt-0.5 text-xs text-slate-500">Basic sign-in details for this personnel account.</p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Full Name *
+                    Full name <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -819,7 +820,7 @@ export const UsersDashboard: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Government Email Address *
+                    Email address <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="email"
@@ -830,20 +831,31 @@ export const UsersDashboard: React.FC = () => {
                     className="w-full text-xs sm:text-sm bg-white border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   />
                 </div>
+                <label className="block text-xs font-semibold text-slate-700 sm:col-span-2">
+                  {editingUser ? 'New password' : 'Temporary password'} {!editingUser && <span className="text-rose-500">*</span>}
+                  <input aria-label="Account password" type="password" autoComplete="new-password" required={!editingUser} minLength={3} maxLength={72} value={password} onChange={e => setPassword(e.target.value)} placeholder={editingUser ? 'Leave blank to keep the current password' : 'Set an initial password'} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                </label>
               </div>
+              </section>
+
+              <section className="border-t border-slate-200 pt-5">
+                <div className="mb-4">
+                  <h4 className="text-sm font-bold text-slate-900">Assignment details</h4>
+                  <p className="mt-0.5 text-xs text-slate-500">Designation, role, and organizational assignment.</p>
+                </div>
 
               {/* Assignee Designation Select */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-semibold text-slate-700">
-                    Assignee Role Title & Designation *
+                    Designation <span className="text-rose-500">*</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => setIsDesignationsModalOpen(true)}
                     className="text-[11px] text-blue-600 hover:underline font-medium"
                   >
-                    + Manage Designations
+                      Manage designations
                   </button>
                 </div>
                 <select
@@ -883,7 +895,7 @@ export const UsersDashboard: React.FC = () => {
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-semibold text-slate-700">
-                      System Permission Base Role *
+                      Access role <span className="text-rose-500">*</span>
                     </label>
                     <button
                       type="button"
@@ -894,7 +906,7 @@ export const UsersDashboard: React.FC = () => {
                       className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold hover:underline flex items-center gap-1 cursor-pointer"
                     >
                       <Edit3 className="w-3 h-3" />
-                      <span>Edit Base Roles</span>
+                      <span>Manage roles</span>
                     </button>
                   </div>
                   <select
@@ -920,7 +932,7 @@ export const UsersDashboard: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Plantilla / Position Title *
+                    Position title <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -936,7 +948,7 @@ export const UsersDashboard: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Division / Operating Unit *
+                    Division or unit <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -950,7 +962,7 @@ export const UsersDashboard: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Department / Office Name *
+                    Office <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -962,9 +974,10 @@ export const UsersDashboard: React.FC = () => {
                   />
                 </div>
               </div>
+              </section>
 
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <div><h4 className="text-xs font-bold text-slate-800">Sidebar Modules</h4><p className="mt-0.5 text-[11px] text-slate-500">Choose which Operations pages this account can open from the sidebar.</p></div>
+              <section className="rounded-xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                <div><h4 className="text-sm font-bold text-slate-900">Page access</h4><p className="mt-0.5 text-xs text-slate-500">Select the pages available to this account.</p></div>
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                   {([
                     ['dashboard','Dashboard'],['queues','My Tasks & Queues'],['payroll','Payroll Management'],['registry','Document Registry'],['leave','Leave Records'],
@@ -973,11 +986,12 @@ export const UsersDashboard: React.FC = () => {
                     return <label key={module} className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs ${checked ? 'border-blue-200 bg-white text-slate-800' : 'border-slate-200 bg-slate-100 text-slate-500'}`}><span className="font-medium">{label}</span><input type="checkbox" checked={checked} disabled={formData.role === 'admin'} onChange={event => setFormData(previous => ({ ...previous, sidebarModules: event.target.checked ? [...previous.sidebarModules, module] : previous.sidebarModules.filter(item => item !== module) }))} className="h-4 w-4 rounded border-slate-300 text-blue-600" /></label>;
                   })}
                 </div>
-                {formData.role === 'admin' && <p className="mt-2 text-[10px] text-blue-700">System Administrators always retain all Operations modules.</p>}
-                {formData.role !== 'admin' && formData.sidebarModules.length === 0 && <p className="mt-2 text-[10px] font-semibold text-rose-600">Select at least one module.</p>}
+                {formData.role === 'admin' && <p className="mt-2 text-xs text-blue-700">Administrators have access to all pages.</p>}
+                {formData.role !== 'admin' && formData.sidebarModules.length === 0 && <p className="mt-2 text-xs font-semibold text-rose-600">Select at least one page.</p>}
+              </section>
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-200">
+              <div className="sticky bottom-0 flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3 sm:px-6">
                 <button
                   type="button"
                   onClick={() => setIsUserFormOpen(false)}
