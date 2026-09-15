@@ -125,6 +125,7 @@ export interface WorkGroup {
   assignedProcessorId: string;
   assignedProcessorName: string;
   assignedProcessorRoleTitle: string;
+  assignedTeam?: string;
   itemIds: string[];
   status: 'Pending' | 'In_Progress' | 'Completed';
   startedAt?: string;
@@ -227,6 +228,8 @@ export interface EmploymentRoutingRule {
   primaryProcessorId: string;
   primaryProcessorName: string;
   primaryProcessorRoleTitle: string;
+  assignmentMode?: 'fixed' | 'pool' | 'team';
+  eligibleProcessorIds?: string[];
   backupProcessorId?: string;
   backupProcessorName?: string;
   assignedTeam?: string;

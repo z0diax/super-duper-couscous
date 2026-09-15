@@ -49,7 +49,8 @@ function can_view_document(array $s,array $u,array $doc): bool {
     return in_array(($doc['status']??''),['Ready_For_Release','Released'],true) && has_cap($s,$u,'canRelease');
 }
 function can_view_work_group(array $s,array $u,array $group): bool {
-    return can_view_all_operational_records($s,$u) || ($group['assignedProcessorId']??null)===$u['id'];
+    $team=$group['assignedTeam']??'';
+    return can_view_all_operational_records($s,$u) || ($group['assignedProcessorId']??null)===$u['id'] || ($team!=='' && in_array($team,[$u['division'],$u['office']],true));
 }
 function can_view_payroll_item(array $s,array $u,array $item): bool {
     if (can_view_all_operational_records($s,$u)) return true;

@@ -20,12 +20,13 @@ import { currentDocumentStep, isDocumentActionableForUser } from '../services/do
 import { documentSenderLabel } from '../services/documentDisplay';
 
 export const MyTasksQueue: React.FC = () => {
-  const { documents, currentUser, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
+  const { documents, currentUser, users, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, employmentRoutingRules, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
 
   const [activeQueue, setActiveQueue] = useState<'my_tasks' | 'team_queue' | 'returned' | 'waiting' | 'ready_for_release' | 'completed'>('my_tasks');
   const [filterClass, setFilterClass] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [complianceRemarks, setComplianceRemarks] = useState<Record<string, string>>({});
+  const [payrollRouteSelections, setPayrollRouteSelections] = useState<Record<string, string>>({});
   const displayStatus = (status: DocumentRecord['status']) => status === 'In_Progress' ? 'Processing' : status.replace(/_/g, ' ');
 
   const isAssignedDesk = (desk: { userId?: string; assignmentType?: string; roleId?: string; team?: string }) => {
@@ -48,7 +49,7 @@ export const MyTasksQueue: React.FC = () => {
     const initialDesk = b.initialCheckingDesk || b.assignedDesk;
     const assignedToInitialChecking = isAssignedDesk(initialDesk);
     if (hasInitialItems && assignedToInitialChecking) return true;
-    const myWorkGroup = workGroups.find(w => w.batchId === b.id && w.assignedProcessorId === currentUser.id && w.status === 'In_Progress');
+    const myWorkGroup = workGroups.find(w => w.batchId === b.id && (w.assignedProcessorId === currentUser.id || !!w.assignedTeam && [currentUser.division,currentUser.office].includes(w.assignedTeam)) && w.status === 'In_Progress');
     if (myWorkGroup) return true;
     const releaseDesk = b.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
     if (payrollItems.some(item => item.batchId === b.id && item.currentStage === 'release' && ['Ready_For_Release','On_Hold','Ready_For_Recheck'].includes(item.status)) && releaseDesk && isAssignedDesk(releaseDesk)) return true;
@@ -211,9 +212,12 @@ export const MyTasksQueue: React.FC = () => {
               const batch = payrollBatches.find(record => record.id === item.batchId);
               const isHeld = item.status === 'On_Hold';
               const isReadyForRecheck = item.status === 'Ready_For_Recheck';
+              const normalizedClassification=item.employmentClassification==='Job Order (JOW)'?'JOW/COS':item.employmentClassification;
+              const routingRule=employmentRoutingRules.find(rule=>rule.classification===normalizedClassification);
+              const needsProcessor=routingRule?.assignmentMode==='pool';
               return <div key={item.id} className="rounded-lg border border-amber-200 bg-white p-3 text-xs">
                 <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="font-mono font-bold text-slate-900">{item.barcode}</p><p className="mt-0.5 text-slate-600">Batch: <strong>{batch?.batchNumber || item.batchNumber}</strong> &bull; {item.office || batch?.office}</p><p className="mt-1 text-amber-800">Initial Checking &bull; {isHeld ? `On hold: ${item.holdReason || item.exceptionReason}` : isReadyForRecheck ? 'Compliance received — ready for recheck' : 'Recheck completed — ready to route'}</p>{item.heldAt && <p className="mt-0.5 text-slate-400">Held since {new Date(item.heldAt).toLocaleString()}</p>}</div><span className={`rounded-full px-2 py-0.5 font-bold ${isHeld ? 'bg-red-100 text-red-800' : isReadyForRecheck ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'}`}>{isHeld ? 'ON HOLD' : isReadyForRecheck ? 'READY FOR RECHECK' : 'READY TO ROUTE'}</span></div>
-                {isHeld ? <div className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={complianceRemarks[item.id] || ''} onChange={event => setComplianceRemarks(current => ({ ...current, [item.id]: event.target.value }))} placeholder="Compliance remarks (optional)" className="min-w-0 flex-1 rounded-md border border-slate-200 px-2.5 py-1.5" /><button onClick={async () => { if (await recordPayrollItemCompliance(item.id, complianceRemarks[item.id] || '')) setComplianceRemarks(current => ({ ...current, [item.id]: '' })); }} className="rounded-md bg-sky-600 px-3 py-1.5 font-bold text-white hover:bg-sky-700">Record Compliance</button></div> : isReadyForRecheck ? <div className="mt-3"><button onClick={async () => await recheckPayrollItem(item.id)} className="rounded-md bg-emerald-600 px-3 py-1.5 font-bold text-white hover:bg-emerald-700">Verify / Recheck</button></div> : <div className="mt-3"><button onClick={async () => await completePayrollItemInitialCheckingAndRoute(item.id)} className="rounded-md bg-blue-600 px-3 py-1.5 font-bold text-white hover:bg-blue-700">Complete &amp; Route</button></div>}
+                {isHeld ? <div className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={complianceRemarks[item.id] || ''} onChange={event => setComplianceRemarks(current => ({ ...current, [item.id]: event.target.value }))} placeholder="Compliance remarks (optional)" className="min-w-0 flex-1 rounded-md border border-slate-200 px-2.5 py-1.5" /><button onClick={async () => { if (await recordPayrollItemCompliance(item.id, complianceRemarks[item.id] || '')) setComplianceRemarks(current => ({ ...current, [item.id]: '' })); }} className="rounded-md bg-sky-600 px-3 py-1.5 font-bold text-white hover:bg-sky-700">Record Compliance</button></div> : isReadyForRecheck ? <div className="mt-3"><button onClick={async () => await recheckPayrollItem(item.id)} className="rounded-md bg-emerald-600 px-3 py-1.5 font-bold text-white hover:bg-emerald-700">Verify / Recheck</button></div> : <div className="mt-3 flex flex-col gap-2 sm:flex-row">{needsProcessor&&<select aria-label={`Processor for ${item.barcode}`} value={payrollRouteSelections[item.id]||''} onChange={event=>setPayrollRouteSelections(current=>({...current,[item.id]:event.target.value}))} className="rounded-md border border-slate-200 px-2.5 py-1.5"><option value="">Choose processor...</option>{(routingRule?.eligibleProcessorIds||[]).map(id=>{const user=users.find(person=>person.id===id);return user?<option key={id} value={id}>{user.name}</option>:null;})}</select>}<button disabled={needsProcessor&&!payrollRouteSelections[item.id]} onClick={async () => await completePayrollItemInitialCheckingAndRoute(item.id, normalizedClassification?{[normalizedClassification]:payrollRouteSelections[item.id]}:{})} className="rounded-md bg-blue-600 px-3 py-1.5 font-bold text-white hover:bg-blue-700 disabled:opacity-50">Complete &amp; Route</button></div>}
               </div>;
             })}
           </div>

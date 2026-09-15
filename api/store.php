@@ -15,7 +15,7 @@ function defaults(): array {
     foreach (['Communication'=>['Office Order','Memorandum','Letter'],'Payroll'=>['Salary','Voucher','Trust fund','Terminal Pay','Overtime Pay','Mid Year Bonus','Subsistence Allowance','Travel Allowance','RATA','Mobile Allowance','Clothing Allowance'],'Request'=>['Certification','Service Record','Leave Request'],'Others'=>['General Request']] as $name=>$types) {
         $state['classifications'][]=['id'=>'cat-'.strtolower($name),'classification'=>$name,'description'=>$name.' documents','types'=>array_map(fn($type)=>['id'=>uid('type'),'name'=>$type,'description'=>'','defaultSlaHours'=>48,'isActive'=>true,'hasSpecificWorkflow'=>false],$types)];
     }
-    foreach (['JOW/COS','Casual','Regular'] as $class) $state['employmentRoutingRules'][]=['id'=>'rule-'.strtolower(str_replace('/','-',$class)),'classification'=>$class,'title'=>$class.' payroll','primaryProcessorId'=>'','primaryProcessorName'=>'Unassigned','primaryProcessorRoleTitle'=>'','defaultSlaHours'=>24,'description'=>'Assign a processor before routing payroll.','updatedAt'=>now()];
+    foreach (['JOW/COS','Casual','Regular'] as $class) $state['employmentRoutingRules'][]=['id'=>'rule-'.strtolower(str_replace('/','-',$class)),'classification'=>$class,'title'=>$class.' payroll','assignmentMode'=>'fixed','primaryProcessorId'=>'','primaryProcessorName'=>'Unassigned','primaryProcessorRoleTitle'=>'','eligibleProcessorIds'=>[],'assignedTeam'=>'','defaultSlaHours'=>24,'description'=>'Assign a processor before routing payroll.','updatedAt'=>now()];
     return $state;
 }
 function load_state(PDO $pdo): array {

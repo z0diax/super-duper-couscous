@@ -93,8 +93,16 @@ function management_action(PDO $pdo,array &$s,array $u,string $action,array $arg
         return $d;
     }
     if ($action==='updateEmploymentRoutingRule') {
-        $i=index_of($s['employmentRoutingRules'],required($d,'id')); $target=$s['users'][index_of($s['users'],required($d,'primaryProcessorId'))];
-        $d['classification']=$s['employmentRoutingRules'][$i]['classification']; $d['primaryProcessorName']=$target['name']; $d['primaryProcessorRoleTitle']=$target['roleTitle'];
+        $i=index_of($s['employmentRoutingRules'],required($d,'id')); $mode=choice($d['assignmentMode']??'fixed',['fixed','pool','team'],'assignment mode');
+        $d['classification']=$s['employmentRoutingRules'][$i]['classification']; $d['assignmentMode']=$mode;
+        if ($mode==='fixed') {
+            $target=$s['users'][index_of($s['users'],required($d,'primaryProcessorId'))]; $d['primaryProcessorName']=$target['name']; $d['primaryProcessorRoleTitle']=$target['roleTitle']; $d['eligibleProcessorIds']=[]; $d['assignedTeam']='';
+        } elseif ($mode==='pool') {
+            $ids=array_values(array_unique(array_filter($d['eligibleProcessorIds']??[],fn($id)=>is_string($id) && $id!==''))); fail_unless(count($ids)>0,'Choose at least one eligible processor.');
+            foreach ($ids as $id) index_of($s['users'],$id); $d['eligibleProcessorIds']=$ids; $d['primaryProcessorId']=''; $d['primaryProcessorName']=count($ids).' eligible personnel'; $d['primaryProcessorRoleTitle']='Personnel pool'; $d['assignedTeam']='';
+        } else {
+            $d['assignedTeam']=required($d,'assignedTeam',190); $d['primaryProcessorId']=''; $d['primaryProcessorName']=$d['assignedTeam']; $d['primaryProcessorRoleTitle']='Team queue'; $d['eligibleProcessorIds']=[];
+        }
         $d['defaultSlaHours']=positive($d['defaultSlaHours']??0,'SLA hours'); $d['updatedAt']=now(); $s['employmentRoutingRules'][$i]=$d; return $d;
     }
     $map=['AssigneeDesignation'=>'assigneeDesignations','SystemRole'=>'systemRoles'];

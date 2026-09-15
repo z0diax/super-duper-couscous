@@ -61,7 +61,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
     const initialDesk = b.initialCheckingDesk || b.assignedDesk;
     const assignedToInitialChecking = isAssignedDesk(initialDesk);
     if (hasInitialItems && assignedToInitialChecking) return true;
-    const myGroup = workGroups.find(w => w.batchId === b.id && w.assignedProcessorId === currentUser.id && w.status === 'In_Progress');
+    const myGroup = workGroups.find(w => w.batchId === b.id && (w.assignedProcessorId === currentUser.id || !!w.assignedTeam && [currentUser.division,currentUser.office].includes(w.assignedTeam)) && w.status === 'In_Progress');
     if (myGroup) return true;
     const releaseDesk = b.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
     if (payrollItems.some(item => item.batchId === b.id && item.currentStage === 'release' && ['Ready_For_Release','On_Hold','Ready_For_Recheck'].includes(item.status)) && releaseDesk && isAssignedDesk(releaseDesk)) return true;

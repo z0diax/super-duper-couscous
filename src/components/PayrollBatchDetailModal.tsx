@@ -67,6 +67,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
   const [activeTab, setActiveTab] = useWorkspaceState<'workflow' | 'items' | 'audit'>(currentUser.id, 'payroll-batch-detail.tab', 'workflow');
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [routeSelections, setRouteSelections] = useState<Record<string, string>>({});
   const [activeWorkGroupTab, setActiveWorkGroupTab] = useState<string>(initialWorkGroupId || '');
 
   // Exception modal state
@@ -131,7 +132,15 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const releasedCount = items.filter(item => item.status === 'Released').length;
   const stage3CompletedCount = items.filter(item => ['Ready_For_Release', 'Released'].includes(item.status)).length;
   const allItemsReleased = progress.derivedStatus === 'COMPLETED';
-  const processorFor = (classification: string) => employmentRoutingRules.find(rule => rule.classification === classification)?.primaryProcessorName || 'Processor not configured';
+  const routingRuleFor = (classification: string) => employmentRoutingRules.find(rule => rule.classification === classification);
+  const processorFor = (classification: string) => {
+    const rule = routingRuleFor(classification); if (!rule) return 'Not configured';
+    if (rule.assignmentMode === 'pool') return routeSelections[classification] ? users.find(user => user.id === routeSelections[classification])?.name || 'Choose personnel' : 'Choose personnel';
+    if (rule.assignmentMode === 'team') return rule.assignedTeam || 'Team not configured';
+    return rule.primaryProcessorName || 'Not configured';
+  };
+  const readyClassifications = (['JOW/COS', 'Casual', 'Regular'] as const).filter(classification => readyItems.some(item => classification === 'JOW/COS' ? ['JOW/COS', 'Job Order (JOW)'].includes(item.employmentClassification || '') : item.employmentClassification === classification));
+  const unresolvedPoolClassifications = readyClassifications.filter(classification => routingRuleFor(classification)?.assignmentMode === 'pool' && !routeSelections[classification]);
   const releaseDesk = batch.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
   const canReleaseBatch = can('canSupervise') || !!releaseDesk && (
     releaseDesk.userId
@@ -183,7 +192,8 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
   const handleRouteInitialItems = async () => {
     if (unresolvedCount > 0 || readyItems.length === 0) return;
-    if (!(await completeInitialCheckingAndRoute(batch.id))) return;
+    if (unresolvedPoolClassifications.length > 0) return;
+    if (!(await completeInitialCheckingAndRoute(batch.id, routeSelections))) return;
     // The routed records no longer belong to the Initial Checking selection.
     setSelectedItemIds([]);
   };
@@ -422,14 +432,17 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                     <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200">
                       <p className="text-amber-800 font-medium">JOW / COS</p>
                       <p className="text-base font-bold text-amber-900">{jowCount}</p>
+                      <p className="truncate text-[10px] text-amber-700">Routes to {processorFor('JOW/COS')}</p>
                     </div>
                     <div className="p-2.5 rounded-xl bg-purple-50/70 border border-purple-200">
                       <p className="text-purple-800 font-medium">Casual</p>
                       <p className="text-base font-bold text-purple-900">{casualCount}</p>
+                      <p className="truncate text-[10px] text-purple-700">Routes to {processorFor('Casual')}</p>
                     </div>
                     <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
                       <p className="text-emerald-800 font-medium">Regular Plantilla</p>
                       <p className="text-base font-bold text-emerald-900">{regularCount}</p>
+                      <p className="truncate text-[10px] text-emerald-700">Routes to {processorFor('Regular')}</p>
                     </div>
                     <div className="p-2.5 rounded-xl bg-red-50/70 border border-red-200">
                       <p className="text-red-800 font-medium">On Hold / Exceptions</p>
@@ -621,7 +634,9 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                   </div>
 
                   {/* Route & Complete Initial Checking */}
-                  {canInitialCheck && <div className="p-4 bg-blue-50/50 border border-blue-200 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                  {canInitialCheck && <div className="p-4 bg-blue-50/50 border border-blue-200 rounded-xl flex flex-col gap-4">
+                    {readyClassifications.some(classification => routingRuleFor(classification)?.assignmentMode === 'pool') && <div className="grid gap-3 border-b border-blue-100 pb-4 sm:grid-cols-2 lg:grid-cols-3">{readyClassifications.filter(classification => routingRuleFor(classification)?.assignmentMode === 'pool').map(classification => { const rule=routingRuleFor(classification)!; return <label key={classification} className="text-xs font-semibold text-slate-700">Assign {classification} to<select value={routeSelections[classification] || ''} onChange={event => setRouteSelections(current => ({...current,[classification]:event.target.value}))} className="mt-1 w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-normal"><option value="">Choose personnel...</option>{(rule.eligibleProcessorIds || []).map(id => { const user=users.find(person => person.id===id); return user?<option key={id} value={id}>{user.name} — {user.roleTitle}</option>:null; })}</select></label>; })}</div>}
+                    <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
                     <div className="text-xs text-slate-700 space-y-0.5">
                       <p className="font-bold text-slate-900">Ready to Split into Parallel Work Groups?</p>
                       <p className="text-slate-600">
@@ -650,13 +665,14 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                       onClick={async () => {
                         await handleRouteInitialItems();
                       }}
-                      disabled={unresolvedCount > 0 || readyItems.length === 0}
-                      title={unresolvedCount > 0 ? `${unresolvedCount} payroll item(s) still need verification and classification` : 'Route only the verified payroll items'}
+                      disabled={unresolvedCount > 0 || readyItems.length === 0 || unresolvedPoolClassifications.length > 0}
+                      title={unresolvedPoolClassifications.length > 0 ? 'Choose a processor for each personnel pool' : unresolvedCount > 0 ? `${unresolvedCount} payroll item(s) still need verification and classification` : 'Route only the verified payroll items'}
                       className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none shadow-sm flex items-center justify-center gap-2 shrink-0 transition-all"
                     >
                       <span>Complete &amp; Route {readyItems.length} Payroll{readyItems.length === 1 ? '' : 's'}</span>
                       <ArrowRight className="w-4 h-4" />
                     </button>
+                    </div>
                   </div>}
                 </div>
               )}
@@ -722,7 +738,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                   {batchWorkGroups.filter(w => w.id === activeWorkGroupTab).map(wg => {
                     const wgItems = items.filter(i => wg.itemIds.includes(i.id));
                     const assignedUser = users.find(u => u.id === wg.assignedProcessorId);
-                    const isUserAssigned = currentUser.id === wg.assignedProcessorId;
+                    const isUserAssigned = currentUser.id === wg.assignedProcessorId || !!wg.assignedTeam && [currentUser.division,currentUser.office].includes(wg.assignedTeam);
                     const isCompleted = wg.status === 'Completed';
 
                     return (
