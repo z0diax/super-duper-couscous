@@ -120,7 +120,7 @@ npm run build
 php scripts/preflight.php
 ```
 
-Open <http://localhost/hrmdo-document-tracking-system/>. The repeatable installer preserves accounts, imports the old `app_state` collections into individual database records, and retains the original snapshot. Accounts that previously existed only in the browser directory require an administrator to set a password in **Users & Designations**.
+Open <http://localhost/hrmdorms/>. The repeatable installer preserves accounts, imports the old `app_state` collections into individual database records, and retains the original snapshot. Accounts that previously existed only in the browser directory require an administrator to set a password in **Users & Designations**.
 
 ## Fresh deployment
 
@@ -183,7 +183,7 @@ npm run test:ui
 php scripts/preflight.php
 ```
 
-When editing the application while using the Apache URL (`http://localhost/hrmdo-document-tracking-system/`), run `npm run build:watch` in a separate terminal. It rebuilds the `dist` folder after each change, so a browser refresh loads the updated interface. Edit files under `src`; `dist/assets/index-*.js` is generated output and is replaced on every build.
+When editing the application while using the Apache URL (`http://localhost/hrmdorms/`), run `npm run build:watch` in a separate terminal. It rebuilds the `dist` folder after each change, so a browser refresh loads the updated interface. Edit files under `src`; `dist/assets/index-*.js` is generated output and is replaced on every build.
 
 Integration tests create/remove isolated `hrmdo_test_*` databases; their account needs CREATE/DROP privileges. Browser tests use installed Edge by default. Elsewhere, run `npx playwright install chromium` and set `PLAYWRIGHT_CHANNEL=chromium`.
 

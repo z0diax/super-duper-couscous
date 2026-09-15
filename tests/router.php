@@ -1,7 +1,7 @@
 <?php
 // Isolated test server only. Never used by the Apache deployment.
 $root=dirname(__DIR__); $path=parse_url($_SERVER['REQUEST_URI'],PHP_URL_PATH);
-$path=preg_replace('#^/hrmdo-document-tracking-system#','',$path);
+$path=preg_replace('#^/hrmdorms#','',$path);
 if (in_array($path,['/api/auth.php','/api/state.php','/api/files.php','/api/leave.php'],true)) { require $root.$path; return true; }
 if (str_starts_with($path,'/dist/')) {
     $file=realpath($root.$path); if ($file && str_starts_with($file,realpath($root.'/dist').DIRECTORY_SEPARATOR) && is_file($file)) {

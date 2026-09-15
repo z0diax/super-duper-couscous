@@ -16,7 +16,7 @@ export async function startFixture(port = 18765) {
   run(['scripts/install.php']);
   const server = spawn(php, ['-S', `127.0.0.1:${port}`, 'tests/router.php'], { env, stdio: ['ignore','pipe','pipe'], windowsHide: true });
   let logs = ''; server.stderr.on('data', chunk => { logs += chunk; });
-  const base = `http://127.0.0.1:${port}/hrmdo-document-tracking-system`;
+  const base = `http://127.0.0.1:${port}/hrmdorms`;
   for (let n=0;n<100;n++) { try { if ((await fetch(`${base}/api/auth.php`)).ok) break; } catch {} if(n===99) throw new Error(logs); await new Promise(r=>setTimeout(r,50)); }
   return { env, base, run, server, logs:()=>logs, async stop() {
     server.kill(); if (server.exitCode===null) await once(server,'exit');
