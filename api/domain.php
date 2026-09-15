@@ -396,7 +396,7 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
     if ($action==='recordExternalHandoff') {
         fail_unless($isExternal && ($step['externalStatus']??null)==='PENDING_HANDOFF','This document is not awaiting an external handoff.',409);
         $owner=$step['handoffOwner']['userId']??null;
-        fail_unless($owner===$u['id'] || has_cap($s,$u,'canIntake') || has_cap($s,$u,'canSupervise'),'Only the handoff owner or authorized registry personnel can send this document outside HRMDO.',403);
+        fail_unless($owner===$u['id'],'Only the assigned outbound handoff officer can send this document outside HRMDO.',403);
         $handoff=$args[1]??[]; fail_unless(is_array($handoff),'External handoff details are required.');
         $destination=required($handoff,'destinationOffice');
         if (($step['externalDestinationMode']??'')==='FIXED_DESTINATION') fail_unless(strcasecmp($destination,(string)$step['externalDestinationOffice'])===0,'Use the fixed destination configured for this workflow stage.');
@@ -413,7 +413,7 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
     if ($action==='recordExternalReturn') {
         fail_unless($isExternal && ($step['externalStatus']??null)==='OUTSIDE_HRMDO','This document is not currently outside HRMDO.',409);
         $receiver=$step['returnReceiver']??[];
-        fail_unless(can_assign($s,$u,$receiver) || has_cap($s,$u,'canIntake'),'Only the configured return receiver or authorized registry personnel can record this return.',403);
+        fail_unless(assignment_matches($u,$receiver),'Only the configured return receiver can record this return.',403);
         $return=$args[1]??[]; fail_unless(is_array($return),'External return details are required.');
         $returnedFrom=required($return,'returnedFrom'); $sentTo=$step['externalHandoff']['destinationOffice']??'';
         fail_unless($sentTo==='' || strcasecmp($returnedFrom,$sentTo)===0,'The return office must match the recorded external destination.');

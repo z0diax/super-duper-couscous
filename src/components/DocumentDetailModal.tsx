@@ -43,13 +43,11 @@ export const DocumentDetailModal: React.FC = () => {
   const current = doc?.workflowSteps.find(step => step.stepNumber === doc.currentStepNumber);
   const isExternal = current?.stageType === 'EXTERNAL_HANDOFF_REVIEW';
   const isAssigned = !!current && assignmentMatchesUser(current.assignedTo, currentUser, true);
-  const isAdmin = currentUser.role === 'admin' || can('canAdmin');
   const canProcess = isAssigned;
   const canClaim = !!current && !doc?.isLegacyV1 && !current.assignedTo.userId && !isAssigned && current.status !== 'Completed' && ((current.assignedTo.type === 'Team' && !!current.assignedTo.team && [currentUser.division, currentUser.office].includes(current.assignedTo.team)) || current.assignedTo.role === currentUser.role);
   const canManage = canProcess && !isExternal && can('canSupervise');
   const canExternal = !!isExternal && (
-    can('canIntake') || can('canSupervise') || isAdmin
-    || (current.externalStatus === 'PENDING_HANDOFF' && current.handoffOwner?.userId === currentUser.id)
+    (current.externalStatus === 'PENDING_HANDOFF' && current.handoffOwner?.userId === currentUser.id)
     || (current.externalStatus === 'OUTSIDE_HRMDO' && assignmentMatchesUser(current.returnReceiver, currentUser, true))
   );
   const isTerminal = !!doc && ['Released', 'Archived', 'Disapproved'].includes(doc.status);

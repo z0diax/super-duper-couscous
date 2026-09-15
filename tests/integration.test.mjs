@@ -471,12 +471,17 @@ test('external handoff preserves custody, waits for return, and activates the ne
   assert.equal(record.workflowTemplateId,externalWorkflow.id); assert.equal(record.currentLocation,'HRMDO');
   let active=admin.state.documents.find(d=>d.id===record.id); assert.equal(active.status,'Awaiting_External_Handoff'); assert.equal(active.currentStepNumber,2); assert.equal(active.workflowSteps[0].status,'Completed'); assert.equal(active.workflowSteps[1].externalStatus,'PENDING_HANDOFF');
   await admin.action('completeStep',[record.id,'Attempt to bypass return','Verify & Process'],409);
+  await receiver.refresh();
+  await receiver.action('recordExternalHandoff',[record.id,{destinationOffice:"City Mayor's Office",purpose:'Approval',handedTo:'Unauthorized handoff',files:[]}],403);
   await admin.action('recordExternalHandoff',[record.id,{destinationOffice:"City Mayor's Office",purpose:'Approval',handedTo:'Office Records Clerk',representative:'Mayor Office liaison',expectedReturn:'2026-09-12T10:00',remarks:'For approval',files:[]}]);
   active=admin.state.documents.find(d=>d.id===record.id); assert.equal(active.status,'Awaiting_External_Return'); assert.equal(active.currentLocation,"City Mayor's Office"); assert.equal(active.workflowSteps[1].externalStatus,'OUTSIDE_HRMDO');
   await processor.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",result:'Approved',files:[]}],404);
-  await admin.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",returnedBy:'Mayor Office liaison',result:'Approved',remarks:'Approved and returned',files:[]}]);
-  active=admin.state.documents.find(d=>d.id===record.id); assert.equal(active.id,record.id); assert.equal(active.trackingNumber,'EXTERNAL-RETURN-001'); assert.equal(active.currentLocation,'HRMDO'); assert.equal(active.workflowSteps[1].externalStatus,'COMPLETED'); assert.equal(active.currentStepNumber,3); assert.equal(active.workflowSteps[2].status,'In_Progress'); assert.equal(active.custodyHistory.filter(event=>event.movementType==='EXTERNAL_HANDOFF' || event.movementType==='RETURN_TO_HRMDO').length,2);
+  await admin.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",returnedBy:'Unauthorized receiver',result:'Approved',files:[]}],403);
+  await receiver.refresh();
+  await receiver.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",returnedBy:'Mayor Office liaison',result:'Approved',remarks:'Approved and returned',files:[]}]);
+  active=receiver.state.documents.find(d=>d.id===record.id); assert.equal(active.id,record.id); assert.equal(active.trackingNumber,'EXTERNAL-RETURN-001'); assert.equal(active.currentLocation,'HRMDO'); assert.equal(active.workflowSteps[1].externalStatus,'COMPLETED'); assert.equal(active.currentStepNumber,3); assert.equal(active.workflowSteps[2].status,'In_Progress'); assert.equal(active.custodyHistory.filter(event=>event.movementType==='EXTERNAL_HANDOFF' || event.movementType==='RETURN_TO_HRMDO').length,2);
 
+  await admin.refresh();
   await admin.action('updateWorkflowTemplate',[{...externalWorkflow,isActive:false}]);
   const consecutiveOwnerWorkflow=(await admin.action('createWorkflowTemplate',[{title:'Processor to external handoff',description:'The same officer completes processing and records the handoff.',classification:'Request',documentType:'Service Record',isActive:true,steps:[
     step(1,'processor','Verify & Process'),
@@ -487,6 +492,8 @@ test('external handoff preserves custody, waits for return, and activates the ne
   await processor.action('completeStep',[consecutive.id,'Prepared for outbound custody']);
   active=processor.state.documents.find(d=>d.id===consecutive.id);
   assert.equal(active.currentStepNumber,2); assert.equal(active.workflowSteps[1].externalStatus,'PENDING_HANDOFF'); assert.equal(active.workflowSteps[1].handoffOwner.userId,processor.state.users.find(user=>user.email==='processor@example.test').id);
+  await receiver.refresh();
+  await receiver.action('recordExternalHandoff',[consecutive.id,{destinationOffice:"City Mayor's Office",purpose:'Review',handedTo:'Unauthorized handoff',files:[]}],403);
   await processor.action('recordExternalHandoff',[consecutive.id,{destinationOffice:"City Mayor's Office",purpose:'Review',handedTo:'Office Records Clerk',files:[]}]);
   await receiver.refresh(); active=receiver.state.documents.find(d=>d.id===consecutive.id);
   assert.equal(active.workflowSteps[1].externalStatus,'OUTSIDE_HRMDO');
