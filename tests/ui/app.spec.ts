@@ -77,6 +77,8 @@ test('configure catalogue, workflow, register with a real file, reload every scr
     await page.getByRole('button', { name: label }).click();
     await expect(page.locator('main')).not.toBeEmpty();
   }
+  await expect(page.getByLabel('Audit events per page')).toHaveValue('15');
+  await expect.poll(() => page.locator('tbody > tr').count()).toBeLessThanOrEqual(15);
   await page.screenshot({ path: 'test-results/application-desktop.png', fullPage: true });
   expect(errors).toEqual([]);
 });
