@@ -447,8 +447,9 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
         return $doc;
     }
     if ($action==='recheckDocumentHold') {
-        fail_unless(($doc['status']??'')==='Ready_For_Recheck','Compliance has not been submitted for recheck.',409);
-        fail_unless(can_assign($s,$u,$step['assignedTo']) || has_cap($s,$u,'canAdmin'),'Only the assigned phase processor can recheck this document.',403);
+        $resumeFrom=$doc['status']??'';
+        fail_unless(in_array($resumeFrom,['On_Hold','Ready_For_Recheck'],true),'This document is not in an active hold cycle.',409);
+        fail_unless(can_assign($s,$u,$step['assignedTo']) || has_cap($s,$u,'canAdmin'),'Only the assigned phase processor can resume this document.',403);
         $doc['status']=$doc['preHoldStatus']??'In_Progress'; $step['status']='In_Progress'; $doc['holdResolvedAt']=now(); $doc['holdResolvedByUserId']=$u['id']; $doc['holdResolvedByName']=$u['name'];
         unset($doc['preHoldStatus']); return $doc;
     }
@@ -462,6 +463,7 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
         $hold=$args[1]??[]; fail_unless(is_array($hold),'Hold details are required.'); $reason=required($hold,'reason',2000); $notes=trim((string)($hold['remarks']??''));
         $files=$hold['files']??[]; fail_unless(is_array($files),'Invalid hold attachments.'); if ($files) $doc['attachments']=array_merge($doc['attachments'],attach_files($pdo,$u,$files,$doc['id'],$n+1));
         $doc['preHoldStatus']=$doc['status']; $doc['status']='On_Hold'; $doc['holdReason']=$reason; $doc['holdRemarks']=$notes; $doc['holdPhaseNumber']=$n+1; $doc['heldAt']=now(); $doc['heldByUserId']=$u['id']; $doc['heldByName']=$u['name']; $step['status']='On_Hold';
+        unset($doc['holdResolvedAt'],$doc['holdResolvedByUserId'],$doc['holdResolvedByName'],$doc['complianceSubmittedAt'],$doc['complianceRemarks'],$doc['complianceAttachments']);
     } elseif ($action==='claimTask') {
         fail_unless(empty($step['assignedTo']['userId']) || $step['assignedTo']['userId']===$u['id'],'Task has already been claimed.',409);
         $step['assignedTo']['userId']=$u['id']; $step['assignedTo']['displayName']=$u['name'];
