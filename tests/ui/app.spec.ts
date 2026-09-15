@@ -112,6 +112,7 @@ test('leave registration switches dynamic fields without retaining stale values'
   await page.goto(`${fixture.base}/`); await page.getByLabel('Email address').fill('admin@example.test'); await page.getByLabel('Password', { exact: true }).fill(testPassword); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Leave Records', exact: true }).click();
   await page.getByRole('button', { name: 'Register Leave Application', exact: true }).click();
+  await expect(page.locator('form').last().locator('input, select, textarea').first()).toHaveAttribute('id','leave-input-barcode');
   await page.getByPlaceholder('Enter employee or applicant name').fill('Browser Test Applicant');
   await page.getByLabel('Office *').selectOption("CEO - City Engineer's Office");
   await page.getByLabel(/Barcode \/ Tracking No/).fill('BROWSER-LEAVE-001');
