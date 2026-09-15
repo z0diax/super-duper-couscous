@@ -44,15 +44,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
     <div className="space-y-6 pb-12">
       
       {/* 1. Clean Operational Header */}
-      <div className="bg-white rounded-xl p-5 sm:p-6 border border-slate-200 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
-              Operational Overview
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Active desk: <strong className="text-slate-800 font-semibold">{currentUser.name}</strong> &bull; {currentUser.roleTitle} ({currentUser.division})
-            </p>
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6">
+        <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 items-start gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm"><Activity className="h-5 w-5" /></div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">Operations</p>
+              <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">Dashboard</h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Signed in as <strong className="font-semibold text-slate-700">{currentUser.name}</strong> &bull; {currentUser.roleTitle}
+              </p>
+            </div>
           </div>
 
           <div className="flex items-center gap-2.5">

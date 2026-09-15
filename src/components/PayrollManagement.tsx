@@ -156,20 +156,13 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
       {/* Top Banner & Header */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
-                Payroll Lifecycle
-              </span>
-              <span className="text-xs text-slate-400">&bull;</span>
-              <span className="text-xs text-slate-500 font-medium">UNIFIED WORKFLOW</span>
+          <div className="flex min-w-0 items-start gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm"><FileSpreadsheet className="h-5 w-5" /></div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">Payroll records</p>
+              <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">Payroll Management</h1>
+              <p className="mt-1 max-w-2xl text-sm leading-5 text-slate-500">Register and track individual and batch payroll records.</p>
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight mt-1">
-              Payroll Management &amp; Processing
-            </h1>
-              <p className="text-xs sm:text-sm text-slate-500 max-w-2xl mt-1">
-                Unified workspace for managing <strong>Individual Payroll Vouchers</strong> with direct routing and <strong>Batch Payroll Processing</strong> through a structured workflow.
-              </p>
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap">

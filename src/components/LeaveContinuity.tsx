@@ -171,9 +171,13 @@ export const LeaveContinuity: React.FC = () => {
   return <div className="space-y-4 pb-12">
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
       <div className="flex flex-col gap-4 px-5 pb-5 pt-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-[10px] font-bold uppercase leading-none tracking-widest text-blue-600">HRMDO Registry</p><h1 className="mt-1.5 text-xl font-bold tracking-tight text-slate-900">Leave Records</h1>
-          <p className="mt-1 text-sm text-slate-500">Register and track employee Leave Applications through HRMDO processing.</p>
+        <div className="flex min-w-0 items-start gap-3.5">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm"><CalendarClock className="h-5 w-5" /></div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">Leave records</p>
+            <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">Leave Records</h1>
+            <p className="mt-1 text-sm text-slate-500">Register and track employee leave applications.</p>
+          </div>
         </div>
         {canRegister && <button id="btn-file-new-leave" aria-label="Register Leave Application" onClick={() => { resetForm(); setIsModalOpen(true); }} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-2xs transition-colors hover:bg-blue-700">
           <Plus className="h-4 w-4" /> Register Leave

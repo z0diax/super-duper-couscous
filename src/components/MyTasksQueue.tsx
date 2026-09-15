@@ -221,15 +221,15 @@ export const MyTasksQueue: React.FC = () => {
       )}
 
       {/* Title & Queue Description */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Task Queues & Routing Inbox
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Role-authorized queues with phase accountability, automatic advancing, and return rules.
-            </p>
+          <div className="flex min-w-0 items-start gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm"><Inbox className="h-5 w-5" /></div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">Assigned work</p>
+              <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">My Tasks &amp; Queues</h1>
+              <p className="mt-1 text-sm text-slate-500">View documents and payroll records assigned to you.</p>
+            </div>
           </div>
         </div>
 

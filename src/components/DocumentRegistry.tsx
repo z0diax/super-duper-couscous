@@ -78,20 +78,15 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
   return (
     <div className="space-y-6 pb-12">
       {/* Registry Title & Stats */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                Central Document Registry & Archives
-              </h1>
-              <span className="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-mono font-semibold">
-                {documents.length} Records Total
-              </span>
+          <div className="flex min-w-0 items-start gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm"><FileStack className="h-5 w-5" /></div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">Records</p>
+              <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">Document Registry</h1>
+              <p className="mt-1 text-sm text-slate-500">Find active documents and archived records.</p>
             </div>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Central repository for active documents and preserved historical records.
-            </p>
           </div>
 
           <div className="flex items-center gap-2">
