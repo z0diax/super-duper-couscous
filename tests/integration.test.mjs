@@ -348,6 +348,8 @@ test('HRMDO leave registry separates applicant and encoder, validates barcodes, 
   assert.equal(manualApplicant.employeeId,''); assert.equal(manualApplicant.employeeName,'Maria Dela Cruz'); assert.equal(manualApplicant.barcode,'N/A'); assert.equal(manualApplicant.trackingNumber,'N/A'); assert.equal(manualApplicant.commutation,'Not Requested');
   const secondUntracked=(await receiver.action('fileLeaveApplication',[{...data,employeeId:'',employeeName:'Jose Dela Cruz',barcode:'N/A',office:"CEO - City Engineer's Office"}])).result;
   assert.equal(secondUntracked.barcode,'N/A');
+  await employee.action('deleteLeaveApplication',[secondUntracked.id],403);
+  await receiver.action('deleteLeaveApplication',[secondUntracked.id]); assert.equal(receiver.state.leaveApplications.some(entry=>entry.id===secondUntracked.id),false);
   await employee.action('changeLeaveApplicationStatus',[manualApplicant.id,{status:'For_Signature',remarks:''}],403);
   const manuallySigned=(await processor.action('changeLeaveApplicationStatus',[manualApplicant.id,{status:'For_Signature',remarks:'Ready for signature'}])).result;
   assert.equal(manuallySigned.status,'For_Signature'); assert.equal(manuallySigned.statusRemarks,'Ready for signature');

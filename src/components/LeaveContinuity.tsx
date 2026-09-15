@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { LeaveApplicationRecord, LeaveDateRange, LeaveType } from '../types';
-import { CalendarClock, Eye, FileCheck2, Filter, Plus, RefreshCcw, RotateCcw, Search, Trash2, X } from 'lucide-react';
+import { CalendarClock, Eye, FileCheck2, Filter, Pencil, Plus, RefreshCcw, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { queryLeaveRegistry } from '../services/leaveApi';
 import { OFFICE_OPTIONS } from '../data/offices';
 import { LeaveDateRangePicker } from './LeaveDateRangePicker';
@@ -92,7 +92,7 @@ const parseDateValue = (value: string) => {
 };
 
 export const LeaveContinuity: React.FC = () => {
-  const { auditLogs, currentUser, fileLeaveApplication, updateLeaveApplication, changeLeaveApplicationStatus, can } = useApp();
+  const { auditLogs, currentUser, fileLeaveApplication, updateLeaveApplication, deleteLeaveApplication, changeLeaveApplicationStatus, can } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -106,6 +106,7 @@ export const LeaveContinuity: React.FC = () => {
   const [selectedRecord, setSelectedRecord] = useState<LeaveApplicationRecord | null>(null);
   const [datesRecord, setDatesRecord] = useState<LeaveApplicationRecord | null>(null);
   const [statusRecord, setStatusRecord] = useState<LeaveApplicationRecord | null>(null);
+  const [deleteRecord, setDeleteRecord] = useState<LeaveApplicationRecord | null>(null);
   const [nextStatus, setNextStatus] = useState<ChangeableLeaveStatus|''>('');
   const [statusRemarks, setStatusRemarks] = useState('');
   const [employeeName, setEmployeeName] = useState('');
@@ -122,11 +123,16 @@ export const LeaveContinuity: React.FC = () => {
   useEffect(()=>{if(!canViewLeave)return;const timer=setTimeout(()=>void loadRegistry(),300);return()=>clearTimeout(timer);},[canViewLeave,loadRegistry]);
   const canRegister = can('canIntake') && canViewLeave;
   const canChangeStatus = canViewLeave && (can('canProcess') || can('canApprove') || can('canRelease') || can('canSupervise'));
+  const canModifyRecord = (record: LeaveApplicationRecord) => !record.isLegacyV1 && record.status==='For_Computation' && canRegister && (record.createdByUserId===currentUser.id || can('canSupervise') || can('canAdmin'));
   const openStatusChange = (record: LeaveApplicationRecord) => { setStatusRecord(record); setNextStatus(''); setStatusRemarks(''); };
   const submitStatusChange = async (event: React.FormEvent) => {
     event.preventDefault(); if (!statusRecord || !nextStatus) return;
     const saved = await changeLeaveApplicationStatus(statusRecord.id,{status:nextStatus,remarks:statusRemarks.trim()}) as LeaveApplicationRecord | null;
     if (saved) { if (selectedRecord?.id===saved.id) setSelectedRecord(saved); setStatusRecord(null); setNextStatus(''); setStatusRemarks(''); await loadRegistry(); }
+  };
+  const confirmDelete = async () => {
+    if (!deleteRecord) return; const deleted = await deleteLeaveApplication(deleteRecord.id);
+    if (deleted) { setDeleteRecord(null); setPage(1); await loadRegistry(); }
   };
 
   const resetForm = () => {
@@ -208,7 +214,7 @@ export const LeaveContinuity: React.FC = () => {
               <td className="px-4 py-3 font-medium text-slate-800">{record.leaveType}</td>
               <td className="px-4 py-3 text-xs font-medium text-slate-700">{selectedDates(record).length > 1 ? <button type="button" onClick={() => setDatesRecord(record)} className="inline-flex whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-700 transition hover:border-blue-300 hover:bg-blue-100">Multiple Dates Selected</button> : compactDates(record)}</td><td className="px-4 py-3 text-center font-bold text-slate-800">{record.totalLeaveDays ?? record.workingDaysNumber}</td>
               <td className="whitespace-nowrap px-4 py-3"><span className={`inline-flex whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-bold leading-none ${statusStyle(record.status)}`}>{statusLabel(record.status)}</span></td>
-              <td className="px-5 py-3 text-right"><div className="inline-flex items-center gap-1.5"><button type="button" aria-label="View Leave Application" title="View Leave Application" onClick={() => setSelectedRecord(record)} className="rounded-lg border border-blue-200 bg-white p-2 text-blue-700 shadow-xs hover:bg-blue-50"><Eye className="h-4 w-4" /></button>{canChangeStatus&&!record.isLegacyV1&&<button type="button" aria-label="Change Leave Status" title="Change Leave Status" onClick={()=>openStatusChange(record)} className="rounded-lg border border-violet-200 bg-violet-50 p-2 text-violet-700 hover:bg-violet-100"><RefreshCcw className="h-4 w-4" /></button>}</div></td>
+              <td className="px-5 py-3 text-right"><div className="inline-flex items-center gap-1.5"><button type="button" aria-label="View Leave Application" title="View Leave Application" onClick={() => setSelectedRecord(record)} className="rounded-lg border border-blue-200 bg-white p-2 text-blue-700 shadow-xs hover:bg-blue-50"><Eye className="h-4 w-4" /></button>{canChangeStatus&&!record.isLegacyV1&&<button type="button" aria-label="Change Leave Status" title="Change Leave Status" onClick={()=>openStatusChange(record)} className="rounded-lg border border-violet-200 bg-violet-50 p-2 text-violet-700 hover:bg-violet-100"><RefreshCcw className="h-4 w-4" /></button>}{canModifyRecord(record)&&<button type="button" aria-label="Edit Leave Application" title="Edit Leave Application" onClick={()=>openEdit(record)} className="rounded-lg border border-slate-200 bg-white p-2 text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><Pencil className="h-4 w-4" /></button>}{canModifyRecord(record)&&<button type="button" aria-label="Delete Leave Application" title="Delete Leave Application" onClick={()=>setDeleteRecord(record)} className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-700 hover:bg-rose-100"><Trash2 className="h-4 w-4" /></button>}</div></td>
             </tr>)}
             {!isQuerying && records.length === 0 && <tr><td colSpan={8} className="px-6 py-14 text-center"><FileCheck2 className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 font-semibold text-slate-700">No Leave Applications found</p><p className="mt-1 text-xs text-slate-400">{searchQuery||filterType!=='all'||filterStatus!=='all'||filterOffice||filedFrom||filedTo||leaveDate?'No Leave Applications match the current search/filters.':'Registered V2 Leave Applications will appear here.'}</p></td></tr>}
             {isQuerying&&<tr><td colSpan={8} className="px-6 py-12 text-center text-sm text-blue-600">Loading Leave Applications…</td></tr>}
@@ -279,5 +285,6 @@ export const LeaveContinuity: React.FC = () => {
       <footer className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-white px-5 py-3"><p className="hidden text-[11px] text-slate-400 sm:block">Official HRMDO Leave Application record</p><button type="button" onClick={() => setSelectedRecord(null)} className="ml-auto rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">Close</button></footer>
     </div></div>}
     {statusRecord&&<div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="leave-status-title"><form onSubmit={submitStatusChange} className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"><header className="bg-slate-900 px-5 py-4 text-white"><h3 id="leave-status-title" className="font-bold">Change Leave Status</h3><p className="mt-1 text-xs text-slate-300">{statusRecord.employeeName} · {statusRecord.barcode || statusRecord.trackingNumber || 'N/A'}</p></header><div className="space-y-4 p-5 text-xs"><div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><span className="text-slate-500">Current status</span><strong className="ml-2 text-slate-800">{statusLabel(statusRecord.status)}</strong></div><label className="block font-semibold text-slate-700">New Status *<select required autoFocus value={nextStatus} onChange={event=>{setNextStatus(event.target.value as ChangeableLeaveStatus);setStatusRemarks('');}} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"><option value="">Select a new status</option><option value="For_Computation" disabled={statusRecord.status==='For_Computation'}>For Computation</option><option value="On_Hold" disabled={statusRecord.status==='On_Hold'}>Hold</option><option value="For_Signature" disabled={statusRecord.status==='For_Signature'}>For Signature</option><option value="Released" disabled={statusRecord.status==='Released'}>Released</option></select></label>{nextStatus&&nextStatus!=='For_Computation'&&<label className="block font-semibold text-slate-700">Remarks <span className="font-normal text-slate-400">(optional)</span><textarea value={statusRemarks} onChange={event=>setStatusRemarks(event.target.value)} rows={4} placeholder={`Add remarks for ${statusLabel(nextStatus)}...`} className="mt-1.5 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"/></label>}<div className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={()=>{setStatusRecord(null);setNextStatus('');setStatusRemarks('');}} className="rounded-lg px-3 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button type="submit" disabled={!nextStatus} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">Save Status</button></div></div></form></div>}
+    {deleteRecord&&<div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="delete-leave-title"><div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"><header className="bg-slate-900 px-5 py-4 text-white"><h3 id="delete-leave-title" className="font-bold">Delete Leave Application</h3><p className="mt-1 text-xs text-slate-300">{deleteRecord.employeeName} · {deleteRecord.barcode || deleteRecord.trackingNumber || 'N/A'}</p></header><div className="p-5 text-xs"><div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-900"><p className="font-bold">This Leave Application will be permanently deleted.</p><p className="mt-1 leading-5 text-rose-700">Its audit event will remain as part of the system history.</p></div><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={()=>setDeleteRecord(null)} className="rounded-lg px-3 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button type="button" onClick={confirmDelete} className="rounded-lg bg-rose-600 px-4 py-2 font-semibold text-white hover:bg-rose-700">Delete Application</button></div></div></div></div>}
   </div>;
 };
