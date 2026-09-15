@@ -487,7 +487,8 @@ export interface DocumentRecord {
     releasedAt: string;
     releasedBy: string;
     releasedTo: string;
-    releaseMode: 'In-Person Pick-up' | 'Official Courier' | 'Electronic Copy' | 'Internal Messenger';
+    releaseMode: 'HRMDO Liaison' | 'External Liaison' | 'In-Person Pickup' | 'Others';
+    otherReleaseMode?: string;
     receiptRemarks?: string;
   };
   isLegacyV1?: boolean;

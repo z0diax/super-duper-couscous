@@ -90,9 +90,9 @@ test('claim, return, required uploads, approval, release, and read-only history'
   await employee.action('uploadSupportingFile',[doc.id,file],404);
   await approver.action('uploadSupportingFile',[doc.id,file]);
   await approver.action('approveDocument',[doc.id,'Approved']);
-  await processor.action('releaseDocument',[doc.id,{releasedTo:'Office',releaseMode:'Electronic Copy'}],403);
+  await processor.action('releaseDocument',[doc.id,{releasedTo:'Office',releaseMode:'HRMDO Liaison'}],403);
   assert.equal(processor.state.documents.some(record=>record.id===doc.id),true); // previous processor: view only
-  await releaser.action('releaseDocument',[doc.id,{releasedTo:'Office',releaseMode:'Electronic Copy'}]);
+  await releaser.action('releaseDocument',[doc.id,{releasedTo:'Office',releaseMode:'HRMDO Liaison'}]);
   await admin.refresh(); const saved=admin.state.documents.find(d=>d.id===doc.id); assert.equal(saved.status,'Released'); assert(saved.workflowSteps.every(s=>s.status==='Completed'));
   await admin.action('addDocumentRemark',[doc.id,'Cannot edit released record'],409);
   const response=await fetch(`${fixture.base}/api/files.php?id=${file.id}`,{headers:{Cookie:admin.cookie}}); assert.equal(response.status,200); assert.match(await response.text(),/Integration evidence/);
@@ -322,7 +322,7 @@ test('single payroll follows configured workflow and synchronizes its item on re
   assert.equal(processor.state.documents.find(d=>d.id===single.id).employmentClassification,'Regular');
   await processor.action('completeStep',[single.id,'Classified and verified']);
   await releaser.refresh();
-  await releaser.action('releaseDocument',[single.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
+  await releaser.action('releaseDocument',[single.id,{releasedTo:'Payroll liaison',releaseMode:'External Liaison'}]);
   assert.equal(releaser.state.payrollItems.find(i=>i.documentId===single.id).status,'Completed');
   await admin.action('deleteDocument',[single.id]);
   assert.equal(admin.state.documents.some(record=>record.id===single.id),false);
@@ -458,7 +458,7 @@ test('release after a terminal approval preserves the approving officer',async()
   const record=(await admin.action('registerDocument',[{...documentData('TERMINAL-APPROVAL'),classification:'Request',documentType:'Certification'}])).result;
   await approver.action('approveDocument',[record.id,'Approved for release']);
   const approval=approver.state.documents.find(d=>d.id===record.id).workflowSteps[0].completedBy;
-  await releaser.action('releaseDocument',[record.id,{releasedTo:'Records recipient',releaseMode:'Electronic Copy'}]);
+  await releaser.action('releaseDocument',[record.id,{releasedTo:'Records recipient',releaseMode:'Others',otherReleaseMode:'Secure records counter'}]);
   assert.deepEqual(releaser.state.documents.find(d=>d.id===record.id).workflowSteps[0].completedBy,approval);
 });
 test('external handoff preserves custody, waits for return, and activates the next internal stage',async()=>{

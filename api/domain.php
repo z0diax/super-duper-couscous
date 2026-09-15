@@ -511,7 +511,8 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
             $step['remarks']=is_string($args[1]??null)?$args[1]:''; $step['actionTaken']=$args[2]??$required;
         }
         if ($action==='releaseDocument') {
-            $details=$args[1]; required($details,'releasedTo'); choice($details['releaseMode']??null,['In-Person Pick-up','Official Courier','Electronic Copy','Internal Messenger'],'release mode');
+            $details=$args[1]; required($details,'releasedTo'); $releaseMode=choice($details['releaseMode']??null,['HRMDO Liaison','External Liaison','In-Person Pickup','Others'],'release mode');
+            if ($releaseMode==='Others') $details['otherReleaseMode']=required($details,'otherReleaseMode'); else unset($details['otherReleaseMode']);
             $releasedAt=now(); $doc['releasedDetails']=array_merge($details,['releaseNumber'=>uid('release'),'releasedAt'=>$releasedAt,'releasedBy'=>$u['name']]); $doc['status']='Released';
             $doc['custodyHistory'][]=['id'=>uid('custody'),'movementType'=>'FINAL_RELEASE','fromLocation'=>$doc['currentLocation']??'HRMDO','toLocation'=>$details['releasedTo'],'timestamp'=>$releasedAt,'stageNumber'=>$n+1,'remarks'=>$details['receiptRemarks']??'','actorId'=>$u['id'],'actorName'=>$u['name']];
         } elseif ($n+1<count($doc['workflowSteps'])) {

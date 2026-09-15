@@ -90,7 +90,7 @@ try {
         } else {
             $parts=[]; foreach (array_slice($args,1) as $value) {
                 if (is_string($value)) $parts[]=$value;
-                elseif (is_array($value)) foreach (['releasedTo','releaseMode','receiptRemarks','name','description'] as $field) if (!empty($value[$field]) && is_string($value[$field])) $parts[]=ucfirst($field).': '.$value[$field];
+                elseif (is_array($value)) foreach (['releasedTo','releaseMode','otherReleaseMode','receiptRemarks','name','description'] as $field) if (!empty($value[$field]) && is_string($value[$field])) $parts[]=ucfirst($field).': '.$value[$field];
             }
             $details=implode('. ',$parts);
         }
