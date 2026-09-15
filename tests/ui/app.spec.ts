@@ -128,8 +128,9 @@ test('leave registration switches dynamic fields without retaining stale values'
   const row=page.getByText('BROWSER-LEAVE-001', { exact: true }).locator('xpath=ancestor::tr');
   await expect(row).toContainText('Sick Leave'); await row.getByRole('button',{name:'Multiple Dates Selected'}).click(); await expect(page.getByRole('dialog',{name:'Inclusive Dates'})).toContainText('Sep 14, 2026'); await expect(page.getByRole('dialog',{name:'Inclusive Dates'})).toContainText('Sep 17, 2026'); await page.getByRole('button',{name:'Close Inclusive Dates'}).click();
   await page.reload(); const persistedRow=page.getByText('BROWSER-LEAVE-001', { exact: true }).locator('xpath=ancestor::tr'); await persistedRow.getByRole('button', { name: 'View', exact: true }).click();
+  const leaveRecordDialog=page.getByRole('dialog',{name:'Browser Test Applicant'}); await expect(leaveRecordDialog).toBeVisible(); await expect(leaveRecordDialog.getByText('Leave application record',{exact:true})).toBeVisible(); await expect.poll(async()=>Math.round((await leaveRecordDialog.boundingBox())?.y ?? -1)).toBeGreaterThanOrEqual(0);
   await expect(page.getByText('Medical Setting', { exact: true })).toBeVisible(); await expect(page.getByText('Out Patient', { exact: true })).toBeVisible(); await expect(page.getByText('Flu', { exact: true })).toBeVisible();
-  await expect(page.getByText('AM Half-Day', { exact: true })).toBeVisible(); await expect(page.locator('strong').filter({ hasText: /^3\.5 days$/ })).toBeVisible();
+  await expect(page.getByText('AM Half-Day', { exact: true })).toBeVisible(); await expect(leaveRecordDialog.getByText('3.5 days total', { exact: true })).toBeVisible();
   await expect(page.getByText('ABROAD', { exact: true })).toHaveCount(0); await expect(page.getByText('Japan', { exact: true })).toHaveCount(0);
 });
 test('payroll batch intake saves its items and a downloadable attachment', async ({ page }) => {
