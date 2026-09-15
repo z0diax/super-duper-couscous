@@ -383,9 +383,7 @@ export const SystemRolesModal: React.FC<SystemRolesModalProps> = ({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between text-xs text-slate-500">
-          <span>Changes apply immediately across all workflow phases and personnel desks.</span>
+        <div className="px-6 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end">
           <button
             type="button"
             onClick={onClose}

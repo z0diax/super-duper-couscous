@@ -344,11 +344,7 @@ export const AssigneeDesignationsModal: React.FC<AssigneeDesignationsModalProps>
           )}
         </div>
 
-        {/* Footer info */}
-        <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500 flex flex-col sm:flex-row justify-between items-center gap-2">
-          <span>
-            Changes made here take effect immediately in all workflow phases and document routing templates.
-          </span>
+        <div className="px-5 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end">
           <button
             onClick={onClose}
             className="px-4 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors"
