@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
+import { isDocumentActionableForUser } from '../services/documentTaskAssignment';
 import { 
   FileText, 
   Clock, 
@@ -36,9 +37,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
   // Tasks assigned to current active user or role
   const myActionableTasks = activeV2Docs.filter(doc => {
     if (doc.status === 'Released' || doc.status === 'Archived') return false;
-    const currentStep = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
-    if (!currentStep) return false;
-    return currentStep.assignedTo.userId === currentUser.id || currentStep.assignedTo.role === currentUser.role;
+    return isDocumentActionableForUser(doc, currentUser, true);
   });
 
   return (

@@ -1,5 +1,6 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
+import { isDocumentActionableForUser } from '../services/documentTaskAssignment';
 import { SidebarModule } from '../types';
 import { 
   LayoutDashboard, 
@@ -51,9 +52,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
   // it is active. Payroll tasks follow this exact rule just like documents.
   const documentTaskCount = documents.filter(doc => {
     if (doc.status === 'Released' || doc.status === 'Archived') return false;
-    const step = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
-    if (!step) return false;
-    return (doc.status === 'On_Hold' && doc.encodedBy.userId === currentUser.id) || step.assignedTo.userId === currentUser.id || (!step.assignedTo.userId && step.assignedTo.role === currentUser.role);
+    return (doc.status === 'On_Hold' && doc.encodedBy.userId === currentUser.id) || isDocumentActionableForUser(doc, currentUser, true);
   }).length;
 
   const payrollTaskCount = payrollBatches.filter(b => {

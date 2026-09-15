@@ -38,7 +38,13 @@ function can_view_document(array $s,array $u,array $doc): bool {
     if (($doc['encodedBy']['userId']??null)===$u['id']) return true;
     foreach ($doc['workflowSteps']??[] as $step) {
         if (($step['completedBy']['userId']??null)===$u['id'] || ($step['handoffOwner']['userId']??null)===$u['id']) return true;
-        if (($step['stepNumber']??0)===($doc['currentStepNumber']??0) && can_assign($s,$u,$step['assignedTo']??[])) return true;
+        if (($step['stepNumber']??0)===($doc['currentStepNumber']??0)) {
+            if (can_assign($s,$u,$step['assignedTo']??[])) return true;
+            if (($step['stageType']??'')==='EXTERNAL_HANDOFF_REVIEW') {
+                if (($step['externalStatus']??null)==='PENDING_HANDOFF' && (($step['handoffOwner']['userId']??null)===$u['id'] || has_cap($s,$u,'canIntake'))) return true;
+                if (($step['externalStatus']??null)==='OUTSIDE_HRMDO' && (can_assign($s,$u,$step['returnReceiver']??[]) || has_cap($s,$u,'canIntake'))) return true;
+            }
+        }
     }
     return in_array(($doc['status']??''),['Ready_For_Release','Released'],true) && has_cap($s,$u,'canRelease');
 }

@@ -17,6 +17,7 @@ import {
   Layers
 } from 'lucide-react';
 import { queryLeaveRegistry } from '../services/leaveApi';
+import { currentDocumentStep, isDocumentActionableForUser } from '../services/documentTaskAssignment';
 
 export const MyTasksQueue: React.FC = () => {
   const { documents, currentUser, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, setActiveTab, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
@@ -60,19 +61,21 @@ export const MyTasksQueue: React.FC = () => {
   // 1. My Tasks (assigned to user specifically or role)
   const myTasks = documents.filter(doc => {
     if (doc.isLegacyV1 || doc.status === 'Released' || doc.status === 'Archived') return false;
-    const currentStep = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
+    const currentStep = currentDocumentStep(doc);
     if (!currentStep) return false;
-    return (doc.status === 'On_Hold' && doc.encodedBy.userId === currentUser.id) || currentStep.assignedTo.userId === currentUser.id || (!currentStep.assignedTo.userId && currentStep.assignedTo.role === currentUser.role);
+    return (doc.status === 'On_Hold' && doc.encodedBy.userId === currentUser.id) || isDocumentActionableForUser(doc, currentUser);
   });
 
   // 2. Team Queue (assigned to user's division/team, can be claimed)
   const teamTasks = documents.filter(doc => {
     if (doc.isLegacyV1 || doc.status === 'Released' || doc.status === 'Archived') return false;
-    const currentStep = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
+    const currentStep = currentDocumentStep(doc);
     if (!currentStep) return false;
     // If not already explicitly claimed by current user, but belongs to user's division/team or general queue
-    const matchesTeam = (currentStep.assignedTo.type === 'Team' && !!currentStep.assignedTo.team && [currentUser.division, currentUser.office].includes(currentStep.assignedTo.team)) || currentStep.assignedTo.role === currentUser.role;
-    return !currentStep.assignedTo.userId && matchesTeam;
+    const isTeamAssignment = currentStep.stageType === 'EXTERNAL_HANDOFF_REVIEW'
+      ? currentStep.externalStatus === 'OUTSIDE_HRMDO' && currentStep.returnReceiver?.type === 'Team'
+      : currentStep.assignedTo.type === 'Team';
+    return !!isTeamAssignment && isDocumentActionableForUser(doc, currentUser, true);
   });
 
   // 3. Returned / Rework
@@ -86,7 +89,7 @@ export const MyTasksQueue: React.FC = () => {
     const participatedInStep = doc.workflowSteps.some(
       s => s.stepNumber < doc.currentStepNumber && s.completedBy?.userId === currentUser.id
     );
-    return isEncoder || participatedInStep;
+    return (isEncoder || participatedInStep) && !isDocumentActionableForUser(doc, currentUser, true);
   });
 
   // 5. Ready for Release

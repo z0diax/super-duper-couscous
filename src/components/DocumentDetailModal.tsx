@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { Check, CheckCircle2, Download, FileText, Paperclip, Printer, RotateCcw, Send, Upload, UserCheck, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { OFFICE_OPTIONS } from '../data/offices';
+import { assignmentMatchesUser } from '../services/documentTaskAssignment';
 
 type Tab = 'workflow' | 'details' | 'attachments' | 'audit' | 'slip';
 type Dialog = 'claim' | 'complete' | 'hold' | 'compliance' | 'recheck' | 'return' | 'approve' | 'release' | 'reassign' | 'remark' | 'upload' | 'handoff' | 'external-return' | null;
@@ -44,7 +45,11 @@ export const DocumentDetailModal: React.FC = () => {
   const canProcess = isAssigned;
   const canClaim = !!current && !doc?.isLegacyV1 && !current.assignedTo.userId && !isAssigned && current.status !== 'Completed' && ((current.assignedTo.type === 'Team' && !!current.assignedTo.team && [currentUser.division, currentUser.office].includes(current.assignedTo.team)) || current.assignedTo.role === currentUser.role);
   const canManage = canProcess && !isExternal && can('canSupervise');
-  const canExternal = !!isExternal && (current?.handoffOwner?.userId === currentUser.id || can('canIntake') || can('canSupervise') || isAdmin);
+  const canExternal = !!isExternal && (
+    can('canIntake') || can('canSupervise') || isAdmin
+    || (current.externalStatus === 'PENDING_HANDOFF' && current.handoffOwner?.userId === currentUser.id)
+    || (current.externalStatus === 'OUTSIDE_HRMDO' && assignmentMatchesUser(current.returnReceiver, currentUser, true))
+  );
   const canSeeControls = canProcess || canClaim || canManage || canExternal || (!!doc && ['On_Hold','Ready_For_Recheck'].includes(doc.status) && (doc.encodedBy.userId === currentUser.id || isAdmin));
   const audit = useMemo(() => doc ? auditLogs.filter(event => event.documentId === doc.id) : [], [auditLogs, doc]);
   const normalizedAuditQuery = auditQuery.trim().toLowerCase();
