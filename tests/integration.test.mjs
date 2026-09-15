@@ -17,6 +17,9 @@ test('installer is repeatable and all collections are available',async()=>{
 test('authentication, CSRF and whole-state writes are enforced',async()=>{
   const anonymous=new Client(fixture.base); await anonymous.request('state.php','GET',undefined,401);
   await anonymous.request('auth.php'); await anonymous.request('auth.php','POST',{email:'admin@example.test',password:'wrong'},401);
+  const usernameLogin=new Client(fixture.base); await usernameLogin.request('auth.php');
+  const session=await usernameLogin.request('auth.php','POST',{identifier:'System Administrator',password:testPassword});
+  assert.equal(session.user.email,'admin@example.test');
   await admin.request('state.php','PUT',{state:{users:[]}},405);
   await admin.request('state.php','POST',{action:'runMigrationCheck',args:[],revision:admin.revision},403,{'X-CSRF-Token':'invalid'});
 });

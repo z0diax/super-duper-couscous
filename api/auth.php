@@ -8,11 +8,11 @@ if ($method==='GET') {
 }
 fail_unless(in_array($method,['POST','DELETE'],true),'Method not allowed.',405); csrf_check();
 if ($method==='DELETE') { $_SESSION=[]; session_destroy(); respond(['ok'=>true]); }
-$body=request_json(); $email=strtolower(trim((string)($body['email']??''))); $password=(string)($body['password']??'');
-fail_unless(strlen($email)<=190 && strlen($password)<=72 && $email!=='' && $password!=='','Email and password are required.');
+$body=request_json(); $identifier=trim((string)($body['identifier']??$body['email']??'')); $normalizedIdentifier=mb_strtolower($identifier); $password=(string)($body['password']??'');
+fail_unless(strlen($identifier)<=190 && strlen($password)<=72 && $identifier!=='' && $password!=='','Email or username and password are required.');
 $pdo=database();
 // Both address and account windows prevent bypassing the limit with new cookies.
-$keys=[hash('sha256','ip:'.($_SERVER['REMOTE_ADDR']??'')),hash('sha256','email:'.$email)];
+$keys=[hash('sha256','ip:'.($_SERVER['REMOTE_ADDR']??'')),hash('sha256','account:'.$normalizedIdentifier)];
 $pdo->beginTransaction();
 try {
     foreach ($keys as $key) {
@@ -24,9 +24,10 @@ try {
     }
     $pdo->commit();
 } catch (Throwable $e) { $pdo->rollBack(); throw $e; }
-$q=$pdo->prepare('SELECT * FROM app_users WHERE email=?'); $q->execute([$email]); $row=$q->fetch();
+$q=$pdo->prepare('SELECT * FROM app_users WHERE email=? OR name=? LIMIT 2'); $q->execute([$normalizedIdentifier,$identifier]); $matches=$q->fetchAll();
+$row=count($matches)===1?$matches[0]:false;
 $valid=password_verify($password,$row['password_hash']??'$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.');
-fail_unless((bool)$row && $valid,'Invalid email or password.',401);
+fail_unless((bool)$row && $valid,'Invalid email, username, or password.',401);
 $pdo->prepare('DELETE FROM app_login_attempts WHERE attempt_key=?')->execute([$keys[1]]);
 $pdo->prepare('UPDATE app_login_attempts SET attempts=GREATEST(attempts-1,0) WHERE attempt_key=?')->execute([$keys[0]]);
 session_regenerate_id(true); $_SESSION['user_id']=$row['id']; $_SESSION['credential']=hash('sha256',$row['password_hash']); $_SESSION['csrf']=bin2hex(random_bytes(32));

@@ -75,8 +75,8 @@ function useApplication() {
     const warn = (e: BeforeUnloadEvent) => { if (busy.current) { e.preventDefault(); e.returnValue = ''; } };
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, []);
-  const login = async (email: string, password: string) => {
-    const user = await authenticate(email, password); sessionGeneration.current++; revision.current = -1; setState(emptyState); setDatabaseReady(false); setDatabaseError(null); setCurrentUser(user);
+  const login = async (identifier: string, password: string) => {
+    const user = await authenticate(identifier, password); sessionGeneration.current++; revision.current = -1; setState(emptyState); setDatabaseReady(false); setDatabaseError(null); setCurrentUser(user);
   };
   const logout = async () => {
     if (busy.current) return;

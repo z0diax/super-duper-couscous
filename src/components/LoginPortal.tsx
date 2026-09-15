@@ -5,7 +5,7 @@ import { BrandLogo } from './BrandLogo';
 
 export const LoginPortal: React.FC = () => {
   const { login } = useApp();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -15,7 +15,7 @@ export const LoginPortal: React.FC = () => {
     setError('');
     setIsSubmitting(true);
     try {
-      await login(email, password);
+      await login(identifier, password);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to sign in.');
     } finally {
@@ -55,14 +55,14 @@ export const LoginPortal: React.FC = () => {
           <div className="w-full">
             <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-600">Sign in</p>
             <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">System access</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">Enter your registered government email address and password to continue.</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">Enter your registered email address or username and password to continue.</p>
 
             <form onSubmit={handleSubmit} className="mt-8 space-y-5">
               <label className="block">
-                <span className="mb-2 block text-xs font-semibold text-slate-700">Email address</span>
+                <span className="mb-2 block text-xs font-semibold text-slate-700">Email address or username</span>
                 <div className="relative">
                   <Mail className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                  <input value={email} onChange={event => setEmail(event.target.value)} type="email" autoComplete="username" required placeholder="name@hrmdo.gov.ph" className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100" />
+                  <input value={identifier} onChange={event => setIdentifier(event.target.value)} type="text" autoComplete="username" required placeholder="Username or name@hrmdo.gov.ph" className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100" />
                 </div>
               </label>
               <label className="block">
