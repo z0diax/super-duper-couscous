@@ -111,7 +111,7 @@ export const LeaveContinuity: React.FC = () => {
   const [statusRemarks, setStatusRemarks] = useState('');
   const [employeeName, setEmployeeName] = useState('');
   const [office, setOffice] = useState('');
-  const [barcode, setBarcode] = useState('N/A');
+  const [barcode, setBarcode] = useState('');
   const [leaveType, setLeaveType] = useState<LeaveType>('Vacation Leave');
   const [leaveSubtype, setLeaveSubtype] = useState('');
   const [leaveDetails, setLeaveDetails] = useState('');
@@ -136,7 +136,7 @@ export const LeaveContinuity: React.FC = () => {
   };
 
   const resetForm = () => {
-    setEmployeeName(''); setOffice(''); setBarcode('N/A');
+    setEmployeeName(''); setOffice(''); setBarcode('');
     setLeaveType('Vacation Leave'); setLeaveSubtype(''); setLeaveDetails(''); setDateRanges([emptyDateRange()]);
     setRemarks(''); setEditingRecord(null);
   };
@@ -155,7 +155,9 @@ export const LeaveContinuity: React.FC = () => {
   };
   const openEdit = (record: LeaveApplicationRecord) => {
     setEditingRecord(record); setEmployeeName(record.employeeName);
-    setOffice(record.office || record.department || ''); setBarcode(record.barcode || record.trackingNumber || 'N/A');
+    setOffice(record.office || record.department || '');
+    const existingBarcode = record.barcode || record.trackingNumber || '';
+    setBarcode(existingBarcode === 'N/A' ? '' : existingBarcode);
     setLeaveType(record.leaveType); setLeaveSubtype(record.leaveSubtype || ''); setLeaveDetails(record.leaveDetails || '');
     setDateRanges(rangesForRecord(record)); setRemarks(record.remarks || ''); setIsModalOpen(true);
   };
@@ -233,7 +235,7 @@ export const LeaveContinuity: React.FC = () => {
         </header>
         <form onSubmit={submit} className="space-y-4 p-5 text-xs">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="font-semibold text-slate-700">Barcode / Tracking No. <span className="font-normal text-slate-400">(optional)</span><input id="leave-input-barcode" value={barcode} onChange={event => setBarcode(event.target.value)} placeholder="N/A" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
+            <label className="font-semibold text-slate-700">Barcode / Tracking No. <span className="font-normal text-slate-400">(optional)</span><input id="leave-input-barcode" value={barcode} onChange={event => setBarcode(event.target.value)} placeholder="Leave blank to use N/A" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
             <label className="font-semibold text-slate-700">Employee / Applicant *<input id="leave-input-applicant" required value={employeeName} onChange={event => setEmployeeName(event.target.value)} placeholder="Enter employee or applicant name" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
