@@ -272,20 +272,17 @@ export const UsersDashboard: React.FC = () => {
       {/* Header Banner */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
-                Staff & Personnel Directory
-              </span>
-              <span className="text-xs text-slate-500">&bull;</span>
-              <span className="text-xs text-slate-500 font-medium">HRMDO System Governance</span>
+          <div className="flex min-w-0 items-start gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+              <Users className="h-5 w-5" />
             </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900">
-              Users & Designations Dashboard
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1 max-w-3xl">
-              Manage personnel accounts, role designations, division teams, and view current active task workloads across processing desks.
-            </p>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">Personnel management</p>
+              <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">Users &amp; Designations</h1>
+              <p className="mt-1 max-w-3xl text-sm leading-5 text-slate-500">
+                Manage personnel accounts, roles, teams, and assigned work.
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">

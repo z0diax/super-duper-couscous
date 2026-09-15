@@ -60,15 +60,19 @@ export const ClassificationCatalogue: React.FC = () => {
   return (
     <div className="space-y-6 pb-12">
       {/* Header */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-              Document Types
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Manage the document types used when registering and routing records.
-            </p>
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6">
+        <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 items-start gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+              <Tags className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">Records setup</p>
+              <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">Document Types</h1>
+              <p className="mt-1 max-w-2xl text-sm leading-5 text-slate-500">
+                Manage the document types used when registering and routing records.
+              </p>
+            </div>
           </div>
 
           <button
@@ -82,7 +86,7 @@ export const ClassificationCatalogue: React.FC = () => {
         </div>
 
         {/* Category Selector Tabs */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4 pt-4 border-t border-slate-100">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-5 pt-4 border-t border-slate-100">
           {classifications.map(cat => {
             const isSelected = cat.id === selectedCategory.id;
             return (
