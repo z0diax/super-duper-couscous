@@ -267,18 +267,18 @@ test('payroll routing supports personnel pools and team queues',async()=>{
   const jowRule=admin.state.employmentRoutingRules.find(rule=>rule.classification==='JOW/COS');
   const casualRule=admin.state.employmentRoutingRules.find(rule=>rule.classification==='Casual');
   await admin.action('updateEmploymentRoutingRule',[{...jowRule,assignmentMode:'pool',eligibleProcessorIds:[processingUser.id,alternateUser.id]}]);
-  const poolBatch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'POOL-ROUTING-001',items:[{title:'Pool routed payroll',barcode:'POOL-PAY-001'}],files:[]}])).result;
-  await admin.action('updatePayrollItemClassification',[poolBatch.itemIds[0],'JOW/COS']);
+  const poolBatch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'POOL-ROUTING-001',items:[{title:'Pool routed payroll A',barcode:'POOL-PAY-001'},{title:'Pool routed payroll B',barcode:'POOL-PAY-002'}],files:[]}])).result;
+  await admin.action('updatePayrollItemClassification',[poolBatch.itemIds[0],'JOW/COS']); await admin.action('updatePayrollItemClassification',[poolBatch.itemIds[1],'JOW/COS']);
   await admin.action('completeInitialCheckingAndRoute',[poolBatch.id],422);
-  await admin.action('completeInitialCheckingAndRoute',[poolBatch.id,{'JOW/COS':alternateUser.id}]);
-  let group=admin.state.workGroups.find(item=>item.batchId===poolBatch.id);
-  assert.equal(group.assignedProcessorId,alternateUser.id);
+  await admin.action('completeInitialCheckingAndRoute',[poolBatch.id,{[poolBatch.itemIds[0]]:alternateUser.id,[poolBatch.itemIds[1]]:processingUser.id}]);
+  const poolGroups=admin.state.workGroups.filter(item=>item.batchId===poolBatch.id); assert.equal(poolGroups.length,2);
+  assert.deepEqual(new Set(poolGroups.map(group=>group.assignedProcessorId)),new Set([alternateUser.id,processingUser.id]));
 
   await admin.action('updateEmploymentRoutingRule',[{...casualRule,assignmentMode:'team',assignedTeam:processingUser.division}]);
   const teamBatch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'TEAM-ROUTING-001',items:[{title:'Team routed payroll',barcode:'TEAM-PAY-001'}],files:[]}])).result;
   await admin.action('updatePayrollItemClassification',[teamBatch.itemIds[0],'Casual']);
   await admin.action('completeInitialCheckingAndRoute',[teamBatch.id]);
-  group=admin.state.workGroups.find(item=>item.batchId===teamBatch.id);
+  let group=admin.state.workGroups.find(item=>item.batchId===teamBatch.id);
   assert.equal(group.assignedTeam,processingUser.division); assert.equal(group.assignedProcessorId,'');
   await processor.refresh(); assert(processor.state.workGroups.some(item=>item.id===group.id));
   await processor.action('processWorkGroupItems',[group.id,group.itemIds,'complete']);

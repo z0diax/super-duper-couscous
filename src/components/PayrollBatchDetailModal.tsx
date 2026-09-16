@@ -135,12 +135,14 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const routingRuleFor = (classification: string) => employmentRoutingRules.find(rule => rule.classification === classification);
   const processorFor = (classification: string) => {
     const rule = routingRuleFor(classification); if (!rule) return 'Not configured';
-    if (rule.assignmentMode === 'pool') return routeSelections[classification] ? users.find(user => user.id === routeSelections[classification])?.name || 'Choose personnel' : 'Choose personnel';
+    if (rule.assignmentMode === 'pool') return 'Selected per payroll';
     if (rule.assignmentMode === 'team') return rule.assignedTeam || 'Team not configured';
     return rule.primaryProcessorName || 'Not configured';
   };
-  const readyClassifications = (['JOW/COS', 'Casual', 'Regular'] as const).filter(classification => readyItems.some(item => classification === 'JOW/COS' ? ['JOW/COS', 'Job Order (JOW)'].includes(item.employmentClassification || '') : item.employmentClassification === classification));
-  const unresolvedPoolClassifications = readyClassifications.filter(classification => routingRuleFor(classification)?.assignmentMode === 'pool' && !routeSelections[classification]);
+  const unresolvedPoolItems = readyItems.filter(item => {
+    const classification=item.employmentClassification==='Job Order (JOW)'?'JOW/COS':item.employmentClassification || '';
+    return routingRuleFor(classification)?.assignmentMode === 'pool' && !routeSelections[item.id];
+  });
   const releaseDesk = batch.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
   const canReleaseBatch = can('canSupervise') || !!releaseDesk && (
     releaseDesk.userId
@@ -192,7 +194,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
   const handleRouteInitialItems = async () => {
     if (unresolvedCount > 0 || readyItems.length === 0) return;
-    if (unresolvedPoolClassifications.length > 0) return;
+    if (unresolvedPoolItems.length > 0) return;
     if (!(await completeInitialCheckingAndRoute(batch.id, routeSelections))) return;
     // The routed records no longer belong to the Initial Checking selection.
     setSelectedItemIds([]);
@@ -501,6 +503,8 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                       const isSelected = selectedItemIds.includes(item.id);
                       const isHeld = item.status === 'On_Hold';
                       const isReadyForRecheck = item.status === 'Ready_For_Recheck';
+                      const normalizedClassification = item.employmentClassification === 'Job Order (JOW)' ? 'JOW/COS' : item.employmentClassification || '';
+                      const itemRoutingRule = routingRuleFor(normalizedClassification);
 
                       return (
                         <div 
@@ -567,7 +571,8 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                           </div>
 
                           {/* Action Buttons for this item */}
-                          {canInitialCheck && <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+                          {canInitialCheck && <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-center shrink-0">
+                            {itemRoutingRule?.assignmentMode === 'pool' && item.verificationStatus === 'Passed' && !isHeld && <select aria-label={`Assign ${item.barcode} to`} value={routeSelections[item.id] || ''} onChange={event => setRouteSelections(current => ({...current,[item.id]:event.target.value}))} className="max-w-56 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-slate-700"><option value="">Choose personnel...</option>{(itemRoutingRule.eligibleProcessorIds || []).map(id => { const user=users.find(person => person.id===id); return user?<option key={id} value={id}>{user.name} — {user.roleTitle}</option>:null; })}</select>}
                             {/* Classification Quick-Pick */}
                             <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs">
                               <button
@@ -635,7 +640,6 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
                   {/* Route & Complete Initial Checking */}
                   {canInitialCheck && <div className="p-4 bg-blue-50/50 border border-blue-200 rounded-xl flex flex-col gap-4">
-                    {readyClassifications.some(classification => routingRuleFor(classification)?.assignmentMode === 'pool') && <div className="grid gap-3 border-b border-blue-100 pb-4 sm:grid-cols-2 lg:grid-cols-3">{readyClassifications.filter(classification => routingRuleFor(classification)?.assignmentMode === 'pool').map(classification => { const rule=routingRuleFor(classification)!; return <label key={classification} className="text-xs font-semibold text-slate-700">Assign {classification} to<select value={routeSelections[classification] || ''} onChange={event => setRouteSelections(current => ({...current,[classification]:event.target.value}))} className="mt-1 w-full rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-normal"><option value="">Choose personnel...</option>{(rule.eligibleProcessorIds || []).map(id => { const user=users.find(person => person.id===id); return user?<option key={id} value={id}>{user.name} — {user.roleTitle}</option>:null; })}</select></label>; })}</div>}
                     <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
                     <div className="text-xs text-slate-700 space-y-0.5">
                       <p className="font-bold text-slate-900">Ready to Split into Parallel Work Groups?</p>
@@ -665,8 +669,8 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                       onClick={async () => {
                         await handleRouteInitialItems();
                       }}
-                      disabled={unresolvedCount > 0 || readyItems.length === 0 || unresolvedPoolClassifications.length > 0}
-                      title={unresolvedPoolClassifications.length > 0 ? 'Choose a processor for each personnel pool' : unresolvedCount > 0 ? `${unresolvedCount} payroll item(s) still need verification and classification` : 'Route only the verified payroll items'}
+                      disabled={unresolvedCount > 0 || readyItems.length === 0 || unresolvedPoolItems.length > 0}
+                      title={unresolvedPoolItems.length > 0 ? `Choose a processor for ${unresolvedPoolItems.length} payroll item(s)` : unresolvedCount > 0 ? `${unresolvedCount} payroll item(s) still need verification and classification` : 'Route only the verified payroll items'}
                       className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none shadow-sm flex items-center justify-center gap-2 shrink-0 transition-all"
                     >
                       <span>Complete &amp; Route {readyItems.length} Payroll{readyItems.length === 1 ? '' : 's'}</span>

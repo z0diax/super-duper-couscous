@@ -306,26 +306,30 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
         fail_unless(count($unresolved)===0,count($unresolved).' payroll item'.(count($unresolved)===1?' is':'s are').' still pending verification or classification.');
         $readyItems=array_values(array_filter($initialItems,'payroll_item_is_ready')); $heldItems=array_values(array_filter($initialItems,'payroll_item_is_held'));
         fail_unless(count($readyItems)>0,'No newly verified payroll items are ready to route.',409);
-        $routeTargets=[]; foreach ($readyItems as $ready) { $rule=payroll_rule($s,$ready['employmentClassification']); $routeTargets[$rule['classification']]=payroll_route_target($s,$rule,$routeSelections[$rule['classification']]??null); }
         $groups=[];
         foreach (array_column($readyItems,'id') as $id) {
             $j=index_of($s['payrollItems'],$id); $item=&$s['payrollItems'][$j];
-            $rule=payroll_rule($s,$item['employmentClassification']); $class=$rule['classification']; $target=$routeTargets[$class];
-            if (!isset($groups[$class])) {
-                $existing=null; $sameClassCount=0;
-                foreach ($s['workGroups'] as $groupIndex=>$group) if ($group['batchId']===$batch['id'] && $group['classification']===$class) { $sameClassCount++; if ($group['status']!=='Completed') { $existing=$groupIndex; break; } }
-                if ($existing!==null) { $groups[$class]=$s['workGroups'][$existing]; $groups[$class]['_index']=$existing; $target=['id'=>$groups[$class]['assignedProcessorId'],'name'=>$groups[$class]['assignedProcessorName'],'roleTitle'=>$groups[$class]['assignedProcessorRoleTitle'],'team'=>$groups[$class]['assignedTeam']??'']; }
+            $rule=payroll_rule($s,$item['employmentClassification']); $class=$rule['classification'];
+            $target=payroll_route_target($s,$rule,$routeSelections[$id]??$routeSelections[$class]??null);
+            $groupKey=$class.'|'.($target['team']!==''?'team:'.$target['team']:'user:'.$target['id']);
+            if (!isset($groups[$groupKey])) {
+                $existing=null; $sameClassCount=0; $hasCompletedMatch=false;
+                foreach ($s['workGroups'] as $groupIndex=>$group) if ($group['batchId']===$batch['id'] && $group['classification']===$class) {
+                    $sameClassCount++; $sameTarget=($group['assignedProcessorId']??'')===$target['id'] && ($group['assignedTeam']??'')===$target['team'];
+                    if ($sameTarget && $group['status']!=='Completed') $existing=$groupIndex; if ($sameTarget && $group['status']==='Completed') $hasCompletedMatch=true;
+                }
+                if ($existing!==null) { $groups[$groupKey]=$s['workGroups'][$existing]; $groups[$groupKey]['_index']=$existing; }
                 else {
-                    $isSupplemental=$sameClassCount>0;
-                    $groups[$class]=['id'=>uid('group'),'batchId'=>$batch['id'],'batchNumber'=>$batch['batchNumber'],'code'=>$batch['batchNumber'].'-'.$class.($isSupplemental?'-SUPPLEMENTAL-'.$sameClassCount:''),'classification'=>$class,'assignedProcessorId'=>$target['id'],'assignedProcessorName'=>$target['name'],'assignedProcessorRoleTitle'=>$target['roleTitle'],'assignedTeam'=>$target['team'],'itemIds'=>[],'status'=>'In_Progress','auditHistory'=>[],'startedAt'=>now(),'createdAt'=>now(),'updatedAt'=>now(),'isSupplemental'=>$isSupplemental];
-                    if ($isSupplemental) $groups[$class]['auditHistory'][]=['id'=>uid('event'),'timestamp'=>now(),'actorId'=>$u['id'],'actorName'=>$u['name'],'actorRole'=>$u['roleTitle'],'action'=>'SUPPLEMENTAL_WORK_GROUP_CREATED','details'=>'Supplemental '.$class.' work group created for resumed payroll item(s).'];
+                    $isSupplemental=$hasCompletedMatch; $suffix=$sameClassCount>0?'-'.($sameClassCount+1):'';
+                    $groups[$groupKey]=['id'=>uid('group'),'batchId'=>$batch['id'],'batchNumber'=>$batch['batchNumber'],'code'=>$batch['batchNumber'].'-'.$class.$suffix,'classification'=>$class,'assignedProcessorId'=>$target['id'],'assignedProcessorName'=>$target['name'],'assignedProcessorRoleTitle'=>$target['roleTitle'],'assignedTeam'=>$target['team'],'itemIds'=>[],'status'=>'In_Progress','auditHistory'=>[],'startedAt'=>now(),'createdAt'=>now(),'updatedAt'=>now(),'isSupplemental'=>$isSupplemental];
+                    if ($isSupplemental) $groups[$groupKey]['auditHistory'][]=['id'=>uid('event'),'timestamp'=>now(),'actorId'=>$u['id'],'actorName'=>$u['name'],'actorRole'=>$u['roleTitle'],'action'=>'SUPPLEMENTAL_WORK_GROUP_CREATED','details'=>'Supplemental '.$class.' work group created for resumed payroll item(s).'];
                 }
             }
-            if (!in_array($id,$groups[$class]['itemIds'],true)) $groups[$class]['itemIds'][]=$id;
+            if (!in_array($id,$groups[$groupKey]['itemIds'],true)) $groups[$groupKey]['itemIds'][]=$id;
             $wasResumed=!empty($item['holdResolvedAt']);
-            $item['currentStage']='verification_signing'; $item['workGroupId']=$groups[$class]['id']; $item['assignedToUserId']=$target['id']; $item['assignedToName']=$target['name']; $item['status']='In_Progress'; payroll_item_audit($item,$u,'PAYROLL_ITEM_AUTO_ROUTED','Assigned to '.$target['name'].(count($heldItems)?'; '.count($heldItems).' held payroll(s) remained in Initial Checking.':''));
+            $item['currentStage']='verification_signing'; $item['workGroupId']=$groups[$groupKey]['id']; $item['assignedToUserId']=$target['id']; $item['assignedToName']=$target['name']; $item['status']='In_Progress'; payroll_item_audit($item,$u,'PAYROLL_ITEM_AUTO_ROUTED','Assigned to '.$target['name'].(count($heldItems)?'; '.count($heldItems).' held payroll(s) remained in Initial Checking.':''));
             if ($wasResumed) payroll_item_audit($item,$u,'PAYROLL_ITEM_ROUTED_AFTER_HOLD','Rechecked payroll routed to '.$target['name'].' after compliance was received.');
-            if (($groups[$class]['isSupplemental']??false)===true) payroll_item_audit($item,$u,'SUPPLEMENTAL_WORK_GROUP_CREATED','Assigned to supplemental '.$class.' work group '.$groups[$class]['code'].'.');
+            if (($groups[$groupKey]['isSupplemental']??false)===true) payroll_item_audit($item,$u,'SUPPLEMENTAL_WORK_GROUP_CREATED','Assigned to supplemental '.$class.' work group '.$groups[$groupKey]['code'].'.');
             unset($item);
         }
         foreach ($heldItems as $held) { $j=index_of($s['payrollItems'],$held['id']); payroll_item_audit($s['payrollItems'][$j],$u,'PAYROLL_ITEM_RETAINED_ON_HOLD',count($readyItems).' other payroll(s) routed; this item remains in Initial Checking.'); }
