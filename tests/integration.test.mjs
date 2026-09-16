@@ -273,6 +273,7 @@ test('payroll routing supports personnel pools and team queues',async()=>{
   await admin.action('completeInitialCheckingAndRoute',[poolBatch.id,{[poolBatch.itemIds[0]]:alternateUser.id,[poolBatch.itemIds[1]]:processingUser.id}]);
   const poolGroups=admin.state.workGroups.filter(item=>item.batchId===poolBatch.id); assert.equal(poolGroups.length,2);
   assert.deepEqual(new Set(poolGroups.map(group=>group.assignedProcessorId)),new Set([alternateUser.id,processingUser.id]));
+  await admin.action('processWorkGroupItems',[poolGroups[0].id,poolGroups[0].itemIds,'complete'],403);
 
   await admin.action('updateEmploymentRoutingRule',[{...casualRule,assignmentMode:'team',assignedTeam:processingUser.division}]);
   const teamBatch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'TEAM-ROUTING-001',items:[{title:'Team routed payroll',barcode:'TEAM-PAY-001'}],files:[]}])).result;
@@ -315,6 +316,7 @@ test('record-level payroll views expose only a processor’s assigned work group
   await scopedProcessor.refresh();
   const visibleBatch=scopedProcessor.state.payrollBatches.find(batch=>batch.id===scopedBatch.id);
   assert(visibleBatch); assert.deepEqual(visibleBatch.itemIds,[scopedBatch.itemIds[0]]);
+  assert.equal(visibleBatch.workflowStages.find(stage=>stage.stageNumber===3).allowHold,true);
   assert.equal(visibleBatch.remarks,''); assert.equal(visibleBatch.receivedFromLiaison,''); assert.deepEqual(visibleBatch.attachments,[]);
   assert.deepEqual(scopedProcessor.state.payrollItems.filter(item=>item.batchId===scopedBatch.id).map(item=>item.id),[scopedBatch.itemIds[0]]);
   assert.deepEqual(scopedProcessor.state.workGroups.filter(group=>group.batchId===scopedBatch.id).map(group=>group.itemIds),[[scopedBatch.itemIds[0]]]);

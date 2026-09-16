@@ -126,6 +126,7 @@ export interface WorkGroup {
   assignedProcessorName: string;
   assignedProcessorRoleTitle: string;
   assignedTeam?: string;
+  assignedRoleId?: UserRole;
   itemIds: string[];
   status: 'Pending' | 'In_Progress' | 'Completed';
   startedAt?: string;

@@ -102,7 +102,16 @@ function scoped_payroll_batch(array $s,array $u,array $batch,array $visibleItems
     // A Stage 3 processor receives only the context needed for the assigned work group.
     $batch['itemIds']=array_values(array_intersect($batch['itemIds']??[],array_column($visibleItems,'id')));
     $batch['attachments']=[]; $batch['remarks']=''; $batch['receivedFromLiaison']='';
-    unset($batch['workflowHistory'],$batch['workflowStages'],$batch['releaseDetails']);
+    $batch['workflowStages']=array_values(array_map(fn($stage)=>[
+        'stageNumber'=>$stage['stageNumber'],
+        'name'=>$stage['name'],
+        'status'=>$stage['status'],
+        'assignedTo'=>$stage['assignedTo'],
+        'allowHold'=>(bool)($stage['allowHold']??false),
+        'payrollAssignmentSource'=>$stage['payrollAssignmentSource']??null,
+        'dynamic'=>(bool)($stage['dynamic']??false),
+    ],$batch['workflowStages']??[]));
+    unset($batch['workflowHistory'],$batch['releaseDetails']);
     return $batch;
 }
 function filter_state_for_view(array $s,array $u): array {

@@ -144,7 +144,7 @@ function payroll_initial_check_authorized(array $s,array $u,array $batch): bool 
 function payroll_item_stage_authorized(array $s,array $u,array $batch,array $item): bool {
     $stage=payroll_item_stage($item);
     if ($stage==='initial_checking') return payroll_initial_check_authorized($s,$u,$batch);
-    if ($stage==='verification_signing') return ($item['assignedToUserId']??null)===$u['id'] || (($item['assignedToRoleId']??'')!=='' && $item['assignedToRoleId']===$u['role']) || (($item['assignedToTeam']??'')!=='' && in_array($item['assignedToTeam'],[$u['division'],$u['office']],true)) || has_cap($s,$u,'canSupervise');
+    if ($stage==='verification_signing') return ($item['assignedToUserId']??null)===$u['id'] || (($item['assignedToRoleId']??'')!=='' && $item['assignedToRoleId']===$u['role']) || (($item['assignedToTeam']??'')!=='' && in_array($item['assignedToTeam'],[$u['division'],$u['office']],true));
     if ($stage==='release') { foreach ($batch['workflowStages']??[] as $configured) if (($configured['stageNumber']??0)===4) return payroll_desk_matches_user($s,$u,$configured['assignedTo']??[]); }
     return false;
 }
@@ -371,7 +371,7 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
         fail_unless($group['status']!=='Completed','Work group is complete.',409);
         $teamMatch=($group['assignedTeam']??'')!=='' && in_array($group['assignedTeam'],[$u['division'],$u['office']],true);
         $roleMatch=($group['assignedRoleId']??'')!=='' && $group['assignedRoleId']===$u['role'];
-        fail_unless($group['assignedProcessorId']===$u['id'] || $teamMatch || $roleMatch || has_cap($s,$u,'canSupervise'),'This work group is assigned to another officer.',403);
+        fail_unless($group['assignedProcessorId']===$u['id'] || $teamMatch || $roleMatch,'This work group is assigned to another officer.',403);
         choice($args[2]??null,['complete','exception'],'work group action');
         fail_unless(is_array($args[1]??null) && count($args[1])>0,'Select at least one item.');
         foreach ($args[1] as $id) {

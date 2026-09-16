@@ -202,6 +202,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     if (!(await completeInitialCheckingAndRoute(batch.id, routeSelections))) return;
     // The routed records no longer belong to the Initial Checking selection.
     setSelectedItemIds([]);
+    if (readyItems.length === initialCheckingItems.length) onClose();
   };
 
   const handleBulkClassify = async (classification: EmploymentClassification) => {
@@ -746,7 +747,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                   {batchWorkGroups.filter(w => w.id === activeWorkGroupTab).map(wg => {
                     const wgItems = items.filter(i => wg.itemIds.includes(i.id));
                     const assignedUser = users.find(u => u.id === wg.assignedProcessorId);
-                    const isUserAssigned = currentUser.id === wg.assignedProcessorId || !!wg.assignedTeam && [currentUser.division,currentUser.office].includes(wg.assignedTeam);
+                    const isUserAssigned = currentUser.id === wg.assignedProcessorId || !!wg.assignedTeam && [currentUser.division,currentUser.office].includes(wg.assignedTeam) || !!wg.assignedRoleId && wg.assignedRoleId === currentUser.role;
                     const isCompleted = wg.status === 'Completed';
 
                     return (
@@ -774,7 +775,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                               <></>
                             )}
 
-                            {(isUserAssigned || can('canSupervise')) && !isCompleted && wgItems.some(item => item.status === 'In_Progress') && (
+                            {isUserAssigned && !isCompleted && wgItems.some(item => item.status === 'In_Progress') && (
                               <button
                                 onClick={async () => await processWorkGroupItems(wg.id, wgItems.filter(item => item.status === 'In_Progress').map(i => i.id), 'complete')}
                                 className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 text-white text-xs font-bold rounded-lg hover:bg-emerald-700 shadow-xs transition-colors"
@@ -805,7 +806,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                               </div>
 
                               <div className="flex items-center gap-2 shrink-0">
-                                 {(isUserAssigned || can('canSupervise')) && item.status === 'In_Progress' && (
+                                 {isUserAssigned && item.status === 'In_Progress' && (
                                   <>
                                   <button
                                     onClick={async () => await processWorkGroupItems(wg.id, [item.id], 'complete')}
@@ -817,8 +818,8 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                                   </>
                                  )}
                                 {item.status === 'On_Hold' && canSubmitCompliance && <button onClick={() => handleOpenCompliance(item.id)} className="px-2.5 py-1 text-xs font-medium text-sky-700 bg-sky-50 hover:bg-sky-100 rounded-md border border-sky-200">Submit Compliance</button>}
-                                {(isUserAssigned || can('canSupervise')) && item.status === 'On_Hold' && <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200">Clear Hold &amp; Resume</button>}
-                                {(isUserAssigned || can('canSupervise')) && item.status === 'Ready_For_Recheck' && <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200">Recheck &amp; Resume</button>}
+                                {isUserAssigned && item.status === 'On_Hold' && <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200">Clear Hold &amp; Resume</button>}
+                                {isUserAssigned && item.status === 'Ready_For_Recheck' && <button onClick={async () => await resumePayrollItemHold(item.id)} className="px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-md border border-emerald-200">Recheck &amp; Resume</button>}
                               </div>
                             </div>
                           ))}
