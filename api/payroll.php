@@ -16,10 +16,10 @@ function payroll_rule(array $s,string $classification): array {
 }
 function payroll_route_target(array $s,array $rule,?string $selectedId): array {
     $mode=$rule['assignmentMode']??'fixed';
-    if ($mode==='team') return ['id'=>'','name'=>$rule['assignedTeam'],'roleTitle'=>'Team queue','team'=>$rule['assignedTeam']];
+    if ($mode==='team') return ['id'=>'','name'=>$rule['assignedTeam'],'roleTitle'=>'Team queue','team'=>$rule['assignedTeam'],'roleId'=>''];
     $id=$mode==='pool'?(string)$selectedId:(string)$rule['primaryProcessorId'];
     if ($mode==='pool') fail_unless($id!=='' && in_array($id,$rule['eligibleProcessorIds']??[],true),'Choose an eligible processor for '.$rule['classification'].'.');
-    $target=$s['users'][index_of($s['users'],$id)]; return ['id'=>$target['id'],'name'=>$target['name'],'roleTitle'=>$target['roleTitle'],'team'=>''];
+    $target=$s['users'][index_of($s['users'],$id)]; return ['id'=>$target['id'],'name'=>$target['name'],'roleTitle'=>$target['roleTitle'],'team'=>'','roleId'=>''];
 }
 function payroll_item_audit(array &$item,array $u,string $action,string $details,?string $previousState=null,?string $newState=null): void {
     $event=['id'=>uid('event'),'timestamp'=>now(),'actorId'=>$u['id'],'actorName'=>$u['name'],'actorRole'=>$u['roleTitle'],'action'=>$action,'details'=>$details];
@@ -124,6 +124,18 @@ function payroll_desk_matches_user(array $s,array $u,array $desk): bool {
     if (($desk['assignmentType']??'')==='Role') return ($desk['roleId']??null)===$u['role'];
     return ($desk['assignmentType']??'')==='Team' && !empty($desk['team']) && in_array($desk['team'],[$u['division'],$u['office']],true);
 }
+function payroll_stage_uses_employment_routing(array $step,int $index=2): bool {
+    return ($step['payrollAssignmentSource']??($index===2?'employment_routing':'workflow'))==='employment_routing';
+}
+function payroll_target_from_workflow_desk(array $desk): array {
+    return [
+        'id'=>(string)($desk['userId']??''),
+        'name'=>(string)($desk['userName']??$desk['roleTitle']??'Payroll processor'),
+        'roleTitle'=>(string)($desk['roleTitle']??'Payroll processor'),
+        'team'=>(string)($desk['team']??''),
+        'roleId'=>(string)($desk['roleId']??''),
+    ];
+}
 function payroll_initial_check_authorized(array $s,array $u,array $batch): bool {
     // initialCheckingDesk is retained even while some items are in later parallel groups.
     $desk=$batch['initialCheckingDesk']??$batch['assignedDesk']??[];
@@ -132,18 +144,22 @@ function payroll_initial_check_authorized(array $s,array $u,array $batch): bool 
 function payroll_item_stage_authorized(array $s,array $u,array $batch,array $item): bool {
     $stage=payroll_item_stage($item);
     if ($stage==='initial_checking') return payroll_initial_check_authorized($s,$u,$batch);
-    if ($stage==='verification_signing') return ($item['assignedToUserId']??null)===$u['id'] || has_cap($s,$u,'canSupervise');
+    if ($stage==='verification_signing') return ($item['assignedToUserId']??null)===$u['id'] || (($item['assignedToRoleId']??'')!=='' && $item['assignedToRoleId']===$u['role']) || (($item['assignedToTeam']??'')!=='' && in_array($item['assignedToTeam'],[$u['division'],$u['office']],true)) || has_cap($s,$u,'canSupervise');
     if ($stage==='release') { foreach ($batch['workflowStages']??[] as $configured) if (($configured['stageNumber']??0)===4) return payroll_desk_matches_user($s,$u,$configured['assignedTo']??[]); }
     return false;
 }
 function payroll_batch_stage_history(array $s,array $u,array $workflow,array $initialDesk): array {
-    $now=now(); $releaseStep=null;
+    $now=now(); $releaseStep=null; $processingStep=$workflow['steps'][2]??null;
     foreach (array_slice($workflow['steps'],2) as $step) if (($step['requiredAction']??'')==='Release & Archive') { $releaseStep=$step; break; }
     $releaseDesk=$releaseStep ? payroll_desk_from_workflow_step($s,$releaseStep,'release') : ['stage'=>'release','assignmentType'=>'Role','userName'=>'Releasing Officer','roleTitle'=>'Releasing Officer'];
+    $usesEmploymentRouting=$processingStep===null || payroll_stage_uses_employment_routing($processingStep,2);
+    $processingDesk=$usesEmploymentRouting
+        ? ['stage'=>'verification_signing','assignmentType'=>'Dynamic','userName'=>'Assigned during Sorting','roleTitle'=>'Employment Routing Rules']
+        : payroll_desk_from_workflow_step($s,$processingStep,'verification_signing');
     return [
         ['stageNumber'=>1,'name'=>$workflow['steps'][0]['name'],'status'=>'Completed','assignedTo'=>payroll_desk_from_workflow_step($s,$workflow['steps'][0],'receiving'),'completedBy'=>['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']],'completedAt'=>$now],
         ['stageNumber'=>2,'name'=>$workflow['steps'][1]['name'],'status'=>'In_Progress','assignedTo'=>$initialDesk,'allowHold'=>$workflow['steps'][1]['allowHold']??false],
-        ['stageNumber'=>3,'name'=>$workflow['steps'][2]['name']??'Parallel Groups','status'=>'Pending','assignedTo'=>['stage'=>'verification_signing','assignmentType'=>'Dynamic','userName'=>'Dynamic routing by employment classification','roleTitle'=>'Payroll processors'],'dynamic'=>true,'allowHold'=>$workflow['steps'][2]['allowHold']??false],
+        ['stageNumber'=>3,'name'=>$processingStep['name']??'Parallel Groups','status'=>'Pending','assignedTo'=>$processingDesk,'payrollAssignmentSource'=>$usesEmploymentRouting?'employment_routing':'workflow','dynamic'=>$usesEmploymentRouting,'allowHold'=>$processingStep['allowHold']??false],
         ['stageNumber'=>4,'name'=>$releaseStep['name']??'Release','status'=>'Pending','assignedTo'=>$releaseDesk,'allowHold'=>$releaseStep['allowHold']??false],
     ];
 }
@@ -303,6 +319,9 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
             $i=index_of($s['payrollBatches'],$targetItem['batchId']);
         } else $i=index_of($s['payrollBatches'],(string)$d);
         $batch=&$s['payrollBatches'][$i]; $routeSelections=is_array($args[1]??null)?$args[1]:[];
+        $processingStage=null; foreach ($batch['workflowStages']??[] as $configuredStage) if (($configuredStage['stageNumber']??0)===3) { $processingStage=$configuredStage; break; }
+        $usesEmploymentRouting=($processingStage['payrollAssignmentSource']??(!empty($processingStage['dynamic'])?'employment_routing':'workflow'))==='employment_routing';
+        $fixedTarget=$usesEmploymentRouting?null:payroll_target_from_workflow_desk($processingStage['assignedTo']??[]);
         fail_unless(payroll_initial_check_authorized($s,$u,$batch),'This batch is assigned to another officer.',403);
         $initialItems=array_values(array_filter($s['payrollItems'],fn($item)=>in_array($item['id'],$batch['itemIds'],true) && payroll_item_stage($item)==='initial_checking'));
         if ($routeOne) $initialItems=array_values(array_filter($initialItems,fn($item)=>$item['id']===$targetId));
@@ -314,25 +333,26 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
         $groups=[];
         foreach (array_column($readyItems,'id') as $id) {
             $j=index_of($s['payrollItems'],$id); $item=&$s['payrollItems'][$j];
-            $rule=payroll_rule($s,$item['employmentClassification']); $class=$rule['classification'];
-            $target=payroll_route_target($s,$rule,$routeSelections[$id]??$routeSelections[$class]??null);
-            $groupKey=$class.'|'.($target['team']!==''?'team:'.$target['team']:'user:'.$target['id']);
+            $class=$item['employmentClassification']==='Job Order (JOW)'?'JOW/COS':$item['employmentClassification'];
+            if ($usesEmploymentRouting) { $rule=payroll_rule($s,$class); $class=$rule['classification']; $target=payroll_route_target($s,$rule,$routeSelections[$id]??$routeSelections[$class]??null); }
+            else $target=$fixedTarget;
+            $groupKey=$class.'|'.($target['team']!==''?'team:'.$target['team']:($target['roleId']!==''?'role:'.$target['roleId']:'user:'.$target['id']));
             if (!isset($groups[$groupKey])) {
                 $existing=null; $sameClassCount=0; $hasCompletedMatch=false;
                 foreach ($s['workGroups'] as $groupIndex=>$group) if ($group['batchId']===$batch['id'] && $group['classification']===$class) {
-                    $sameClassCount++; $sameTarget=($group['assignedProcessorId']??'')===$target['id'] && ($group['assignedTeam']??'')===$target['team'];
+                    $sameClassCount++; $sameTarget=($group['assignedProcessorId']??'')===$target['id'] && ($group['assignedTeam']??'')===$target['team'] && ($group['assignedRoleId']??'')===$target['roleId'];
                     if ($sameTarget && $group['status']!=='Completed') $existing=$groupIndex; if ($sameTarget && $group['status']==='Completed') $hasCompletedMatch=true;
                 }
                 if ($existing!==null) { $groups[$groupKey]=$s['workGroups'][$existing]; $groups[$groupKey]['_index']=$existing; }
                 else {
                     $isSupplemental=$hasCompletedMatch; $suffix=$sameClassCount>0?'-'.($sameClassCount+1):'';
-                    $groups[$groupKey]=['id'=>uid('group'),'batchId'=>$batch['id'],'batchNumber'=>$batch['batchNumber'],'code'=>$batch['batchNumber'].'-'.$class.$suffix,'classification'=>$class,'assignedProcessorId'=>$target['id'],'assignedProcessorName'=>$target['name'],'assignedProcessorRoleTitle'=>$target['roleTitle'],'assignedTeam'=>$target['team'],'itemIds'=>[],'status'=>'In_Progress','auditHistory'=>[],'startedAt'=>now(),'createdAt'=>now(),'updatedAt'=>now(),'isSupplemental'=>$isSupplemental];
+                    $groups[$groupKey]=['id'=>uid('group'),'batchId'=>$batch['id'],'batchNumber'=>$batch['batchNumber'],'code'=>$batch['batchNumber'].'-'.$class.$suffix,'classification'=>$class,'assignedProcessorId'=>$target['id'],'assignedProcessorName'=>$target['name'],'assignedProcessorRoleTitle'=>$target['roleTitle'],'assignedTeam'=>$target['team'],'assignedRoleId'=>$target['roleId'],'itemIds'=>[],'status'=>'In_Progress','auditHistory'=>[],'startedAt'=>now(),'createdAt'=>now(),'updatedAt'=>now(),'isSupplemental'=>$isSupplemental];
                     if ($isSupplemental) $groups[$groupKey]['auditHistory'][]=['id'=>uid('event'),'timestamp'=>now(),'actorId'=>$u['id'],'actorName'=>$u['name'],'actorRole'=>$u['roleTitle'],'action'=>'SUPPLEMENTAL_WORK_GROUP_CREATED','details'=>'Supplemental '.$class.' work group created for resumed payroll item(s).'];
                 }
             }
             if (!in_array($id,$groups[$groupKey]['itemIds'],true)) $groups[$groupKey]['itemIds'][]=$id;
             $wasResumed=!empty($item['holdResolvedAt']);
-            $item['currentStage']='verification_signing'; $item['workGroupId']=$groups[$groupKey]['id']; $item['assignedToUserId']=$target['id']; $item['assignedToName']=$target['name']; $item['status']='In_Progress'; payroll_item_audit($item,$u,'PAYROLL_ITEM_AUTO_ROUTED','Assigned to '.$target['name'].(count($heldItems)?'; '.count($heldItems).' held payroll(s) remained in Initial Checking.':''));
+            $item['currentStage']='verification_signing'; $item['workGroupId']=$groups[$groupKey]['id']; $item['assignedToUserId']=$target['id']; $item['assignedToName']=$target['name']; $item['assignedToTeam']=$target['team']; $item['assignedToRoleId']=$target['roleId']; $item['status']='In_Progress'; payroll_item_audit($item,$u,'PAYROLL_ITEM_AUTO_ROUTED','Assigned to '.$target['name'].(count($heldItems)?'; '.count($heldItems).' held payroll(s) remained in Initial Checking.':''));
             if ($wasResumed) payroll_item_audit($item,$u,'PAYROLL_ITEM_ROUTED_AFTER_HOLD','Rechecked payroll routed to '.$target['name'].' after compliance was received.');
             if (($groups[$groupKey]['isSupplemental']??false)===true) payroll_item_audit($item,$u,'SUPPLEMENTAL_WORK_GROUP_CREATED','Assigned to supplemental '.$class.' work group '.$groups[$groupKey]['code'].'.');
             unset($item);
@@ -350,7 +370,8 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
         $g=index_of($s['workGroups'],(string)$d); $group=&$s['workGroups'][$g];
         fail_unless($group['status']!=='Completed','Work group is complete.',409);
         $teamMatch=($group['assignedTeam']??'')!=='' && in_array($group['assignedTeam'],[$u['division'],$u['office']],true);
-        fail_unless($group['assignedProcessorId']===$u['id'] || $teamMatch || has_cap($s,$u,'canSupervise'),'This work group is assigned to another officer.',403);
+        $roleMatch=($group['assignedRoleId']??'')!=='' && $group['assignedRoleId']===$u['role'];
+        fail_unless($group['assignedProcessorId']===$u['id'] || $teamMatch || $roleMatch || has_cap($s,$u,'canSupervise'),'This work group is assigned to another officer.',403);
         choice($args[2]??null,['complete','exception'],'work group action');
         fail_unless(is_array($args[1]??null) && count($args[1])>0,'Select at least one item.');
         foreach ($args[1] as $id) {

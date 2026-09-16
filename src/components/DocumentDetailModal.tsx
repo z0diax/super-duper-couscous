@@ -81,7 +81,7 @@ export const DocumentDetailModal: React.FC = () => {
   const normalizedClassification = selectedClassification === 'Job Order (JOW)' ? 'JOW/COS' : selectedClassification;
   const payrollRoutingRule = employmentRoutingRules.find(rule => rule.classification === normalizedClassification);
   const nextPayrollStep = doc.workflowSteps[doc.currentStepNumber];
-  const routesSinglePayroll = requiresPayrollClassification && !!nextPayrollStep && nextPayrollStep.requiredAction !== 'Release & Archive';
+  const routesSinglePayroll = requiresPayrollClassification && !!nextPayrollStep && nextPayrollStep.payrollAssignmentSource === 'employment_routing';
   const requiresPoolSelection = routesSinglePayroll && payrollRoutingRule?.assignmentMode === 'pool';
   const isHeld = doc.status === 'On_Hold';
   const isReadyForRecheck = doc.status === 'Ready_For_Recheck';
@@ -165,7 +165,9 @@ export const DocumentDetailModal: React.FC = () => {
                   : skipped ? 'Not required because the document was disapproved'
                   : step.stageType === 'EXTERNAL_HANDOFF_REVIEW'
                     ? `External custody · ${step.externalHandoff?.destinationOffice || step.externalDestinationOffice || 'Destination selected during handoff'}`
-                    : `Assigned to ${step.assignedTo.displayName}`;
+                    : step.payrollAssignmentSource === 'employment_routing'
+                      ? 'Assigned during Sorting through Employment Routing Rules'
+                      : `Assigned to ${step.assignedTo.displayName}`;
                 return <div key={step.stepNumber} className={`flex gap-3 rounded-xl border transition-colors ${active ? 'border-blue-400 bg-blue-50/40 p-3 ring-2 ring-blue-100' : completed ? 'border-emerald-100 bg-emerald-50/40 px-3 py-2.5' : skipped ? 'border-slate-200 bg-slate-50 px-3 py-2.5 text-slate-400' : 'border-slate-200 bg-white px-3 py-2.5 text-slate-600'}`}>
                   <div className={`flex shrink-0 items-center justify-center rounded-full text-xs font-bold ${active ? 'h-8 w-8 bg-blue-600 text-white shadow-sm' : 'h-7 w-7'} ${completed ? 'bg-emerald-600 text-white' : active ? '' : 'bg-slate-100 text-slate-500 ring-1 ring-slate-200'}`}>{completed ? <Check className="h-4 w-4" /> : step.stepNumber}</div>
                   <div className="min-w-0 flex-1"><div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><strong className={`text-sm ${active || completed ? 'text-slate-900' : skipped ? 'text-slate-500' : 'text-slate-700'}`}>{step.name}</strong>{active && <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white">ACTIVE</span>}{completed && <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">Done</span>}{skipped && <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Skipped</span>}</div><p className="mt-0.5 truncate text-[11px] text-slate-500">{phaseMeta}</p>{active && (isHeld || isReadyForRecheck) && <p className="mt-1 text-xs font-medium text-amber-800">{isHeld ? 'On hold — awaiting compliance' : 'Compliance submitted — ready for recheck'}{doc.holdReason ? `: ${doc.holdReason}` : ''}</p>}</div>{active && !doc.isLegacyV1 && canSeeControls && actionButtons}</div></div>

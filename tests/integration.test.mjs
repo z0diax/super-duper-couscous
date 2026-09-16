@@ -285,6 +285,16 @@ test('payroll routing supports personnel pools and team queues',async()=>{
 
   await admin.action('updateEmploymentRoutingRule',[{...jowRule,assignmentMode:'fixed',primaryProcessorId:processingUser.id}]);
   await admin.action('updateEmploymentRoutingRule',[{...casualRule,assignmentMode:'fixed',primaryProcessorId:processingUser.id}]);
+
+  const dynamicPayrollWorkflow=payrollWorkflow;
+  payrollWorkflow=(await admin.action('updateWorkflowTemplate',[{...payrollWorkflow,steps:payrollWorkflow.steps.map((configuredStep,index)=>index===2?{...configuredStep,payrollAssignmentSource:'workflow',assigneeType:'Person',assigneeUserId:alternateUser.id,assigneeName:alternateUser.name}:configuredStep)}])).result;
+  const fixedBatch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'FIXED-WORKFLOW-ROUTING-001',items:[{title:'Fixed workflow payroll',barcode:'FIXED-WORKFLOW-PAY-001'}],files:[]}])).result;
+  await admin.action('updatePayrollItemClassification',[fixedBatch.itemIds[0],'JOW/COS']);
+  await admin.action('completeInitialCheckingAndRoute',[fixedBatch.id]);
+  const fixedGroup=admin.state.workGroups.find(item=>item.batchId===fixedBatch.id);
+  assert.equal(fixedGroup.assignedProcessorId,alternateUser.id);
+  assert.equal(admin.state.payrollBatches.find(item=>item.id===fixedBatch.id).workflowStages[2].payrollAssignmentSource,'workflow');
+  payrollWorkflow=(await admin.action('updateWorkflowTemplate',[{...dynamicPayrollWorkflow,id:payrollWorkflow.id,version:payrollWorkflow.version,isActive:true,steps:dynamicPayrollWorkflow.steps.map((configuredStep,index)=>index===2?{...configuredStep,payrollAssignmentSource:'employment_routing'}:configuredStep)}])).result;
 });
 
 test('record-level payroll views expose only a processor’s assigned work group and scoped batch context',async()=>{
@@ -331,7 +341,7 @@ test('single payroll follows configured workflow and synchronizes its item on re
   await admin.action('updateWorkflowTemplate',[{...payrollWorkflow,isActive:false}]);
   const regularRule=admin.state.employmentRoutingRules.find(rule=>rule.classification==='Regular'); const processingUser=admin.state.users.find(user=>user.role==='processor'); const approvalUser=admin.state.users.find(user=>user.role==='approver');
   await admin.action('updateEmploymentRoutingRule',[{...regularRule,assignmentMode:'pool',eligibleProcessorIds:[processingUser.id,approvalUser.id]}]);
-  const template=(await admin.action('createWorkflowTemplate',[{title:'Single payroll release',description:'Test',classification:'Payroll',documentType:'Salary',employmentClassification:'Job Order (JOW)',isActive:true,steps:[step(1,'processor','Verify & Process'),step(2,'approver','Review & Recommend'),step(3,'releasing_officer','Release & Archive')]}])).result;
+  const template=(await admin.action('createWorkflowTemplate',[{title:'Single payroll release',description:'Test',classification:'Payroll',documentType:'Salary',employmentClassification:'Job Order (JOW)',isActive:true,steps:[step(1,'processor','Verify & Process'),step(2,'approver','Review & Recommend',{payrollAssignmentSource:'employment_routing'}),step(3,'releasing_officer','Release & Archive')]}])).result;
   const single=(await admin.action('registerSinglePayroll',[{office:'HRMDO',payrollType:'Salary',classificationType:'Salary',title:'Single salary',barcode:'SINGLE-001',files:[]}])).result;
   assert.equal(single.workflowTemplateId,template.id);
   const item=admin.state.payrollItems.find(i=>i.documentId===single.id);

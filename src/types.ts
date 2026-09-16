@@ -187,6 +187,7 @@ export interface PayrollBatch {
     completedBy?: { userId: string; userName: string; userRole: string };
     completedAt?: string;
     dynamic?: boolean;
+    payrollAssignmentSource?: 'workflow' | 'employment_routing';
     allowHold?: boolean;
   }>;
   workflowHistory?: PayrollItemAuditEntry[];
@@ -286,6 +287,7 @@ export interface WorkflowStepTemplate {
   allowReturn: boolean;
   allowHold?: boolean;
   requiresAttachment: boolean;
+  payrollAssignmentSource?: 'workflow' | 'employment_routing';
   externalPurpose?: 'Approval' | 'Comments' | 'Signature' | 'Review' | 'Recommendation' | 'Certification' | 'Other';
   externalDestinationMode?: 'FIXED_DESTINATION' | 'SELECT_AT_HANDOFF';
   externalDestinationOffice?: string;
@@ -318,6 +320,7 @@ export interface WorkflowStepInstance {
   allowReturn?: boolean;
   allowHold?: boolean;
   requiresAttachment?: boolean;
+  payrollAssignmentSource?: WorkflowStepTemplate['payrollAssignmentSource'];
   stepNumber: number;
   name: string;
   assignedTo: {

@@ -45,6 +45,10 @@ const REQUIRED_ACTIONS: WorkflowStepTemplate['requiredAction'][] = [
 ];
 
 const stageTypeOf = (step: WorkflowStepTemplate) => step.stageType || (step.requiredAction === 'Release & Archive' ? 'FINAL_RELEASE' : 'INTERNAL_PROCESSING');
+const payrollAssignmentSourceOf = (classification: DocumentClassification, step: WorkflowStepTemplate, index: number) =>
+  classification === 'Payroll' ? (step.payrollAssignmentSource || (index === 2 && stageTypeOf(step) === 'INTERNAL_PROCESSING' && step.requiredAction !== 'Release & Archive' ? 'employment_routing' : 'workflow')) : 'workflow';
+const canChoosePayrollAssignment = (classification: DocumentClassification, step: WorkflowStepTemplate, index: number) =>
+  classification === 'Payroll' && index > 0 && stageTypeOf(step) === 'INTERNAL_PROCESSING' && step.requiredAction !== 'Release & Archive';
 
 const ExternalStageFields: React.FC<{
   step: WorkflowStepTemplate;
@@ -181,8 +185,8 @@ export const WorkflowManager: React.FC = () => {
     designation.category === 'Role' && systemRoles.some(role => role.id === designation.baseRole)
   );
 
-  const invalidStepAssignment = (steps: WorkflowStepTemplate[]) => steps.find(step =>
-    stageTypeOf(step) !== 'EXTERNAL_HANDOFF_REVIEW' && ((step.assigneeType === 'Role' && !systemRoles.some(role => role.id === step.assigneeRole)) ||
+  const invalidStepAssignment = (steps: WorkflowStepTemplate[], classification: DocumentClassification) => steps.find((step, index) =>
+    stageTypeOf(step) !== 'EXTERNAL_HANDOFF_REVIEW' && payrollAssignmentSourceOf(classification, step, index) !== 'employment_routing' && ((step.assigneeType === 'Role' && !systemRoles.some(role => role.id === step.assigneeRole)) ||
     (step.assigneeType === 'Person' && !users.some(user => user.id === step.assigneeUserId))
     )
   );
@@ -230,7 +234,7 @@ export const WorkflowManager: React.FC = () => {
       alert('A workflow must contain at least one phase.');
       return;
     }
-    const invalidAssignment = invalidStepAssignment(editFormData.steps);
+    const invalidAssignment = invalidStepAssignment(editFormData.steps, editFormData.classification);
     if (invalidAssignment) {
       alert(`Choose an existing role or officer for Phase ${invalidAssignment.stepNumber}. Its previous assignee no longer exists.`);
       return;
@@ -348,7 +352,7 @@ export const WorkflowManager: React.FC = () => {
       alert('Please configure at least one phase for this workflow template.');
       return;
     }
-    const invalidAssignment = invalidStepAssignment(newSteps);
+    const invalidAssignment = invalidStepAssignment(newSteps, newClassification);
     if (invalidAssignment) {
       alert(`Choose an existing role or officer for Phase ${invalidAssignment.stepNumber}. Its previous assignee no longer exists.`);
       return;
@@ -719,7 +723,7 @@ export const WorkflowManager: React.FC = () => {
                             </p>
 
                             <div className="flex items-center gap-3 pt-1 text-xs text-slate-600 flex-wrap">
-                              {stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? <span className="font-medium text-amber-800">Destination: <strong className="text-slate-900">{step.externalDestinationMode === 'SELECT_AT_HANDOFF' ? 'Selected at handoff' : step.externalDestinationOffice}</strong> · Return desk: <strong className="text-slate-900">{step.returnReceiverName}</strong></span> : <span className="flex items-center gap-1 font-medium"><UserCheck className="w-3.5 h-3.5 text-blue-600" /><span>Assigned to <strong className="text-slate-900">{step.assigneeName}</strong></span></span>}
+                              {stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? <span className="font-medium text-amber-800">Destination: <strong className="text-slate-900">{step.externalDestinationMode === 'SELECT_AT_HANDOFF' ? 'Selected at handoff' : step.externalDestinationOffice}</strong> · Return desk: <strong className="text-slate-900">{step.returnReceiverName}</strong></span> : payrollAssignmentSourceOf(activeTemplate.classification, step, idx) === 'employment_routing' ? <span className="flex items-center gap-1 font-medium text-blue-700"><UserCheck className="w-3.5 h-3.5" /><span>Assigned during Sorting through <strong>Employment Routing Rules</strong></span></span> : <span className="flex items-center gap-1 font-medium"><UserCheck className="w-3.5 h-3.5 text-blue-600" /><span>Assigned to <strong className="text-slate-900">{step.assigneeName}</strong></span></span>}
                               {step.allowReturn && (
                                 <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-medium text-[11px] border border-amber-200">
                                   <RotateCcw className="w-3 h-3" />
@@ -1013,7 +1017,16 @@ export const WorkflowManager: React.FC = () => {
                           />
                         </div>
 
-                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''}>
+                        {canChoosePayrollAssignment(editFormData.classification, step, idx) && <div className="sm:col-span-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Assignment Method</label>
+                          <select value={payrollAssignmentSourceOf(editFormData.classification, step, idx)} onChange={e => handleEditStepChange(idx, 'payrollAssignmentSource', e.target.value)} className="w-full rounded-lg border border-blue-200 bg-white p-2 text-xs font-medium text-slate-800">
+                            <option value="workflow">Fixed Assignee</option>
+                            <option value="employment_routing">Employment Routing Rules</option>
+                          </select>
+                          {payrollAssignmentSourceOf(editFormData.classification, step, idx) === 'employment_routing' && <p className="mt-2 text-[11px] text-blue-800">The Sorting officer selects the responsible personnel from the rule configured for each payroll classification.</p>}
+                        </div>}
+
+                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(editFormData.classification, step, idx) === 'employment_routing' ? 'hidden' : ''}>
                           <div className="flex items-center justify-between mb-1">
                             <label className="block text-[11px] font-semibold text-slate-700">
                               Assignee Type & Designation
@@ -1067,7 +1080,7 @@ export const WorkflowManager: React.FC = () => {
                           </select>
                         </div>
 
-                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''}>
+                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(editFormData.classification, step, idx) === 'employment_routing' ? 'hidden' : ''}>
                           <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                             Person in Charge
                           </label>
@@ -1388,7 +1401,16 @@ export const WorkflowManager: React.FC = () => {
                           />
                         </div>
 
-                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''}>
+                        {canChoosePayrollAssignment(newClassification, step, idx) && <div className="sm:col-span-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Assignment Method</label>
+                          <select value={payrollAssignmentSourceOf(newClassification, step, idx)} onChange={e => handleCreateStepChange(idx, 'payrollAssignmentSource', e.target.value)} className="w-full rounded-lg border border-blue-200 bg-white p-2 text-xs font-medium text-slate-800">
+                            <option value="workflow">Fixed Assignee</option>
+                            <option value="employment_routing">Employment Routing Rules</option>
+                          </select>
+                          {payrollAssignmentSourceOf(newClassification, step, idx) === 'employment_routing' && <p className="mt-2 text-[11px] text-blue-800">The Sorting officer selects the responsible personnel from the rule configured for each payroll classification.</p>}
+                        </div>}
+
+                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(newClassification, step, idx) === 'employment_routing' ? 'hidden' : ''}>
                           <div className="flex items-center justify-between mb-1">
                             <label className="block text-[11px] font-semibold text-slate-700">
                               Assigned Role or Department
@@ -1442,7 +1464,7 @@ export const WorkflowManager: React.FC = () => {
                           </select>
                         </div>
 
-                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''}>
+                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(newClassification, step, idx) === 'employment_routing' ? 'hidden' : ''}>
                           <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                             Person in Charge
                           </label>

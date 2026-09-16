@@ -132,17 +132,21 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const releasedCount = items.filter(item => item.status === 'Released').length;
   const stage3CompletedCount = items.filter(item => ['Ready_For_Release', 'Released'].includes(item.status)).length;
   const allItemsReleased = progress.derivedStatus === 'COMPLETED';
+  const processingStage = batch.workflowStages?.find(stage => stage.stageNumber === 3);
+  const usesEmploymentRouting = processingStage?.payrollAssignmentSource !== 'workflow';
+  const fixedProcessingAssignee = processingStage?.assignedTo.userName || processingStage?.assignedTo.roleTitle || 'Configured workflow assignee';
   const routingRuleFor = (classification: string) => employmentRoutingRules.find(rule => rule.classification === classification);
   const processorFor = (classification: string) => {
+    if (!usesEmploymentRouting) return fixedProcessingAssignee;
     const rule = routingRuleFor(classification); if (!rule) return 'Not configured';
     if (rule.assignmentMode === 'pool') return 'Selected per payroll';
     if (rule.assignmentMode === 'team') return rule.assignedTeam || 'Team not configured';
     return rule.primaryProcessorName || 'Not configured';
   };
-  const unresolvedPoolItems = readyItems.filter(item => {
+  const unresolvedPoolItems = usesEmploymentRouting ? readyItems.filter(item => {
     const classification=item.employmentClassification==='Job Order (JOW)'?'JOW/COS':item.employmentClassification || '';
     return routingRuleFor(classification)?.assignmentMode === 'pool' && !routeSelections[item.id];
-  });
+  }) : [];
   const releaseDesk = batch.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
   const canReleaseBatch = can('canSupervise') || !!releaseDesk && (
     releaseDesk.userId
@@ -572,7 +576,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
                           {/* Action Buttons for this item */}
                           {canInitialCheck && <div className="flex flex-wrap items-center justify-end gap-2 self-end sm:self-center shrink-0">
-                            {itemRoutingRule?.assignmentMode === 'pool' && item.verificationStatus === 'Passed' && !isHeld && <select aria-label={`Assign ${item.barcode} to`} value={routeSelections[item.id] || ''} onChange={event => setRouteSelections(current => ({...current,[item.id]:event.target.value}))} className="max-w-56 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-slate-700"><option value="">Choose personnel...</option>{(itemRoutingRule.eligibleProcessorIds || []).map(id => { const user=users.find(person => person.id===id); return user?<option key={id} value={id}>{user.name} — {user.roleTitle}</option>:null; })}</select>}
+                            {usesEmploymentRouting && itemRoutingRule?.assignmentMode === 'pool' && item.verificationStatus === 'Passed' && !isHeld && <select aria-label={`Assign ${item.barcode} to`} value={routeSelections[item.id] || ''} onChange={event => setRouteSelections(current => ({...current,[item.id]:event.target.value}))} className="max-w-56 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-medium text-slate-700"><option value="">Choose personnel...</option>{(itemRoutingRule.eligibleProcessorIds || []).map(id => { const user=users.find(person => person.id===id); return user?<option key={id} value={id}>{user.name} — {user.roleTitle}</option>:null; })}</select>}
                             {/* Classification Quick-Pick */}
                             <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs">
                               <button
