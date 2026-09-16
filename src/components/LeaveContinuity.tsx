@@ -239,7 +239,7 @@ export const LeaveContinuity: React.FC = () => {
         </header>
         <form onSubmit={submit} className="space-y-4 p-5 text-xs">
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="font-semibold text-slate-700">Barcode / Tracking No. <span className="font-normal text-slate-400">(optional)</span><input id="leave-input-barcode" value={barcode} onChange={event => setBarcode(event.target.value)} placeholder="Leave blank to use N/A" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
+            <label className="font-semibold text-slate-700">Barcode / Tracking No. <span className="font-normal text-slate-400">(optional)</span><input id="leave-input-barcode" value={barcode} onChange={event => setBarcode(event.target.value)} placeholder="Leave blank for N/A" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
             <label className="font-semibold text-slate-700">Employee / Applicant *<input id="leave-input-applicant" required value={employeeName} onChange={event => setEmployeeName(event.target.value)} placeholder="Enter employee or applicant name" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -269,7 +269,6 @@ export const LeaveContinuity: React.FC = () => {
             <div className="mt-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2"><span className="font-semibold text-blue-800">Calculated Leave Days</span><strong id="calculated-leave-days" className="text-base text-blue-900">{formatDays(calculatedDays(dateRanges))}</strong></div>
           </section>
           <label className="block font-semibold text-slate-700">Remarks<textarea value={remarks} onChange={event => setRemarks(event.target.value)} rows={3} className="mt-1 w-full resize-y rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
-          <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] text-blue-800">The new record will enter the Leave Registry with a <strong>For Computation</strong> status. Encoder: {currentUser.name}.</p>
           <footer className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button id="btn-submit-filing" type="submit" disabled={!employeeName.trim()} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{editingRecord ? 'Save Changes' : 'Register Leave Application'}</button></footer>
         </form>
       </div>

@@ -46,9 +46,16 @@ const REQUIRED_ACTIONS: WorkflowStepTemplate['requiredAction'][] = [
 
 const stageTypeOf = (step: WorkflowStepTemplate) => step.stageType || (step.requiredAction === 'Release & Archive' ? 'FINAL_RELEASE' : 'INTERNAL_PROCESSING');
 const payrollAssignmentSourceOf = (classification: DocumentClassification, step: WorkflowStepTemplate, index: number) =>
-  classification === 'Payroll' ? (step.payrollAssignmentSource || (index === 2 && stageTypeOf(step) === 'INTERNAL_PROCESSING' && step.requiredAction !== 'Release & Archive' ? 'employment_routing' : 'workflow')) : 'workflow';
+  step.assignmentSource || (classification === 'Payroll' ? step.payrollAssignmentSource : undefined) || (classification === 'Payroll' && index === 2 && stageTypeOf(step) === 'INTERNAL_PROCESSING' && step.requiredAction !== 'Release & Archive' ? 'employment_routing' : 'workflow');
 const canChoosePayrollAssignment = (classification: DocumentClassification, step: WorkflowStepTemplate, index: number) =>
-  classification === 'Payroll' && index > 0 && stageTypeOf(step) === 'INTERNAL_PROCESSING' && step.requiredAction !== 'Release & Archive';
+  stageTypeOf(step) === 'INTERNAL_PROCESSING' && step.requiredAction !== 'Release & Archive';
+
+const payrollRoutingSummary = (classification: DocumentClassification, step: WorkflowStepTemplate, index: number) =>
+  payrollAssignmentSourceOf(classification, step, index) === 'employment_routing'
+    ? `Employment classification rules · Selected during Phase ${index}`
+    : payrollAssignmentSourceOf(classification, step, index) === 'personnel_pool'
+      ? `Personnel pool · ${step.personnelPoolUserIds?.length || 0} eligible personnel · ${index === 0 ? 'Selected during registration' : `Selected during Phase ${index}`}`
+      : `Fixed assignee · ${step.assigneeName || 'Not selected'}`;
 
 const ExternalStageFields: React.FC<{
   step: WorkflowStepTemplate;
@@ -119,13 +126,14 @@ export const WorkflowManager: React.FC = () => {
     deleteWorkflowTemplate, 
     classifications, 
     currentUser, users, systemRoles,
-    assigneeDesignations 
+    assigneeDesignations, employmentRoutingRules
   } = useApp();
 
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>(workflowTemplates[0]?.id || '');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterClassification, setFilterClassification] = useState<string>('ALL');
   const [isDesignationsModalOpen, setIsDesignationsModalOpen] = useState(false);
+  const [routingSettingsTarget, setRoutingSettingsTarget] = useState<{ mode: 'edit' | 'create'; index: number } | null>(null);
 
   // Edit Mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -186,9 +194,12 @@ export const WorkflowManager: React.FC = () => {
   );
 
   const invalidStepAssignment = (steps: WorkflowStepTemplate[], classification: DocumentClassification) => steps.find((step, index) =>
-    stageTypeOf(step) !== 'EXTERNAL_HANDOFF_REVIEW' && payrollAssignmentSourceOf(classification, step, index) !== 'employment_routing' && ((step.assigneeType === 'Role' && !systemRoles.some(role => role.id === step.assigneeRole)) ||
+    stageTypeOf(step) !== 'EXTERNAL_HANDOFF_REVIEW' && payrollAssignmentSourceOf(classification, step, index) === 'workflow' && ((step.assigneeType === 'Role' && !systemRoles.some(role => role.id === step.assigneeRole)) ||
     (step.assigneeType === 'Person' && !users.some(user => user.id === step.assigneeUserId))
     )
+  );
+  const invalidPersonnelPool = (steps: WorkflowStepTemplate[], classification: DocumentClassification) => steps.find((step, index) =>
+    payrollAssignmentSourceOf(classification, step, index) === 'personnel_pool' && !(step.personnelPoolUserIds?.length)
   );
 
   // Filtered templates list
@@ -237,6 +248,11 @@ export const WorkflowManager: React.FC = () => {
     const invalidAssignment = invalidStepAssignment(editFormData.steps, editFormData.classification);
     if (invalidAssignment) {
       alert(`Choose an existing role or officer for Phase ${invalidAssignment.stepNumber}. Its previous assignee no longer exists.`);
+      return;
+    }
+    const emptyPool = invalidPersonnelPool(editFormData.steps, editFormData.classification);
+    if (emptyPool) {
+      alert(`Select at least one eligible person in the routing settings for Phase ${emptyPool.stepNumber}.`);
       return;
     }
 
@@ -357,6 +373,11 @@ export const WorkflowManager: React.FC = () => {
       alert(`Choose an existing role or officer for Phase ${invalidAssignment.stepNumber}. Its previous assignee no longer exists.`);
       return;
     }
+    const emptyPool = invalidPersonnelPool(newSteps, newClassification);
+    if (emptyPool) {
+      alert(`Select at least one eligible person in the routing settings for Phase ${emptyPool.stepNumber}.`);
+      return;
+    }
 
     const created = await createWorkflowTemplate({
       title: newTitle.trim(),
@@ -443,6 +464,37 @@ export const WorkflowManager: React.FC = () => {
       }
     }
     setDeleteTargetId(null);
+  };
+
+  const routingStep = routingSettingsTarget?.mode === 'edit'
+    ? editFormData?.steps[routingSettingsTarget.index]
+    : routingSettingsTarget ? newSteps[routingSettingsTarget.index] : undefined;
+  const routingClassification = routingSettingsTarget?.mode === 'edit' ? editFormData?.classification : newClassification;
+  const routingDocumentTypes = routingSettingsTarget?.mode === 'edit'
+    ? (editFormData ? workflowTypes(editFormData) : [])
+    : newDocTypeSelection;
+  const routingSource = routingStep && routingClassification
+    ? payrollAssignmentSourceOf(routingClassification, routingStep, routingSettingsTarget?.index || 0)
+    : 'workflow';
+  const updateRoutingSource = (source: NonNullable<WorkflowStepTemplate['assignmentSource']>) => {
+    if (!routingSettingsTarget || !routingStep) return;
+    const update = routingSettingsTarget.mode === 'edit' ? handleEditStepChange : handleCreateStepChange;
+    update(routingSettingsTarget.index, 'assignmentSource', source);
+    if (routingClassification === 'Payroll' && source !== 'personnel_pool') update(routingSettingsTarget.index, 'payrollAssignmentSource', source);
+    if (source === 'workflow' && routingStep.assigneeType === 'System') {
+      const fallbackRole = systemRoles.find(role => role.id === 'processor') || systemRoles.find(role => role.id !== 'admin') || systemRoles[0];
+      if (fallbackRole) {
+        update(routingSettingsTarget.index, 'assigneeType', 'Role');
+        update(routingSettingsTarget.index, 'assigneeRole', fallbackRole.id as UserRole);
+        update(routingSettingsTarget.index, 'assigneeName', fallbackRole.name);
+      }
+    }
+  };
+  const toggleRoutingPoolUser = (userId: string) => {
+    if (!routingSettingsTarget || !routingStep) return;
+    const update = routingSettingsTarget.mode === 'edit' ? handleEditStepChange : handleCreateStepChange;
+    const current = routingStep.personnelPoolUserIds || [];
+    update(routingSettingsTarget.index, 'personnelPoolUserIds', current.includes(userId) ? current.filter(id => id !== userId) : [...current, userId]);
   };
 
   return (
@@ -723,7 +775,7 @@ export const WorkflowManager: React.FC = () => {
                             </p>
 
                             <div className="flex items-center gap-3 pt-1 text-xs text-slate-600 flex-wrap">
-                              {stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? <span className="font-medium text-amber-800">Destination: <strong className="text-slate-900">{step.externalDestinationMode === 'SELECT_AT_HANDOFF' ? 'Selected at handoff' : step.externalDestinationOffice}</strong> · Return desk: <strong className="text-slate-900">{step.returnReceiverName}</strong></span> : payrollAssignmentSourceOf(activeTemplate.classification, step, idx) === 'employment_routing' ? <span className="flex items-center gap-1 font-medium text-blue-700"><UserCheck className="w-3.5 h-3.5" /><span>Assigned during Sorting through <strong>Employment Routing Rules</strong></span></span> : <span className="flex items-center gap-1 font-medium"><UserCheck className="w-3.5 h-3.5 text-blue-600" /><span>Assigned to <strong className="text-slate-900">{step.assigneeName}</strong></span></span>}
+                              {stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? <span className="font-medium text-amber-800">Destination: <strong className="text-slate-900">{step.externalDestinationMode === 'SELECT_AT_HANDOFF' ? 'Selected at handoff' : step.externalDestinationOffice}</strong> · Return desk: <strong className="text-slate-900">{step.returnReceiverName}</strong></span> : payrollAssignmentSourceOf(activeTemplate.classification, step, idx) === 'employment_routing' ? <span className="flex items-center gap-1 font-medium text-blue-700"><UserCheck className="w-3.5 h-3.5" /><span>Employment classification rules · selected during Phase {idx}</span></span> : payrollAssignmentSourceOf(activeTemplate.classification, step, idx) === 'personnel_pool' ? <span className="flex items-center gap-1 font-medium text-blue-700"><Users className="h-3.5 w-3.5" /><span>Personnel pool · {step.personnelPoolUserIds?.length || 0} eligible · {idx === 0 ? 'selected during registration' : `selected during Phase ${idx}`}</span></span> : <span className="flex items-center gap-1 font-medium"><UserCheck className="w-3.5 h-3.5 text-blue-600" /><span>Assigned to <strong className="text-slate-900">{step.assigneeName}</strong></span></span>}
                               {step.allowReturn && (
                                 <span className="inline-flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded font-medium text-[11px] border border-amber-200">
                                   <RotateCcw className="w-3 h-3" />
@@ -1017,16 +1069,12 @@ export const WorkflowManager: React.FC = () => {
                           />
                         </div>
 
-                        {canChoosePayrollAssignment(editFormData.classification, step, idx) && <div className="sm:col-span-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Assignment Method</label>
-                          <select value={payrollAssignmentSourceOf(editFormData.classification, step, idx)} onChange={e => handleEditStepChange(idx, 'payrollAssignmentSource', e.target.value)} className="w-full rounded-lg border border-blue-200 bg-white p-2 text-xs font-medium text-slate-800">
-                            <option value="workflow">Fixed Assignee</option>
-                            <option value="employment_routing">Employment Routing Rules</option>
-                          </select>
-                          {payrollAssignmentSourceOf(editFormData.classification, step, idx) === 'employment_routing' && <p className="mt-2 text-[11px] text-blue-800">The Sorting officer selects the responsible personnel from the rule configured for each payroll classification.</p>}
+                        {canChoosePayrollAssignment(editFormData.classification, step, idx) && <div className="sm:col-span-2 flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50/70 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Routing</p><p className="mt-1 text-xs font-semibold text-slate-900">{payrollRoutingSummary(editFormData.classification, step, idx)}</p><p className="mt-1 text-[11px] text-slate-600">This setting controls who receives the payroll when it enters Phase {idx + 1}.</p></div>
+                          <button type="button" onClick={() => setRoutingSettingsTarget({ mode: 'edit', index: idx })} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"><Sliders className="h-3.5 w-3.5" />Routing Settings</button>
                         </div>}
 
-                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(editFormData.classification, step, idx) === 'employment_routing' ? 'hidden' : ''}>
+                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(editFormData.classification, step, idx) !== 'workflow' ? 'hidden' : ''}>
                           <div className="flex items-center justify-between mb-1">
                             <label className="block text-[11px] font-semibold text-slate-700">
                               Assignee Type & Designation
@@ -1080,7 +1128,7 @@ export const WorkflowManager: React.FC = () => {
                           </select>
                         </div>
 
-                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(editFormData.classification, step, idx) === 'employment_routing' ? 'hidden' : ''}>
+                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(editFormData.classification, step, idx) !== 'workflow' ? 'hidden' : ''}>
                           <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                             Person in Charge
                           </label>
@@ -1401,16 +1449,12 @@ export const WorkflowManager: React.FC = () => {
                           />
                         </div>
 
-                        {canChoosePayrollAssignment(newClassification, step, idx) && <div className="sm:col-span-2 rounded-lg border border-blue-200 bg-blue-50 p-3">
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Assignment Method</label>
-                          <select value={payrollAssignmentSourceOf(newClassification, step, idx)} onChange={e => handleCreateStepChange(idx, 'payrollAssignmentSource', e.target.value)} className="w-full rounded-lg border border-blue-200 bg-white p-2 text-xs font-medium text-slate-800">
-                            <option value="workflow">Fixed Assignee</option>
-                            <option value="employment_routing">Employment Routing Rules</option>
-                          </select>
-                          {payrollAssignmentSourceOf(newClassification, step, idx) === 'employment_routing' && <p className="mt-2 text-[11px] text-blue-800">The Sorting officer selects the responsible personnel from the rule configured for each payroll classification.</p>}
+                        {canChoosePayrollAssignment(newClassification, step, idx) && <div className="sm:col-span-2 flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50/70 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Routing</p><p className="mt-1 text-xs font-semibold text-slate-900">{payrollRoutingSummary(newClassification, step, idx)}</p><p className="mt-1 text-[11px] text-slate-600">This setting controls who receives the payroll when it enters Phase {idx + 1}.</p></div>
+                          <button type="button" onClick={() => setRoutingSettingsTarget({ mode: 'create', index: idx })} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"><Sliders className="h-3.5 w-3.5" />Routing Settings</button>
                         </div>}
 
-                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(newClassification, step, idx) === 'employment_routing' ? 'hidden' : ''}>
+                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(newClassification, step, idx) !== 'workflow' ? 'hidden' : ''}>
                           <div className="flex items-center justify-between mb-1">
                             <label className="block text-[11px] font-semibold text-slate-700">
                               Assigned Role or Department
@@ -1464,7 +1508,7 @@ export const WorkflowManager: React.FC = () => {
                           </select>
                         </div>
 
-                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(newClassification, step, idx) === 'employment_routing' ? 'hidden' : ''}>
+                        <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(newClassification, step, idx) !== 'workflow' ? 'hidden' : ''}>
                           <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                             Person in Charge
                           </label>
@@ -1524,6 +1568,53 @@ export const WorkflowManager: React.FC = () => {
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {routingSettingsTarget && routingStep && routingClassification && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs">
+          <div role="dialog" aria-modal="true" aria-label={`Routing settings for Phase ${routingSettingsTarget.index + 1}`} className="flex max-h-[90dvh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 p-5">
+              <div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><Sliders className="h-5 w-5" /></span><div><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Phase {routingSettingsTarget.index + 1}</p><h3 className="mt-0.5 text-base font-bold text-slate-900">Routing settings</h3><p className="mt-1 text-xs text-slate-500">Choose how personnel will be assigned when payroll enters {routingStep.name}.</p></div></div>
+              <button type="button" aria-label="Close routing settings" onClick={() => setRoutingSettingsTarget(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
+            </header>
+
+            <div className="min-h-0 space-y-3 overflow-y-auto p-5">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600"><strong className="text-slate-800">Applies to:</strong> {routingClassification} · {routingDocumentTypes.join(', ') || 'No document type selected'}</div>
+              <button type="button" onClick={() => updateRoutingSource('workflow')} className={`w-full rounded-xl border p-4 text-left transition-colors ${routingSource === 'workflow' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-200' : 'border-slate-200 bg-white hover:border-blue-200'}`}>
+                <span className="flex items-start gap-3"><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${routingSource === 'workflow' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300'}`}>{routingSource === 'workflow' && <Check className="h-3 w-3" />}</span><span><span className="block text-sm font-bold text-slate-900">Fixed assignee</span><span className="mt-1 block text-xs leading-5 text-slate-600">Send every payroll in this phase to the configured person, role, or team.</span>{routingSource === 'workflow' && <span className="mt-2 block text-xs font-semibold text-blue-700">Current: {routingStep.assigneeName || 'Choose an assignee in the phase card'}</span>}</span></span>
+              </button>
+
+              {routingClassification !== 'Payroll' && <button type="button" onClick={() => updateRoutingSource('personnel_pool')} className={`w-full rounded-xl border p-4 text-left transition-colors ${routingSource === 'personnel_pool' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-200' : 'border-slate-200 bg-white hover:border-blue-200'}`}>
+                <span className="flex items-start gap-3"><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${routingSource === 'personnel_pool' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300'}`}>{routingSource === 'personnel_pool' && <Check className="h-3 w-3" />}</span><span><span className="block text-sm font-bold text-slate-900">Personnel pool</span><span className="mt-1 block text-xs leading-5 text-slate-600">{routingSettingsTarget.index === 0 ? 'The registering officer selects the person responsible for Phase 1.' : `The officer completing Phase ${routingSettingsTarget.index} selects the next person in charge from an approved list.`}</span></span></span>
+              </button>}
+
+              {routingSource === 'personnel_pool' && <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-2"><p className="text-xs font-bold text-slate-900">Eligible personnel</p><span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{routingStep.personnelPoolUserIds?.length || 0} selected</span></div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">{users.map(user => {
+                  const selected = routingStep.personnelPoolUserIds?.includes(user.id) || false;
+                  return <label key={user.id} className={`flex cursor-pointer items-start gap-2 rounded-lg border p-2.5 ${selected ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-white'}`}><input type="checkbox" checked={selected} onChange={() => toggleRoutingPoolUser(user.id)} className="mt-0.5 rounded border-slate-300 text-blue-600" /><span className="min-w-0"><span className="block truncate text-xs font-semibold text-slate-800">{user.name}</span><span className="block truncate text-[10px] text-slate-500">{user.roleTitle} · {user.division}</span></span></label>;
+                })}</div>
+                {(routingStep.personnelPoolUserIds?.length || 0) === 0 && <p className="mt-3 text-[11px] font-medium text-rose-600">Select at least one person before saving the workflow.</p>}
+              </div>}
+
+              {routingClassification === 'Payroll' && routingSettingsTarget.index > 0 && <button type="button" onClick={() => updateRoutingSource('employment_routing')} className={`w-full rounded-xl border p-4 text-left transition-colors ${routingSource === 'employment_routing' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-200' : 'border-slate-200 bg-white hover:border-blue-200'}`}>
+                <span className="flex items-start gap-3"><span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${routingSource === 'employment_routing' ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300'}`}>{routingSource === 'employment_routing' && <Check className="h-3 w-3" />}</span><span><span className="block text-sm font-bold text-slate-900">Employment classification rules</span><span className="mt-1 block text-xs leading-5 text-slate-600">The officer in Phase {routingSettingsTarget.index} selects the responsible personnel for each payroll before sending it to this phase.</span></span></span>
+              </button>}
+
+              {routingSource === 'employment_routing' && <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-2"><p className="text-xs font-bold text-slate-900">Configured personnel rules</p><span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Per payroll item</span></div>
+                <div className="mt-3 divide-y divide-slate-200">{employmentRoutingRules.map(rule => {
+                  const mode = rule.assignmentMode || 'fixed';
+                  const detail = mode === 'pool' ? `${rule.eligibleProcessorIds?.length || 0} eligible personnel` : mode === 'team' ? rule.assignedTeam || 'Team not selected' : rule.primaryProcessorName || 'Personnel not selected';
+                  return <div key={rule.id} className="flex items-center justify-between gap-3 py-2 text-xs"><span className="font-semibold text-slate-700">{rule.classification}</span><span className="text-right text-slate-500">{mode === 'pool' ? 'Personnel pool' : mode === 'team' ? 'Assigned team' : 'Fixed personnel'} · {detail}</span></div>;
+                })}</div>
+                <p className="mt-3 text-[11px] leading-5 text-slate-500">Personnel lists are maintained in Payroll Management under Routing Rules.</p>
+              </div>}
+            </div>
+
+            <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4"><p className="text-[11px] text-slate-500">Saved with the workflow template.</p><button type="button" onClick={() => setRoutingSettingsTarget(null)} className="rounded-lg bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white hover:bg-blue-700">Done</button></footer>
           </div>
         </div>
       )}

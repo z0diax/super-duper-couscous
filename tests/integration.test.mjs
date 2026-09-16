@@ -76,6 +76,38 @@ test('document creation is atomic, unique, and retains a workflow snapshot',asyn
   await admin.action('deleteWorkflowTemplate',[workflow.id],422);
   await employee.action('completeStep',[doc.id,'Forged completion'],404);
 });
+test('document workflows route the next phase through a configured personnel pool',async()=>{
+  const adminUser=admin.state.users.find(user=>user.role==='admin');
+  const processorUser=admin.state.users.find(user=>user.role==='processor');
+  const approverUser=admin.state.users.find(user=>user.role==='approver');
+  const releaserUser=admin.state.users.find(user=>user.role==='releasing_officer');
+  const pooled=(await admin.action('createWorkflowTemplate',[{title:'Request personnel pool',description:'Shared routing for request records',classification:'Request',documentType:'Certification',documentTypes:['Certification','Service Record'],isActive:true,steps:[
+    {...step(1,'admin','Receive'),assigneeType:'Person',assigneeUserId:adminUser.id,assigneeName:adminUser.name},
+    {...step(2,'processor','Verify & Process'),assignmentSource:'personnel_pool',personnelPoolUserIds:[processorUser.id,approverUser.id]},
+    step(3,'processor','Verify & Process'),
+    {...step(4,'approver','Review & Recommend'),assignmentSource:'personnel_pool',personnelPoolUserIds:[approverUser.id,releaserUser.id]},
+  ]}])).result;
+  assert.deepEqual(pooled.documentTypes,['Certification','Service Record']);
+  await admin.action('registerDocument',[{...documentData('POOL-DOC-MISSING'),classification:'Request',documentType:'Certification'}],422);
+  const pooledDoc=(await admin.action('registerDocument',[{...documentData('POOL-DOC-001'),classification:'Request',documentType:'Certification',initialAssigneeId:processorUser.id}])).result;
+  const secondType=(await admin.action('registerDocument',[{...documentData('POOL-DOC-002'),classification:'Request',documentType:'Service Record',initialAssigneeId:processorUser.id}])).result;
+  assert.equal(secondType.workflowTemplateId,pooled.id);
+  assert.equal(pooledDoc.currentStepNumber,2); assert.equal(pooledDoc.workflowSteps[1].assignedTo.userId,processorUser.id);
+  assert.equal(pooledDoc.workflowSteps[3].assignmentSource,'personnel_pool');
+  assert.deepEqual(pooledDoc.workflowSteps[3].personnelPoolUserIds,[approverUser.id,releaserUser.id]);
+  await processor.refresh();
+  await processor.action('completeStep',[pooledDoc.id,'Phase 2 checked','Verify & Process',[]]);
+  await processor.action('completeStep',[pooledDoc.id,'Checked','Verify & Process',[],processorUser.id],422);
+  await processor.action('completeStep',[pooledDoc.id,'Checked','Verify & Process',[],approverUser.id]);
+  await approver.refresh();
+  const routed=approver.state.documents.find(record=>record.id===pooledDoc.id);
+  assert.equal(routed.currentStepNumber,4); assert.equal(routed.workflowSteps[3].assignedTo.userId,approverUser.id);
+  await admin.refresh();
+  const firstPhasePool=(await admin.action('updateWorkflowTemplate',[{...pooled,steps:pooled.steps.map((configuredStep,index)=>index===0?{...configuredStep,assignmentSource:'personnel_pool',personnelPoolUserIds:[approverUser.id,releaserUser.id]}:configuredStep)}])).result;
+  const phaseOneDocument=(await admin.action('registerDocument',[{...documentData('POOL-DOC-PHASE-ONE'),classification:'Request',documentType:'Certification',initialAssigneeId:approverUser.id}])).result;
+  assert.equal(phaseOneDocument.currentStepNumber,1); assert.equal(phaseOneDocument.workflowSteps[0].assignedTo.userId,approverUser.id); assert.equal(phaseOneDocument.workflowSteps[0].status,'In_Progress');
+  await admin.action('updateWorkflowTemplate',[{...firstPhasePool,isActive:false}]);
+});
 test('stale sessions cannot overwrite changes or complete the next step accidentally',async()=>{
   const other=await new Client(fixture.base).login(); await processor.refresh(); const stale=other.revision;
   await processor.action('addDocumentRemark',[doc.id,'First update'],200,{refresh:false});

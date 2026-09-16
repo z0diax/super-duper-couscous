@@ -294,10 +294,23 @@ function validated_workflow(array $s,array $d): array {
             fail_unless($i===count($d['steps'])-1,'Final Release must be the final workflow step.'); $step['requiredAction']='Release & Archive';
         } else fail_unless($step['requiredAction']!=='Release & Archive','Use the Final Release stage type for Release & Archive.');
         $defaultPayrollAssignment=($i===2 && $stageType==='INTERNAL_PROCESSING' && $step['requiredAction']!=='Release & Archive')?'employment_routing':'workflow';
-        $assignmentSource=($d['classification']??null)==='Payroll'
-            ? choice($step['payrollAssignmentSource']??$defaultPayrollAssignment,['workflow','employment_routing'],'payroll assignment source')
-            : 'workflow';
-        $step['payrollAssignmentSource']=$assignmentSource;
+        $legacySource=($d['classification']??null)==='Payroll'?($step['payrollAssignmentSource']??$defaultPayrollAssignment):'workflow';
+        $configuredSource=($d['classification']??null)==='Payroll'?$legacySource:($step['assignmentSource']??'workflow');
+        $assignmentSource=choice($configuredSource,['workflow','personnel_pool','employment_routing'],'assignment source');
+        fail_unless($assignmentSource!=='employment_routing' || ($d['classification']??null)==='Payroll','Employment classification routing is available only for Payroll workflows.');
+        $step['assignmentSource']=$assignmentSource;
+        $step['payrollAssignmentSource']=$assignmentSource==='employment_routing'?'employment_routing':'workflow';
+        if ($assignmentSource==='personnel_pool') {
+            fail_unless(($d['classification']??null)!=='Payroll','Use Employment Routing Rules for Payroll personnel pools.');
+            fail_unless($stageType==='INTERNAL_PROCESSING' && $step['requiredAction']!=='Release & Archive','A personnel pool can assign only an internal processing phase.');
+            $ids=array_values(array_unique(array_filter($step['personnelPoolUserIds']??[],fn($id)=>is_string($id) && $id!=='')));
+            fail_unless(count($ids)>0,'Choose at least one eligible person for Phase '.($i+1).'.');
+            foreach ($ids as $id) index_of($s['users'],$id);
+            $step['personnelPoolUserIds']=$ids; $step['assigneeType']='System'; $step['assigneeName']=$i===0?'Selected during registration':'Selected during Phase '.$i;
+            unset($step['assigneeRole'],$step['assigneeTeam'],$step['assigneeUserId']);
+            $step['allowReturn']=(bool)($step['allowReturn']??false); $step['allowHold']=(bool)($step['allowHold']??false); $step['requiresAttachment']=(bool)($step['requiresAttachment']??false);
+            continue;
+        }
         if ($assignmentSource==='employment_routing') {
             fail_unless($stageType==='INTERNAL_PROCESSING' && $i>0 && $step['requiredAction']!=='Release & Archive','Employment Routing Rules can only assign an internal Payroll processing phase after Intake.');
             $step['assigneeType']='System'; $step['assigneeName']='Assigned during Sorting';
@@ -305,6 +318,7 @@ function validated_workflow(array $s,array $d): array {
             $step['allowReturn']=(bool)($step['allowReturn']??false); $step['allowHold']=(bool)($step['allowHold']??false); $step['requiresAttachment']=(bool)($step['requiresAttachment']??false);
             continue;
         }
+        $step['personnelPoolUserIds']=[];
         choice($step['assigneeType']??null,['Person','Role','Team'],'assignee type');
         if ($step['assigneeType']==='Person') {
             $u=$s['users'][index_of($s['users'],required($step,'assigneeUserId'))]; $step['assigneeName']=$u['name'];
@@ -365,7 +379,8 @@ function register_document(PDO $pdo,array &$s,array $u,array $d): array {
         $isExternal=$stageType==='EXTERNAL_HANDOFF_REVIEW';
         $defaultPayrollAssignment=($i===2 && $stageType==='INTERNAL_PROCESSING' && ($st['requiredAction']??'')!=='Release & Archive')?'employment_routing':'workflow';
         $payrollAssignmentSource=$category['classification']==='Payroll'?($st['payrollAssignmentSource']??$defaultPayrollAssignment):'workflow';
-        $instance=['stepNumber'=>$i+1,'name'=>$st['name'],'stageType'=>$stageType,'assignedTo'=>$isExternal?['type'=>'System','displayName'=>'System / awaiting HRMDO handoff']:['type'=>$st['assigneeType'],'role'=>$st['assigneeRole']??null,'team'=>$st['assigneeTeam']??null,'userId'=>$st['assigneeType']==='Person'?($st['assigneeUserId']??null):null,'displayName'=>$st['assigneeName']], 'payrollAssignmentSource'=>$payrollAssignmentSource,'requiredAction'=>$st['requiredAction'],'allowReturn'=>$st['allowReturn'],'allowHold'=>$st['allowHold']??false,'requiresAttachment'=>$st['requiresAttachment'],'status'=>$i===0?'In_Progress':'Pending','slaHours'=>$st['slaHours'],'startedAt'=>$i===0?$registeredAt:null,'isCurrent'=>$i===0];
+        $assignmentSource=$st['assignmentSource']??$payrollAssignmentSource;
+        $instance=['stepNumber'=>$i+1,'name'=>$st['name'],'stageType'=>$stageType,'assignedTo'=>$isExternal?['type'=>'System','displayName'=>'System / awaiting HRMDO handoff']:['type'=>$st['assigneeType'],'role'=>$st['assigneeRole']??null,'team'=>$st['assigneeTeam']??null,'userId'=>$st['assigneeType']==='Person'?($st['assigneeUserId']??null):null,'displayName'=>$st['assigneeName']], 'assignmentSource'=>$assignmentSource,'personnelPoolUserIds'=>$st['personnelPoolUserIds']??[],'payrollAssignmentSource'=>$payrollAssignmentSource,'requiredAction'=>$st['requiredAction'],'allowReturn'=>$st['allowReturn'],'allowHold'=>$st['allowHold']??false,'requiresAttachment'=>$st['requiresAttachment'],'status'=>$i===0?'In_Progress':'Pending','slaHours'=>$st['slaHours'],'startedAt'=>$i===0?$registeredAt:null,'isCurrent'=>$i===0];
         if ($isExternal) {
             $instance=array_merge($instance,['externalPurpose'=>$st['externalPurpose'],'externalDestinationMode'=>$st['externalDestinationMode'],'externalDestinationOffice'=>$st['externalDestinationOffice']??null,'returnReceiver'=>['type'=>$st['returnReceiverType'],'role'=>$st['returnReceiverRole']??null,'team'=>$st['returnReceiverTeam']??null,'userId'=>$st['returnReceiverType']==='Person'?($st['returnReceiverUserId']??null):null,'displayName'=>$st['returnReceiverName']],'expectedTurnaroundHours'=>$st['expectedTurnaroundHours']??null,'requiresReturnedAttachment'=>(bool)($st['requiresReturnedAttachment']??false),'requiresExternalResult'=>(bool)($st['requiresExternalResult']??false),'externalStatus'=>$i===0?'PENDING_HANDOFF':null]);
             if ($i===0) $instance['handoffOwner']=['userId'=>$u['id'],'userName'=>$u['name'],'userRole'=>$u['roleTitle']];
@@ -376,9 +391,18 @@ function register_document(PDO $pdo,array &$s,array $u,array $d): array {
     if (strcasecmp($senderName,$office.' Signatory')===0) $senderName=$office;
     $doc=['id'=>$id,'trackingNumber'=>$barcode,'barcode'=>$barcode,'title'=>$title,'subject'=>$d['subject']??$title,'sourceType'=>choice($d['sourceType']??'Internal',['Internal','External'],'source type'),'sourceOffice'=>$office,'senderName'=>$senderName,'classification'=>$category['classification'],'documentType'=>$type,'employmentClassification'=>$d['employmentClassification']??null,'priority'=>choice($d['priority']??'Routine',['Routine','Priority','Urgent'],'priority'),'dateReceived'=>$registeredAt,'dateEncoded'=>$registeredAt,'description'=>$d['description']??'','status'=>'In_Progress','currentStepNumber'=>1,'totalSteps'=>count($steps),'workflowTemplateId'=>$wf['id'],'workflowVersion'=>$wf['version'],'workflowSteps'=>$steps,'attachments'=>attach_files($pdo,$u,$d['files']??[],$id),'currentLocation'=>'HRMDO','custodyHistory'=>[['id'=>uid('custody'),'movementType'=>'INTAKE','fromLocation'=>$office,'toLocation'=>'HRMDO','timestamp'=>$registeredAt,'actorId'=>$u['id'],'actorName'=>$u['name']]],'encodedBy'=>['userId'=>$u['id'],'userName'=>$u['name']]];
     $doc['status']=($steps[0]['stageType']??'')==='EXTERNAL_HANDOFF_REVIEW'?'Awaiting_External_Handoff':match($steps[0]['requiredAction']) { 'Approve & Sign'=>'Pending_Approval','Review & Recommend'=>'Under_Review','Release & Archive'=>'Ready_For_Release',default=>'In_Progress' };
-    // Registration is the Receive action itself.  A workflow that begins with an
-    // intake phase therefore starts its operational work at the next phase.
-    if (count($steps)>1 && ($steps[0]['stageType']??'INTERNAL_PROCESSING')==='INTERNAL_PROCESSING' && ($steps[0]['requiredAction']??'')==='Receive') {
+    $initialPoolTarget=null; $initialPoolIndex=null;
+    if (($steps[0]['assignmentSource']??'workflow')==='personnel_pool') $initialPoolIndex=0;
+    elseif (count($steps)>1 && ($steps[0]['stageType']??'INTERNAL_PROCESSING')==='INTERNAL_PROCESSING' && ($steps[0]['requiredAction']??'')==='Receive' && ($steps[1]['assignmentSource']??'workflow')==='personnel_pool') $initialPoolIndex=1;
+    if ($initialPoolIndex!==null) {
+        $selectedId=required($d,'initialAssigneeId');
+        fail_unless(in_array($selectedId,$steps[$initialPoolIndex]['personnelPoolUserIds']??[],true),'Choose an eligible person for Phase '.($initialPoolIndex+1).'.');
+        $initialPoolTarget=$s['users'][index_of($s['users'],$selectedId)];
+        $doc['workflowSteps'][$initialPoolIndex]['assignedTo']=['type'=>'Person','userId'=>$initialPoolTarget['id'],'displayName'=>$initialPoolTarget['name']];
+    }
+    // Registration is the Receive action for a fixed intake phase. A pool-based
+    // Phase 1 remains open for the person selected during registration.
+    if (count($steps)>1 && ($steps[0]['stageType']??'INTERNAL_PROCESSING')==='INTERNAL_PROCESSING' && ($steps[0]['requiredAction']??'')==='Receive' && ($steps[0]['assignmentSource']??'workflow')!=='personnel_pool') {
         $doc['workflowSteps'][0]['status']='Completed';
         $doc['workflowSteps'][0]['isCurrent']=false;
         $doc['workflowSteps'][0]['completedAt']=$registeredAt;
@@ -444,6 +468,12 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
         $result=$return['result']??'';
         if (!empty($step['requiresExternalResult'])) $result=choice($result,['Approved','Approved with Comments','Returned with Comments','Signed','Reviewed','Disapproved','No Action','Other'],'external result');
         elseif ($result!=='') $result=choice($result,['Approved','Approved with Comments','Returned with Comments','Signed','Reviewed','Disapproved','No Action','Other'],'external result');
+        $returnPoolTarget=null; $returnNextStep=$doc['workflowSteps'][$n+1]??null;
+        if ($result!=='Disapproved' && $returnNextStep && ($returnNextStep['assignmentSource']??'workflow')==='personnel_pool') {
+            $selectedId=required($return,'nextAssigneeId');
+            fail_unless(in_array($selectedId,$returnNextStep['personnelPoolUserIds']??[],true),'Choose an eligible person for the next phase.');
+            $returnPoolTarget=$s['users'][index_of($s['users'],$selectedId)];
+        }
         $files=$return['files']??[]; fail_unless(is_array($files),'Invalid return attachments.');
         fail_unless(empty($step['requiresReturnedAttachment']) || count($files)>0,'Attach the returned or signed document before confirming its return.');
         if ($files) $doc['attachments']=array_merge($doc['attachments'],attach_files($pdo,$u,$files,$doc['id'],$n+1));
@@ -458,7 +488,10 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
                 $doc['workflowSteps'][$future]['isCurrent']=false;
                 $doc['workflowSteps'][$future]['actionTaken']='Skipped because the external review disapproved the document.';
             }
-        } elseif ($n+1<count($doc['workflowSteps'])) activate_document_step($doc,$n+1,$step['completedBy']);
+        } elseif ($n+1<count($doc['workflowSteps'])) {
+            activate_document_step($doc,$n+1,$step['completedBy']);
+            if ($returnPoolTarget!==null) $doc['workflowSteps'][$n+1]['assignedTo']=['type'=>'Person','userId'=>$returnPoolTarget['id'],'displayName'=>$returnPoolTarget['name']];
+        }
         else $doc['status']='Ready_For_Release';
         return $doc;
     }
@@ -519,10 +552,15 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
     } elseif (in_array($action,['completeStep','approveDocument','releaseDocument'],true)) {
         $required=$step['requiredAction']??'Verify & Process';
         $singlePayrollTarget=null;
+        $nextPoolTarget=null; $nextStep=$doc['workflowSteps'][$n+1]??null;
+        if ($nextStep && ($nextStep['assignmentSource']??'workflow')==='personnel_pool') {
+            $selectedId=is_string($args[$action==='completeStep'?4:2]??null)?$args[$action==='completeStep'?4:2]:'';
+            fail_unless($selectedId!=='' && in_array($selectedId,$nextStep['personnelPoolUserIds']??[],true),'Choose an eligible person for the next phase.');
+            $nextPoolTarget=$s['users'][index_of($s['users'],$selectedId)];
+        }
         if ($action==='completeStep' && $doc['classification']==='Payroll' && $required==='Verify & Process') {
             $singleItems=array_values(array_filter($s['payrollItems'],fn($item)=>($item['documentId']??null)===$doc['id'] && ($item['batchId']??null)==='SINGLE_ENTRY'));
             if (count($singleItems)>0) fail_unless(payroll_item_is_ready($singleItems[0]),'Choose the employment classification before completing Initial Checking.');
-            $nextStep=$doc['workflowSteps'][$n+1]??null;
             if (count($singleItems)>0 && $nextStep && ($nextStep['payrollAssignmentSource']??'workflow')==='employment_routing') {
                 $rule=payroll_rule($s,(string)$singleItems[0]['employmentClassification']); $singlePayrollTarget=payroll_route_target($s,$rule,is_string($args[4]??null)?$args[4]:null);
             }
@@ -546,7 +584,11 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
             $doc['custodyHistory'][]=['id'=>uid('custody'),'movementType'=>'FINAL_RELEASE','fromLocation'=>$doc['currentLocation']??'HRMDO','toLocation'=>$details['releasedTo'],'timestamp'=>$releasedAt,'stageNumber'=>$n+1,'remarks'=>$details['receiptRemarks']??'','actorId'=>$u['id'],'actorName'=>$u['name']];
         } elseif ($n+1<count($doc['workflowSteps'])) {
             activate_document_step($doc,$n+1,$step['completedBy']);
-            if ($singlePayrollTarget!==null) {
+            if ($nextPoolTarget!==null) {
+                $next=&$doc['workflowSteps'][$n+1];
+                $next['assignedTo']=['type'=>'Person','userId'=>$nextPoolTarget['id'],'displayName'=>$nextPoolTarget['name']];
+                unset($next);
+            } elseif ($singlePayrollTarget!==null) {
                 $next=&$doc['workflowSteps'][$n+1];
                 $next['assignedTo']=$singlePayrollTarget['team']!==''?['type'=>'Team','team'=>$singlePayrollTarget['team'],'displayName'=>$singlePayrollTarget['name']]:['type'=>'Person','userId'=>$singlePayrollTarget['id'],'displayName'=>$singlePayrollTarget['name']];
                 unset($next);

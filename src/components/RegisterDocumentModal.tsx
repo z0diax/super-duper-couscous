@@ -32,7 +32,8 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
     registerDocument, 
     documents,
     setSelectedDocument,
-    currentUser
+    currentUser,
+    users
   } = useApp();
 
   const savedDraft = readWorkspaceValue(currentUser.id, 'draft.register-document', {} as Partial<{ classification: DocumentClassification; documentType: string; employmentClassification: 'Job Order (JOW)' | 'Regular' | 'Casual'; title: string; barcode: string; sourceOffice: string; remarks: string }>);
@@ -44,6 +45,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
   const [sourceOffice, setSourceOffice] = useState(savedDraft.sourceOffice || OFFICE_OPTIONS[0]);
   const [remarks, setRemarks] = useState(savedDraft.remarks || '');
   const [files, setFiles] = useState<File[]>([]);
+  const [initialAssigneeId, setInitialAssigneeId] = useState('');
 
   useEffect(() => {
     writeWorkspaceValue(currentUser.id, 'draft.register-document', { classification, documentType, employmentClassification, title, barcode, sourceOffice, remarks });
@@ -58,6 +60,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
   // Update doc type when classification changes
   const handleClassificationChange = (newClass: DocumentClassification) => {
     setClassification(newClass);
+    setInitialAssigneeId('');
     const cat = classifications.find(c => c.classification === newClass);
     setDocumentType(cat?.types.find(t => t.isActive)?.name || '');
   };
@@ -72,6 +75,11 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
     wf.isActive && Array.isArray(wf.steps) && wf.steps.length > 0
   );
   const resolvedWorkflow = resolveWorkflow(workflowTemplates, classification, documentType, classification === 'Payroll' ? employmentClassification : undefined);
+  const firstOperationalStep = resolvedWorkflow?.steps[0]?.assignmentSource === 'personnel_pool'
+    ? resolvedWorkflow.steps[0]
+    : resolvedWorkflow?.steps[0]?.requiredAction === 'Receive' ? resolvedWorkflow.steps[1] : resolvedWorkflow?.steps[0];
+  const initialPoolUserIds = firstOperationalStep?.assignmentSource === 'personnel_pool' ? (firstOperationalStep.personnelPoolUserIds || []) : [];
+  const initialPoolUsers = users.filter(user => initialPoolUserIds.includes(user.id));
 
   const handleFileSelection = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
@@ -90,6 +98,10 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
 
     if (!resolvedWorkflow) {
       alert('No active workflow is configured. Ask an administrator to create a workflow with at least one phase before registering documents.');
+      return;
+    }
+    if (initialPoolUserIds.length > 0 && !initialPoolUserIds.includes(initialAssigneeId)) {
+      alert(`Choose the person responsible for Phase ${firstOperationalStep?.stepNumber || 1}.`);
       return;
     }
 
@@ -113,10 +125,11 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
       description: remarks.trim() || title.trim(),
       files,
       barcode: barcode.trim(),
+      initialAssigneeId: initialPoolUserIds.length > 0 ? initialAssigneeId : undefined,
     });
     if (!newDoc) return;
 
-    setTitle(''); setBarcode(''); setRemarks(''); setFiles([]);
+    setTitle(''); setBarcode(''); setRemarks(''); setFiles([]); setInitialAssigneeId('');
     onClose();
     setSelectedDocument(newDoc);
   };
@@ -212,7 +225,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
                   <select
                     id="reg-input-doctype"
                     value={documentType}
-                    onChange={e => setDocumentType(e.target.value)}
+                    onChange={e => { setDocumentType(e.target.value); setInitialAssigneeId(''); }}
                     className="w-full text-xs sm:text-sm bg-white border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
                   >
                     {activeTypes.map(t => (
@@ -374,7 +387,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
               <div className="flex items-center gap-1.5">
                 <Layers className="w-4 h-4 text-blue-700" />
                 <span className="text-xs font-bold text-blue-950 uppercase tracking-wider">
-                  Target Workflow: {resolvedWorkflow.title}
+                  Workflow: {resolvedWorkflow.title}
                 </span>
               </div>
               <span className="text-[10px] text-blue-700 font-semibold bg-white px-2 py-0.5 rounded border border-blue-200">
@@ -383,10 +396,21 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
             </div>
             
             <p className="text-[11px] text-blue-800/80 mb-3">
-              {resolvedWorkflow.steps.length > 1 && resolvedWorkflow.steps[0]?.requiredAction === 'Receive'
+              {resolvedWorkflow.steps[0]?.assignmentSource === 'personnel_pool'
+                ? 'Choose the Phase 1 assignee below. The document will remain in Intake until that person completes it.'
+                : resolvedWorkflow.steps.length > 1 && resolvedWorkflow.steps[0]?.requiredAction === 'Receive'
                 ? 'Registration completes the intake phase and routes the document directly to Phase 2.'
                 : 'Upon registration, the document will enter Phase 1 and be routed to the assigned queue.'}
             </p>
+
+            {initialPoolUsers.length > 0 && <label className="mb-3 block rounded-lg border border-blue-200 bg-white p-3 text-xs font-semibold text-slate-700">
+              Assign Phase {firstOperationalStep?.stepNumber} to <span className="text-rose-500">*</span>
+              <select required value={initialAssigneeId} onChange={event => setInitialAssigneeId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-blue-300 bg-white p-2.5 text-sm font-normal">
+                <option value="">Choose eligible personnel...</option>
+                {initialPoolUsers.map(user => <option key={user.id} value={user.id}>{user.name} — {user.roleTitle}</option>)}
+              </select>
+              <span className="mt-1 block font-normal text-slate-500">{firstOperationalStep?.name}</span>
+            </label>}
 
             <div className="space-y-1.5">
               {resolvedWorkflow.steps.map(step => (
@@ -401,7 +425,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
                     <span className="font-semibold text-slate-900">{step.name}</span>
                   </div>
                   <div className="text-right">
-                    <span className="font-medium text-blue-700">{step.assigneeName}</span>
+                    <span className="font-medium text-blue-700">{step.assignmentSource === 'personnel_pool' ? 'Selected from personnel pool' : step.assigneeName}</span>
                   </div>
                 </div>
               ))}
@@ -432,9 +456,9 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
             <button
               type="submit"
               id="btn-submit-register-document"
-              disabled={isDuplicateBarcode || !resolvedWorkflow}
+              disabled={isDuplicateBarcode || !resolvedWorkflow || (initialPoolUsers.length > 0 && !initialAssigneeId)}
               className={`px-5 py-2 text-xs sm:text-sm font-semibold text-white rounded-lg shadow-sm transition-colors flex items-center gap-2 cursor-pointer ${
-                isDuplicateBarcode || !resolvedWorkflow ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                isDuplicateBarcode || !resolvedWorkflow || (initialPoolUsers.length > 0 && !initialAssigneeId) ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
               <span>Docket & Launch Workflow</span>

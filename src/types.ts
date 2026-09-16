@@ -288,6 +288,8 @@ export interface WorkflowStepTemplate {
   allowReturn: boolean;
   allowHold?: boolean;
   requiresAttachment: boolean;
+  assignmentSource?: 'workflow' | 'personnel_pool' | 'employment_routing';
+  personnelPoolUserIds?: string[];
   payrollAssignmentSource?: 'workflow' | 'employment_routing';
   externalPurpose?: 'Approval' | 'Comments' | 'Signature' | 'Review' | 'Recommendation' | 'Certification' | 'Other';
   externalDestinationMode?: 'FIXED_DESTINATION' | 'SELECT_AT_HANDOFF';
@@ -322,6 +324,8 @@ export interface WorkflowStepInstance {
   allowHold?: boolean;
   requiresAttachment?: boolean;
   payrollAssignmentSource?: WorkflowStepTemplate['payrollAssignmentSource'];
+  assignmentSource?: WorkflowStepTemplate['assignmentSource'];
+  personnelPoolUserIds?: string[];
   stepNumber: number;
   name: string;
   assignedTo: {
