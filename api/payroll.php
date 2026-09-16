@@ -205,10 +205,15 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
             $itemId=required($entry,'id'); fail_unless(isset($existing[$itemId]) && !isset($received[$itemId]),'Invalid payroll item in this batch.'); $received[$itemId]=true;
             $clean[]=['id'=>$itemId,'barcode'=>required($entry,'barcode'),'title'=>required($entry,'title',300),'office'=>required($entry,'office'),'classificationType'=>required($entry,'classificationType')];
         }
-        $batchBarcode=required($d,'batchBarcode'); assert_editable_batch_barcodes($s,$batch,$clean,$batchBarcode);
+        $batchBarcode=trim((string)($d['batchBarcode']??($batch['batchBarcode']??$batch['batchNumber']))); fail_unless($batchBarcode!=='','Batch barcode is required.'); assert_editable_batch_barcodes($s,$batch,$clean,$batchBarcode);
         foreach ($clean as $entry) { $itemIndex=index_of($s['payrollItems'],$entry['id']); $item=&$s['payrollItems'][$itemIndex]; $item['barcode']=$entry['barcode']; $item['title']=$entry['title']; $item['office']=$entry['office']; $item['classificationType']=$entry['classificationType']; $item['updatedAt']=now(); unset($item); }
-        $batch['batchBarcode']=$batchBarcode; $batch['batchNumber']=$batchBarcode; $batch['office']=required($d,'office'); $batch['payrollType']=required($d,'payrollType');
-        $batch['payrollPeriod']=is_string($d['payrollPeriod']??null)?trim($d['payrollPeriod']):''; $batch['receivedFromLiaison']=is_string($d['receivedFromLiaison']??null)?trim($d['receivedFromLiaison']):''; $batch['remarks']=is_string($d['remarks']??null)?trim($d['remarks']):''; $batch['updatedAt']=now();
+        $offices=array_values(array_unique(array_column($clean,'office'))); $types=array_values(array_unique(array_column($clean,'classificationType')));
+        $derivedOffice=count($offices)===1?$offices[0]:$offices[0].' +'.(count($offices)-1).' offices';
+        $derivedType=count($types)===1?$types[0]:$types[0].' & Others ('.count($types).' Types)';
+        $batch['batchBarcode']=$batchBarcode; $batch['batchNumber']=$batchBarcode; $batch['office']=isset($d['office'])?required($d,'office'):$derivedOffice; $batch['payrollType']=isset($d['payrollType'])?required($d,'payrollType'):$derivedType;
+        if (isset($d['payrollPeriod'])) $batch['payrollPeriod']=is_string($d['payrollPeriod'])?trim($d['payrollPeriod']):'';
+        if (isset($d['receivedFromLiaison'])) $batch['receivedFromLiaison']=is_string($d['receivedFromLiaison'])?trim($d['receivedFromLiaison']):'';
+        $batch['remarks']=is_string($d['remarks']??null)?trim($d['remarks']):''; $batch['updatedAt']=now();
         return $batch;
     }
     if ($action==='deletePayrollBatch') {

@@ -318,8 +318,9 @@ test('record-level payroll views expose only a processor’s assigned work group
 
 test('unrouted payroll batches can be edited and deleted from payroll management',async()=>{
   const batch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'EDITABLE-BATCH-001',payrollPeriod:'First period',receivedFromLiaison:'Original liaison',remarks:'Original remarks',items:[{title:'Original payroll',barcode:'EDITABLE-PAY-001',office:'HRMDO',classificationType:'Salary'}],files:[]}])).result;
-  const updated=(await admin.action('updatePayrollBatch',[{id:batch.id,batchBarcode:'EDITABLE-BATCH-002',office:'CMO',payrollType:'Voucher',payrollPeriod:'September 2026',receivedFromLiaison:'Updated liaison',remarks:'Updated remarks',items:[{id:batch.itemIds[0],barcode:'EDITABLE-PAY-002',title:'Corrected payroll',office:'CMO',classificationType:'Voucher'}]}])).result;
-  assert.equal(updated.batchNumber,'EDITABLE-BATCH-002');
+  const updated=(await admin.action('updatePayrollBatch',[{id:batch.id,remarks:'Updated remarks',items:[{id:batch.itemIds[0],barcode:'EDITABLE-PAY-002',title:'Corrected payroll',office:'CMO',classificationType:'Voucher'}]}])).result;
+  assert.equal(updated.batchNumber,'EDITABLE-BATCH-001'); assert.equal(updated.office,'CMO'); assert.equal(updated.payrollType,'Voucher');
+  assert.equal(updated.payrollPeriod,'First period'); assert.equal(updated.receivedFromLiaison,'Original liaison');
   assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[0]).title,'Corrected payroll');
   assert.equal(admin.state.payrollItems.find(item=>item.id===batch.itemIds[0]).barcode,'EDITABLE-PAY-002');
   await admin.action('deletePayrollBatch',[batch.id]);
