@@ -495,9 +495,14 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
         $doc['currentStepNumber']=$n; $doc['status']='Returned'; $doc['workflowSteps'][$n-1]['remarks']=$reason;
     } elseif (in_array($action,['completeStep','approveDocument','releaseDocument'],true)) {
         $required=$step['requiredAction']??'Verify & Process';
+        $singlePayrollTarget=null;
         if ($action==='completeStep' && $doc['classification']==='Payroll' && $required==='Verify & Process') {
             $singleItems=array_values(array_filter($s['payrollItems'],fn($item)=>($item['documentId']??null)===$doc['id'] && ($item['batchId']??null)==='SINGLE_ENTRY'));
             if (count($singleItems)>0) fail_unless(payroll_item_is_ready($singleItems[0]),'Choose the employment classification before completing Initial Checking.');
+            $nextStep=$doc['workflowSteps'][$n+1]??null;
+            if (count($singleItems)>0 && $nextStep && ($nextStep['requiredAction']??'')!=='Release & Archive') {
+                $rule=payroll_rule($s,(string)$singleItems[0]['employmentClassification']); $singlePayrollTarget=payroll_route_target($s,$rule,is_string($args[4]??null)?$args[4]:null);
+            }
         }
         fail_unless($step['status']!=='Completed' || ($action==='releaseDocument' && $doc['status']==='Ready_For_Release'),'Step was already completed.',409);
         if ($required==='Approve & Sign' && $step['status']!=='Completed') { require_cap($s,$u,'canApprove'); fail_unless($action==='approveDocument','Use the approval action for this step.'); }
@@ -518,8 +523,13 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
             $doc['custodyHistory'][]=['id'=>uid('custody'),'movementType'=>'FINAL_RELEASE','fromLocation'=>$doc['currentLocation']??'HRMDO','toLocation'=>$details['releasedTo'],'timestamp'=>$releasedAt,'stageNumber'=>$n+1,'remarks'=>$details['receiptRemarks']??'','actorId'=>$u['id'],'actorName'=>$u['name']];
         } elseif ($n+1<count($doc['workflowSteps'])) {
             activate_document_step($doc,$n+1,$step['completedBy']);
+            if ($singlePayrollTarget!==null) {
+                $next=&$doc['workflowSteps'][$n+1];
+                $next['assignedTo']=$singlePayrollTarget['team']!==''?['type'=>'Team','team'=>$singlePayrollTarget['team'],'displayName'=>$singlePayrollTarget['name']]:['type'=>'Person','userId'=>$singlePayrollTarget['id'],'displayName'=>$singlePayrollTarget['name']];
+                unset($next);
+            }
         } else $doc['status']='Ready_For_Release';
-        foreach ($s['payrollItems'] as &$item) if (($item['documentId']??null)===$doc['id']) { $item['status']=$doc['status']==='Released'?'Completed':'In_Progress'; if ($required==='Verify & Process') $item['currentStage']='verification_signing'; if ($doc['status']==='Released') $item['currentStage']='completed'; $item['updatedAt']=now(); } unset($item);
+        foreach ($s['payrollItems'] as &$item) if (($item['documentId']??null)===$doc['id']) { $item['status']=$doc['status']==='Released'?'Completed':'In_Progress'; if ($required==='Verify & Process') $item['currentStage']='verification_signing'; if ($singlePayrollTarget!==null) { $item['assignedToUserId']=$singlePayrollTarget['id']; $item['assignedToName']=$singlePayrollTarget['name']; } if ($doc['status']==='Released') $item['currentStage']='completed'; $item['updatedAt']=now(); } unset($item);
     }
     return $doc;
 }

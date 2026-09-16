@@ -10,7 +10,7 @@ type Dialog = 'claim' | 'complete' | 'hold' | 'compliance' | 'recheck' | 'return
 
 export const DocumentDetailModal: React.FC = () => {
   const {
-    selectedDocument: doc, setSelectedDocument, currentUser, users, payrollItems, auditLogs, can,
+    selectedDocument: doc, setSelectedDocument, currentUser, users, payrollItems, employmentRoutingRules, auditLogs, can,
     claimTask, completeStep, returnStep, reassignTask, approveDocument, releaseDocument, placeDocumentHold, submitDocumentCompliance, recheckDocumentHold,
     addDocumentRemark, uploadSupportingFile, updatePayrollItemClassification,
     recordExternalHandoff, recordExternalReturn,
@@ -33,6 +33,7 @@ export const DocumentDetailModal: React.FC = () => {
   const [returnFile, setReturnFile] = useState<File | null>(null);
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [employmentClassification, setEmploymentClassification] = useState('');
+  const [singlePayrollProcessorId, setSinglePayrollProcessorId] = useState('');
   const [holdReason, setHoldReason] = useState('');
   const [holdFile, setHoldFile] = useState<File | null>(null);
   const [auditQuery, setAuditQuery] = useState('');
@@ -70,21 +71,27 @@ export const DocumentDetailModal: React.FC = () => {
   if (!doc || !current) return null;
 
   const close = () => { setDialog(null); setSelectedDocument(null); };
-  const resetDialog = () => { setDialog(null); setRemarks(''); setActionTaken(''); setReturnReason(''); setReleasedTo(''); setReleaseMode('HRMDO Liaison'); setOtherReleaseMode(''); setReassignUserId(''); setReassignReason(''); setReturnedBy(''); setExternalResult(''); setAttachmentFile(null); setHandoffFile(null); setReturnFile(null); setEmploymentClassification(''); setHoldReason(''); setHoldFile(null); };
+  const resetDialog = () => { setDialog(null); setRemarks(''); setActionTaken(''); setReturnReason(''); setReleasedTo(''); setReleaseMode('HRMDO Liaison'); setOtherReleaseMode(''); setReassignUserId(''); setReassignReason(''); setReturnedBy(''); setExternalResult(''); setAttachmentFile(null); setHandoffFile(null); setReturnFile(null); setEmploymentClassification(''); setSinglePayrollProcessorId(''); setHoldReason(''); setHoldFile(null); };
   const saved = async (operation: () => Promise<unknown>) => { const result = await operation(); if (result) resetDialog(); };
   const phaseLabel = `Phase ${doc.currentStepNumber}`;
   const workflowProgress = Math.round((doc.workflowSteps.filter(step => step.status === 'Completed').length / Math.max(doc.totalSteps, 1)) * 100);
   const formatFileSize = (bytes?: number) => !bytes ? 'Size unavailable' : bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
   const requiresPayrollClassification = !!payrollItem && doc.classification === 'Payroll' && current.requiredAction === 'Verify & Process';
   const selectedClassification = employmentClassification || payrollItem?.employmentClassification || '';
+  const normalizedClassification = selectedClassification === 'Job Order (JOW)' ? 'JOW/COS' : selectedClassification;
+  const payrollRoutingRule = employmentRoutingRules.find(rule => rule.classification === normalizedClassification);
+  const nextPayrollStep = doc.workflowSteps[doc.currentStepNumber];
+  const routesSinglePayroll = requiresPayrollClassification && !!nextPayrollStep && nextPayrollStep.requiredAction !== 'Release & Archive';
+  const requiresPoolSelection = routesSinglePayroll && payrollRoutingRule?.assignmentMode === 'pool';
   const isHeld = doc.status === 'On_Hold';
   const isReadyForRecheck = doc.status === 'Ready_For_Recheck';
   const execute = async () => {
     if (requiresPayrollClassification) {
       if (!selectedClassification) return;
       if (selectedClassification !== payrollItem?.employmentClassification && !(await updatePayrollItemClassification(payrollItem!.id, selectedClassification))) return;
+      if (requiresPoolSelection && !singlePayrollProcessorId) return;
     }
-    await saved(() => completeStep(doc.id, remarks, actionTaken.trim() || current.requiredAction || 'Processed'));
+    await saved(() => completeStep(doc.id, remarks, actionTaken.trim() || current.requiredAction || 'Processed', [], routesSinglePayroll ? singlePayrollProcessorId : ''));
   };
   const dialogTitle: Record<Exclude<Dialog, null>, string> = {
     claim: 'Claim task', complete: 'Complete and advance', hold: 'Place document on hold', compliance: 'Submit compliance', recheck: isHeld ? 'Comply and resume' : 'Review compliance and resume', return: 'Return for rework', approve: 'Approve and sign', release: 'Release document', reassign: 'Reassign task', remark: 'Add remark', upload: 'Upload file', handoff: 'Record external handoff', 'external-return': 'Record return to HRMDO',
@@ -216,7 +223,9 @@ export const DocumentDetailModal: React.FC = () => {
           <div className="mt-4 space-y-3">
             {dialog === 'claim' && <p className="text-sm text-slate-600">Claim this task and make yourself responsible for its current phase.</p>}
             {dialog === 'complete' && <>
-              {requiresPayrollClassification && <label className="block text-sm font-semibold text-slate-700">Employment Classification<select autoFocus required value={selectedClassification} onChange={event => setEmploymentClassification(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm"><option value="">Select employment classification</option><option value="JOW/COS">Job Order (JOW) / COS</option><option value="Casual">Casual Personnel</option><option value="Regular">Regular Plantilla</option></select></label>}
+              {requiresPayrollClassification && <label className="block text-sm font-semibold text-slate-700">Employment Classification<select autoFocus required value={selectedClassification} onChange={event => { setEmploymentClassification(event.target.value); setSinglePayrollProcessorId(''); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2 text-sm"><option value="">Select employment classification</option><option value="JOW/COS">Job Order (JOW) / COS</option><option value="Casual">Casual Personnel</option><option value="Regular">Regular Plantilla</option></select></label>}
+              {requiresPoolSelection && <label className="block text-sm font-semibold text-slate-700">Assign next phase to<select required value={singlePayrollProcessorId} onChange={event => setSinglePayrollProcessorId(event.target.value)} className="mt-1 w-full rounded-lg border border-blue-300 bg-white p-2 text-sm"><option value="">Choose personnel...</option>{(payrollRoutingRule?.eligibleProcessorIds || []).map(id => { const user=users.find(person => person.id===id); return user?<option key={id} value={id}>{user.name} — {user.roleTitle}</option>:null; })}</select></label>}
+              {routesSinglePayroll && payrollRoutingRule && payrollRoutingRule.assignmentMode !== 'pool' && <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">Next phase: <strong>{payrollRoutingRule.assignmentMode === 'team' ? payrollRoutingRule.assignedTeam : payrollRoutingRule.primaryProcessorName}</strong></p>}
               <input autoFocus={!requiresPayrollClassification} value={actionTaken} onChange={event => setActionTaken(event.target.value)} placeholder={`Action taken (defaults to ${current.requiredAction || 'complete'})`} className="w-full rounded-lg border border-slate-300 p-2 text-sm" />
               <textarea value={remarks} onChange={event => setRemarks(event.target.value)} placeholder="Remarks (optional)" className="min-h-24 w-full rounded-lg border border-slate-300 p-2 text-sm" />
             </>}

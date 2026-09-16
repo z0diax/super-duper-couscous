@@ -329,7 +329,9 @@ test('unrouted payroll batches can be edited and deleted from payroll management
 });
 test('single payroll follows configured workflow and synchronizes its item on release',async()=>{
   await admin.action('updateWorkflowTemplate',[{...payrollWorkflow,isActive:false}]);
-  const template=(await admin.action('createWorkflowTemplate',[{title:'Single payroll release',description:'Test',classification:'Payroll',documentType:'Salary',employmentClassification:'Job Order (JOW)',isActive:true,steps:[step(1,'processor','Verify & Process'),step(2,'releasing_officer','Release & Archive')]}])).result;
+  const regularRule=admin.state.employmentRoutingRules.find(rule=>rule.classification==='Regular'); const processingUser=admin.state.users.find(user=>user.role==='processor'); const approvalUser=admin.state.users.find(user=>user.role==='approver');
+  await admin.action('updateEmploymentRoutingRule',[{...regularRule,assignmentMode:'pool',eligibleProcessorIds:[processingUser.id,approvalUser.id]}]);
+  const template=(await admin.action('createWorkflowTemplate',[{title:'Single payroll release',description:'Test',classification:'Payroll',documentType:'Salary',employmentClassification:'Job Order (JOW)',isActive:true,steps:[step(1,'processor','Verify & Process'),step(2,'approver','Review & Recommend'),step(3,'releasing_officer','Release & Archive')]}])).result;
   const single=(await admin.action('registerSinglePayroll',[{office:'HRMDO',payrollType:'Salary',classificationType:'Salary',title:'Single salary',barcode:'SINGLE-001',files:[]}])).result;
   assert.equal(single.workflowTemplateId,template.id);
   const item=admin.state.payrollItems.find(i=>i.documentId===single.id);
@@ -350,13 +352,18 @@ test('single payroll follows configured workflow and synchronizes its item on re
   await processor.action('completeStep',[single.id,'Checked without classification'],422);
   await processor.action('updatePayrollItemClassification',[item.id,'Regular']);
   assert.equal(processor.state.documents.find(d=>d.id===single.id).employmentClassification,'Regular');
-  await processor.action('completeStep',[single.id,'Classified and verified']);
+  await processor.action('completeStep',[single.id,'Classified and verified'],422);
+  await processor.action('completeStep',[single.id,'Classified and verified','Verify & Process',[],approvalUser.id]);
+  await approver.refresh(); const routedSingle=approver.state.documents.find(d=>d.id===single.id); assert.equal(routedSingle.workflowSteps[1].assignedTo.userId,approvalUser.id);
+  assert.equal(approver.state.payrollItems.find(i=>i.documentId===single.id).assignedToUserId,approvalUser.id);
+  await approver.action('completeStep',[single.id,'Payroll reviewed']);
   await releaser.refresh();
   await releaser.action('releaseDocument',[single.id,{releasedTo:'Payroll liaison',releaseMode:'External Liaison'}]);
   assert.equal(releaser.state.payrollItems.find(i=>i.documentId===single.id).status,'Completed');
   await admin.action('deleteDocument',[single.id]);
   assert.equal(admin.state.documents.some(record=>record.id===single.id),false);
   assert.equal(admin.state.payrollItems.some(record=>record.documentId===single.id),false);
+  await admin.action('updateEmploymentRoutingRule',[{...regularRule,assignmentMode:'fixed',primaryProcessorId:processingUser.id}]);
 });
 test('only the system administrator can delete an ordinary document',async()=>{
   const record=(await admin.action('registerDocument',[documentData('DELETE-DOCUMENT-001')])).result;
