@@ -6,7 +6,6 @@ import { useWorkspaceState } from '../services/workspace';
 import { documentSenderLabel } from '../services/documentDisplay';
 import { 
   FileStack, 
-  Search, 
   Filter, 
   Download, 
   Plus, 
@@ -26,7 +25,6 @@ interface DocumentRegistryProps {
 export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegisterModal }) => {
   const { documents, setSelectedDocument, showToast, deleteDocument, can, currentUser } = useApp();
 
-  const [searchQuery, setSearchQuery] = useWorkspaceState(currentUser.id, 'registry.search', '');
   const [datasetFilter, setDatasetFilter] = useWorkspaceState<'all' | 'v2' | 'v1'>(currentUser.id, 'registry.dataset-filter', 'all');
   const [classificationFilter, setClassificationFilter] = useWorkspaceState<string>(currentUser.id, 'registry.classification-filter', 'all');
   const [statusFilter, setStatusFilter] = useWorkspaceState<string>(currentUser.id, 'registry.status-filter', 'all');
@@ -51,18 +49,6 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
 
     // Priority filter
     if (priorityFilter !== 'all' && doc.priority !== priorityFilter) return false;
-
-    // Search query
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchesTracking = doc.trackingNumber.toLowerCase().includes(q);
-      const matchesTitle = doc.title.toLowerCase().includes(q);
-      const matchesSubject = doc.subject.toLowerCase().includes(q);
-      const matchesSource = doc.sourceOffice.toLowerCase().includes(q);
-      const matchesSender = doc.senderName.toLowerCase().includes(q);
-      const matchesLegacy = doc.legacyId ? doc.legacyId.toLowerCase().includes(q) : false;
-      return matchesTracking || matchesTitle || matchesSubject || matchesSource || matchesSender || matchesLegacy;
-    }
 
     return true;
   });
@@ -156,21 +142,8 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
         </div>
       </div>
 
-      {/* Search & Multiple Filters */}
-      <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-xs flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          <input
-            id="registry-search-input"
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search tracking number, title, subject, office, or archive ID..."
-            className="w-full text-xs sm:text-sm pl-9 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
+      {/* Registry Filters */}
+      <div className="flex flex-wrap items-center justify-end gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-xs">
           {/* Classification */}
           <select
             id="registry-filter-class"
@@ -216,7 +189,6 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
             <option value="Priority">Priority</option>
             <option value="Urgent">Urgent</option>
           </select>
-        </div>
       </div>
 
       {/* Registry Table */}
@@ -226,7 +198,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
             <FileStack className="w-10 h-10 text-slate-300 mx-auto mb-2" />
             <h3 className="text-sm font-semibold text-slate-700">No records found</h3>
             <p className="text-xs text-slate-500 mt-1">
-              Try adjusting your search criteria or clearing filters.
+              Try adjusting or clearing the registry filters.
             </p>
           </div>
         ) : (

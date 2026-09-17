@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/bootstrap.php';
-const COLLECTIONS=['assigneeDesignations','systemRoles','documents','classifications','workflowTemplates','leaveApplications','migrationSummaries','payrollBatches','payrollItems','workGroups','employmentRoutingRules'];
+const COLLECTIONS=['assigneeDesignations','systemRoles','documents','classifications','workflowTemplates','leaveApplications','ewpRecords','migrationSummaries','payrollBatches','payrollItems','workGroups','employmentRoutingRules'];
 function uid(string $prefix): string { return $prefix.'-'.bin2hex(random_bytes(12)); }
 function now(): string { return gmdate('Y-m-d\TH:i:s\Z'); }
 function defaults(): array {

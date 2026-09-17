@@ -4,11 +4,11 @@ function app_config(): array {
     static $config;
     if ($config !== null) return $config;
     $config = array_merge([
-        'host'=>'127.0.0.1', 'port'=>3306, 'database'=>'hrmdo_document_tracking',
+        'host'=>'127.0.0.1', 'port'=>3306, 'database'=>'hrmdo_document_tracking', 'archive_database'=>'document_tracking',
         'username'=>'root', 'password'=>'', 'session_timeout'=>1800,
         'upload_max_bytes'=>10 * 1024 * 1024, 'upload_directory'=>dirname(__DIR__).'/storage/uploads',
     ], is_file(__DIR__.'/config.php') ? require __DIR__.'/config.php' : []);
-    foreach (['host','port','database','username','password','upload_directory'] as $key) {
+    foreach (['host','port','database','archive_database','username','password','upload_directory'] as $key) {
         $value = getenv('HRMDO_'.strtoupper($key));
         if ($value !== false) $config[$key] = $value;
     }

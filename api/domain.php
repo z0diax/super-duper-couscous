@@ -87,6 +87,10 @@ function can_view_leave_application(array $s,array $u,array $leave): bool {
     return can_view_all_operational_records($s,$u)
         || ($modules===null || in_array('leave',$modules,true));
 }
+function can_view_ewp_records(array $u): bool {
+    $modules=$u['sidebarModules']??null;
+    return $u['role']==='admin' || $modules===null || in_array('leave',$modules,true);
+}
 function can_view_attachment_owner(array $s,array $u,?string $ownerId,?string $uploadedBy=null): bool {
     if ($ownerId===null || $ownerId==='') return $uploadedBy===$u['id'];
     foreach ($s['documents'] as $doc) if ($doc['id']===$ownerId) return can_view_document($s,$u,$doc);
@@ -128,9 +132,11 @@ function filter_state_for_view(array $s,array $u): array {
     $fullBatchIds=array_column(array_values(array_filter($visibleBatches,fn($batch)=>can_view_full_payroll_batch($s,$u,$batch))),'id');
     $authorizedLeaves=array_values(array_filter($s['leaveApplications'],fn($leave)=>can_view_leave_application($s,$u,$leave)));
     $visibleLeaves=array_values(array_filter($authorizedLeaves,fn($leave)=>!empty($leave['isLegacyV1'])));
-    $visibleIds=array_merge(array_column($visibleDocuments,'id'),$fullBatchIds,array_column($visibleItems,'id'),array_column($visibleGroups,'id'),array_column($authorizedLeaves,'id'));
+    $visibleEwp=can_view_ewp_records($u)?$s['ewpRecords']:[];
+    $visibleIds=array_merge(array_column($visibleDocuments,'id'),$fullBatchIds,array_column($visibleItems,'id'),array_column($visibleGroups,'id'),array_column($authorizedLeaves,'id'),array_column($visibleEwp,'id'));
     $s['documents']=$visibleDocuments; $s['payrollItems']=$visibleItems; $s['workGroups']=$visibleGroups; $s['payrollBatches']=$visibleBatches;
     $s['leaveApplications']=$visibleLeaves;
+    $s['ewpRecords']=$visibleEwp;
     $s['auditLogs']=array_values(array_filter($s['auditLogs'],fn($event)=>($event['actorId']??null)===$u['id'] || in_array($event['documentId']??'', $visibleIds,true)));
     return $s;
 }
@@ -141,6 +147,7 @@ function assert_barcode(array $s,string $barcode,array $additional=[],string $ex
     foreach ($s['payrollBatches'] as $r) { $codes[]=$r['batchBarcode']??''; $codes[]=$r['batchNumber']; }
     foreach ($s['payrollItems'] as $r) $codes[]=$r['barcode'];
     foreach ($s['leaveApplications'] as $r) if (($r['id']??'')!==$excludeLeaveId) { $codes[]=$r['barcode']??''; $codes[]=$r['trackingNumber']??''; }
+    foreach ($s['ewpRecords'] as $r) $codes[]=$r['barcode']??'';
     fail_unless(!in_array(strtolower($barcode),array_map('strtolower',$codes),true),'Barcode is already in use.',409);
 }
 function validated_leave_date_ranges($submitted): array {

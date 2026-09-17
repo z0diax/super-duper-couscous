@@ -4,14 +4,16 @@ import {
   X, 
   Upload, 
   FileText, 
-  ArrowRight, 
+  ArrowRight,
   Layers, 
   Paperclip,
   Trash2,
   Barcode,
   Building2,
   AlertTriangle,
-  Check
+  Check,
+  Eye,
+  UserCheck
 } from 'lucide-react';
 import { resolveWorkflow } from '../services/workflow';
 import { DocumentClassification } from '../types';
@@ -46,6 +48,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
   const [remarks, setRemarks] = useState(savedDraft.remarks || '');
   const [files, setFiles] = useState<File[]>([]);
   const [initialAssigneeId, setInitialAssigneeId] = useState('');
+  const [isWorkflowPreviewOpen, setIsWorkflowPreviewOpen] = useState(false);
 
   useEffect(() => {
     writeWorkspaceValue(currentUser.id, 'draft.register-document', { classification, documentType, employmentClassification, title, barcode, sourceOffice, remarks });
@@ -136,16 +139,16 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-xs overflow-y-auto animate-in fade-in-50">
-      <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+      <section role="dialog" aria-modal="true" aria-labelledby="register-document-title" className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
         
         {/* Modal Header */}
-        <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800">
+        <header className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white">
               <FileText className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-bold">
+              <h2 id="register-document-title" className="text-base sm:text-lg font-bold">
                 Register Incoming Document
               </h2>
               <p className="text-xs text-slate-400">
@@ -154,45 +157,20 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
             </div>
           </div>
           <button
+            type="button"
+            aria-label="Close document intake"
             id="btn-close-register-modal"
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
-        </div>
+        </header>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 sm:space-y-5">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 sm:space-y-5">
           
-          {/* Payroll Separation Notice Banner */}
-          <div className="p-3.5 bg-blue-50/90 border border-blue-200/80 rounded-xl flex items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-lg bg-blue-600 text-white shrink-0">
-                <Layers className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="font-bold text-blue-900">Looking to register Payroll?</span>
-                <p className="text-blue-700 text-[11px] mt-0.5">
-                  Payroll documents have a dedicated workspace for Single Vouchers &amp; Batch Transmittals.
-                </p>
-              </div>
-            </div>
-            {onSwitchToPayroll && (
-              <button
-                type="button"
-                onClick={() => {
-                  onClose();
-                  onSwitchToPayroll();
-                }}
-                className="px-3 py-1.5 bg-white hover:bg-blue-100/60 text-blue-700 border border-blue-300 font-semibold rounded-lg text-xs shrink-0 transition-colors shadow-2xs cursor-pointer flex items-center gap-1"
-              >
-                <span>Open Payroll Intake</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
           {/* 1. Classification & Type */}
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
             <div>
@@ -219,14 +197,13 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Document Type {classification === 'Others' ? '*' : ''}
-                </label>
+                <label htmlFor="reg-input-doctype" className="mb-1 block text-xs font-semibold text-slate-700">Document Type {classification === 'Others' ? '*' : ''}</label>
+                <div className="flex items-center gap-2">
                   <select
                     id="reg-input-doctype"
                     value={documentType}
                     onChange={e => { setDocumentType(e.target.value); setInitialAssigneeId(''); }}
-                    className="w-full text-xs sm:text-sm bg-white border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
+                    className="min-w-0 flex-1 text-xs sm:text-sm bg-white border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
                   >
                     {activeTypes.map(t => (
                       <option key={t.id} value={t.name}>
@@ -234,8 +211,19 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
                       </option>
                     ))}
                   </select>
+                  <button type="button" disabled={!resolvedWorkflow} onClick={() => setIsWorkflowPreviewOpen(true)} className="inline-flex h-[42px] shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"><Eye className="h-3.5 w-3.5" /><span className="hidden lg:inline">Show Workflow</span><span className="lg:hidden">Workflow</span></button>
+                </div>
               </div>
             </div>
+            {initialPoolUsers.length > 0 && <label className="block rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs font-semibold text-slate-700 sm:col-span-2">
+              Assign Phase {firstOperationalStep?.stepNumber} to <span className="text-rose-500">*</span>
+              <select required value={initialAssigneeId} onChange={event => setInitialAssigneeId(event.target.value)} className="mt-1.5 w-full rounded-lg border border-blue-300 bg-white p-2.5 text-sm font-normal">
+                <option value="">Choose eligible personnel...</option>
+                {initialPoolUsers.map(user => <option key={user.id} value={user.id}>{user.name} — {user.roleTitle}</option>)}
+              </select>
+              <span className="mt-1 block font-normal text-slate-500">This person will receive {firstOperationalStep?.name}.</span>
+            </label>}
+            {!resolvedWorkflow && <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800 sm:col-span-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>No active workflow is configured for this classification and document type.</span></div>}
           </div>
 
           {/* Title */}
@@ -381,8 +369,8 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
           </div>
 
           {/* Target Workflow: Standard Office Order Routing Workflow */}
-          {resolvedWorkflow ? (
-          <div className="p-4 rounded-xl bg-blue-50/70 border border-blue-200">
+          {false && (resolvedWorkflow ? (
+          <div className="hidden">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
                 <Layers className="w-4 h-4 text-blue-700" />
@@ -432,7 +420,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
             </div>
           </div>
           ) : (
-            <div className="p-4 rounded-xl bg-amber-50 border border-amber-300 flex items-start gap-3" role="alert">
+            <div className="hidden" role="alert">
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
                 <p className="text-xs font-bold text-amber-950">No active workflow is configured</p>
@@ -441,10 +429,12 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
                 </p>
               </div>
             </div>
-          )}
+          ))}
+
+          </div>
 
           {/* Modal Footer */}
-          <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
+          <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
             <button
               type="button"
               id="btn-cancel-register"
@@ -464,10 +454,49 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
               <span>Docket & Launch Workflow</span>
               <ArrowRight className="w-4 h-4" />
             </button>
-          </div>
+          </footer>
 
         </form>
-      </div>
+
+        {isWorkflowPreviewOpen && resolvedWorkflow && <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+          <section role="dialog" aria-modal="true" aria-label="Document workflow" className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 bg-slate-900 px-5 py-4 text-white sm:px-6">
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600"><Layers className="h-5 w-5" /></span>
+                <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-300">Document workflow</p><h3 className="mt-1 text-base font-bold sm:text-lg">{resolvedWorkflow.title}</h3><p className="mt-1 text-xs text-slate-300">{classification} · {documentType}</p></div>
+              </div>
+              <button type="button" aria-label="Close workflow" onClick={() => setIsWorkflowPreviewOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"><X className="h-5 w-5" /></button>
+            </header>
+
+            <div className="min-h-0 overflow-y-auto p-5 sm:p-6">
+              <div className="mb-5 grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Phases</p><p className="mt-1 text-lg font-bold text-slate-900">{resolvedWorkflow.steps.length}</p></div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Starts at</p><p className="mt-1 text-sm font-bold text-slate-900">{resolvedWorkflow.steps[0]?.assignmentSource === 'personnel_pool' ? 'Phase 1' : resolvedWorkflow.steps[0]?.requiredAction === 'Receive' && resolvedWorkflow.steps.length > 1 ? 'Phase 2' : 'Phase 1'}</p></div>
+              </div>
+
+              <div className="space-y-3">{resolvedWorkflow.steps.map((step, index) => {
+                const poolCount = step.personnelPoolUserIds?.length || 0;
+                const routing = step.assignmentSource === 'personnel_pool'
+                  ? `Personnel pool · ${poolCount} eligible`
+                  : step.assignmentSource === 'employment_routing'
+                    ? 'Employment classification rules'
+                    : step.assigneeName;
+                const registrationCompletes = index === 0 && step.requiredAction === 'Receive' && step.assignmentSource !== 'personnel_pool' && resolvedWorkflow.steps.length > 1;
+                return <article key={step.stepNumber} className="relative flex gap-3 rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="flex flex-col items-center"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${registrationCompletes ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-600 text-white'}`}>{registrationCompletes ? <Check className="h-4 w-4" /> : step.stepNumber}</span>{index < resolvedWorkflow.steps.length - 1 && <span className="mt-2 h-full min-h-5 w-px bg-slate-200" />}</div>
+                  <div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Phase {step.stepNumber}</p><h4 className="mt-0.5 text-sm font-bold text-slate-900">{step.name}</h4></div><span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">{step.requiredAction}</span></div>
+                    {step.description && <p className="mt-2 text-xs leading-5 text-slate-500">{step.description}</p>}
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-[11px] text-slate-600"><span className="inline-flex items-center gap-1.5"><UserCheck className="h-3.5 w-3.5 text-blue-500" />{routing}</span></div>
+                    {registrationCompletes && <p className="mt-2 text-[11px] font-medium text-emerald-700">Completed automatically during registration</p>}
+                  </div>
+                </article>;
+              })}</div>
+            </div>
+
+            <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:px-6"><p className="text-[11px] text-slate-500">This workflow is selected from the document classification and type.</p><button type="button" onClick={() => setIsWorkflowPreviewOpen(false)} className="rounded-lg bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white hover:bg-blue-700">Done</button></footer>
+          </section>
+        </div>}
+      </section>
     </div>
   );
 };

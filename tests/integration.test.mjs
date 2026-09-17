@@ -36,6 +36,12 @@ test('user accounts can sign in; non-admin accounts cannot alter configuration',
   await admin.action('deleteUser',[admin.state.users.find(u=>u.role==='admin').id],422);
   assert(!JSON.stringify(admin.state).includes(testPassword)); assert(!JSON.stringify(admin.state).includes('password_hash'));
 });
+test('EWP intake validates and stores a current record',async()=>{
+  const record=(await admin.action('registerEwpRecord',[{barcode:'EWP-TEST-001',employeeName:'Test Employee',office:'HRMDO',amount:2500.50,purpose:'Medical assistance',remarks:'Complete requirements'}])).result;
+  assert.equal(record.barcode,'EWP-TEST-001'); assert.equal(record.amount,2500.5); assert.equal(record.status,'Recorded');
+  assert.equal(admin.state.ewpRecords.find(item=>item.id===record.id).purpose,'Medical assistance');
+  await admin.action('registerEwpRecord',[{barcode:'ewp-test-001',employeeName:'Duplicate',office:'HRMDO',amount:1,purpose:'Duplicate',remarks:''}],409);
+});
 test('payroll batch intake derives its first phases from the configured workflow template',async()=>{
   const configured=(await admin.action('createWorkflowTemplate',[{title:'Config-driven Voucher Payroll',description:'Custom payroll phase labels and actions',classification:'Payroll',documentType:'Voucher',employmentClassification:'Job Order (JOW)',isActive:true,steps:[
     {...step(1,'receiving_officer','Review & Recommend'),name:'Receiving Validation'},

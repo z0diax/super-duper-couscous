@@ -37,6 +37,7 @@ export interface UserAccount {
   division: string;
   position: string;
   avatarInitials: string;
+  avatarSeed?: string;
   sidebarModules?: SidebarModule[];
   isMigratedV1?: boolean;
   legacyId?: string;
@@ -557,6 +558,21 @@ export interface LeaveApplicationRecord {
   disapprovalReason?: string;
   remarks?: string;
   v1MigrationStatus?: 'Reconciled' | 'Historical Reference';
+}
+
+export interface EwpRecord {
+  id: string;
+  barcode: string;
+  employeeName: string;
+  office: string;
+  amount: number;
+  purpose: string;
+  remarks: string;
+  status: 'Recorded';
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface LeaveDateRange {

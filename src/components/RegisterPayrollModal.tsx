@@ -11,13 +11,11 @@ import {
   Trash2, 
   UploadCloud, 
   CheckCircle2, 
-  Clock, 
   AlertCircle,
   Building2,
   UserCheck,
   Barcode,
   ArrowRight,
-  ShieldCheck,
   Split,
   FileText
 } from 'lucide-react';
@@ -97,6 +95,7 @@ export const RegisterPayrollModal: React.FC<Props> = ({
   const [batchBarcode, setBatchBarcode] = useState(savedDraft.batchBarcode || `PB-${new Date().getFullYear()}-${createId().slice(0, 8).toUpperCase()}`);
   const [batchRemarks, setBatchRemarks] = useState(savedDraft.batchRemarks || '');
   const [batchFiles, setBatchFiles] = useState<File[]>([]);
+  const [isWorkflowPreviewOpen, setIsWorkflowPreviewOpen] = useState(false);
   const [items, setItems] = useState<BatchItemEntry[]>(savedDraft.items?.length ? savedDraft.items : [
     {
       id: '1',
@@ -107,22 +106,31 @@ export const RegisterPayrollModal: React.FC<Props> = ({
     }
   ]);
 
-  // Phase 2 assigns employment classification, so intake selects the active
-  // Payroll workflow by document type. An All-employment template is preferred.
-  const singleWorkflowMatches = workflowTemplates
+  // Payroll intake uses the same configured workflow preview for single and
+  // batch entry. The document type only determines which active template wins.
+  const payrollWorkflowFor = (documentType: string) => workflowTemplates
     .filter(workflow => {
       if (!workflow.isActive || workflow.classification !== 'Payroll') return false;
       const types = workflow.documentTypes || [workflow.documentType];
-      return types.some(type => type === singleClassificationType || ['All', 'Default'].includes(type));
+      return types.some(type => type === documentType || ['All', 'Default'].includes(type));
     })
     .sort((a, b) => {
       const score = (workflow: typeof a) => {
         const types = workflow.documentTypes || [workflow.documentType];
-        return (types.includes(singleClassificationType) ? 2 : 0) + (workflow.employmentClassification === 'All' ? 1 : 0);
+        return (types.includes(documentType) ? 2 : 0) + (workflow.employmentClassification === 'All' ? 1 : 0);
       };
       return score(b) - score(a);
-    });
-  const selectedSingleWorkflow = singleWorkflowMatches[0];
+    })[0];
+  const selectedSingleWorkflow = payrollWorkflowFor(singleClassificationType);
+  const selectedBatchTypes = Array.from(new Set(items.map(item => item.classificationType).filter(Boolean)));
+  const batchWorkflowType = selectedBatchTypes.length === 1
+    ? selectedBatchTypes[0]
+    : selectedBatchTypes.length > 1
+      ? 'All'
+      : (batchPayrollType || configuredPayrollTypes[0] || 'All');
+  const selectedBatchWorkflow = payrollWorkflowFor(batchWorkflowType);
+  const previewWorkflow = mode === 'single' ? selectedSingleWorkflow : selectedBatchWorkflow;
+  const previewDocumentType = mode === 'single' ? singleClassificationType : batchWorkflowType;
 
   useEffect(() => {
     writeWorkspaceValue(currentUser.id, 'draft.register-payroll', { mode, singleOffice, singleClassificationType, singleTitle, singleBarcode, singleRemarks, batchOffice, batchPayrollType, batchPeriod, batchLiaison, batchBarcode, batchRemarks, items });
@@ -226,45 +234,48 @@ export const RegisterPayrollModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-6 flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-6 backdrop-blur-xs overflow-y-auto animate-in fade-in-50">
+      <section role="dialog" aria-modal="true" aria-labelledby="register-payroll-title" className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Modal Top Header */}
-        <div className="p-5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between shrink-0">
+        <header className="p-5 border-b border-slate-800 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
               <Layers className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+              <h2 id="register-payroll-title" className="text-base sm:text-lg font-bold tracking-tight">
                 Register Incoming Payroll
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-400">
                 Choose entry mode to initiate single voucher routing or multi-item parallel batch processing
               </p>
             </div>
           </div>
           <button
+            type="button"
+            aria-label="Close payroll intake"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
-        </div>
+        </header>
 
         {/* MODE SELECTOR (Single vs Batch Entry) */}
-        <div className="p-4 sm:p-6 bg-slate-50/40 border-b border-slate-100 shrink-0">
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-            Select Payroll Intake Mode
-          </label>
+        <div className="px-5 pt-5 sm:px-6 sm:pt-6 shrink-0">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <p className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-3">
+            1. Payroll Entry Mode
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Card 1: Single Entry */}
             <button
               type="button"
               onClick={() => setMode('single')}
-              className={`p-4 rounded-xl border-2 text-left transition-all flex items-start gap-3.5 relative ${
+              className={`p-4 rounded-xl border text-left transition-all flex items-start gap-3.5 relative ${
                 mode === 'single'
-                  ? 'border-blue-600 bg-blue-50/70 shadow-xs'
-                  : 'border-slate-200 bg-white hover:border-slate-300'
+                  ? 'border-blue-500 bg-blue-50 shadow-xs ring-1 ring-blue-200'
+                  : 'border-slate-200 bg-white hover:border-blue-300'
               }`}
             >
               <div className={`p-2.5 rounded-lg shrink-0 ${
@@ -292,10 +303,10 @@ export const RegisterPayrollModal: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => setMode('batch')}
-              className={`p-4 rounded-xl border-2 text-left transition-all flex items-start gap-3.5 relative ${
+              className={`p-4 rounded-xl border text-left transition-all flex items-start gap-3.5 relative ${
                 mode === 'batch'
-                  ? 'border-blue-600 bg-blue-50/70 shadow-xs'
-                  : 'border-slate-200 bg-white hover:border-slate-300'
+                  ? 'border-blue-500 bg-blue-50 shadow-xs ring-1 ring-blue-200'
+                  : 'border-slate-200 bg-white hover:border-blue-300'
               }`}
             >
               <div className={`p-2.5 rounded-lg shrink-0 ${
@@ -318,6 +329,7 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                 </div>
               </div>
             </button>
+          </div>
           </div>
         </div>
 
@@ -368,11 +380,22 @@ export const RegisterPayrollModal: React.FC<Props> = ({
               </div>
 
               {/* Payroll Type & Office */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Payroll Classification Type <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <label className="min-w-0 flex-1 text-xs font-bold text-slate-700">
+                      Payroll Classification Type <span className="text-rose-500">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      aria-label="Show payroll workflow"
+                      disabled={!selectedSingleWorkflow}
+                      onClick={() => setIsWorkflowPreviewOpen(true)}
+                      className="shrink-0 text-xs font-semibold text-blue-600 transition-colors hover:text-blue-800 hover:underline disabled:cursor-not-allowed disabled:text-slate-400 disabled:no-underline"
+                    >
+                      Workflow
+                    </button>
+                  </div>
                   <select
                     required
                     value={singleClassificationType}
@@ -418,7 +441,8 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Supporting Documents (DTR, Obligation Request, Payroll Matrix)
                 </label>
-                <div className="border-2 border-dashed border-slate-200 hover:border-blue-400 bg-slate-50/60 rounded-xl p-4 text-center cursor-pointer transition-colors">
+                <input id="single-payroll-files" aria-label="Payroll supporting files" className="hidden" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.txt,.csv,.docx,.xlsx" onChange={e => setSingleFiles(prev => [...prev, ...Array.from(e.target.files || [])])} />
+                <label htmlFor="single-payroll-files" className="block border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50/30 bg-slate-50/60 rounded-xl p-4 text-center cursor-pointer transition-colors">
                   <UploadCloud className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
                   <p className="text-xs font-semibold text-slate-700">
                     Click to attach supporting voucher files or drag and drop
@@ -426,8 +450,7 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                   <p className="text-[11px] text-slate-400 mt-0.5">
                     PDF, Scanned DTR, XLSX up to 10MB
                   </p>
-                  <input aria-label="Payroll supporting files" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.txt,.csv,.docx,.xlsx" onChange={e => setSingleFiles(prev => [...prev, ...Array.from(e.target.files || [])])} />
-                </div>
+                </label>
 
                 {singleFiles.length > 0 && (
                   <div className="mt-2.5 space-y-1.5">
@@ -451,28 +474,6 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                 )}
               </div>
 
-              {/* Configured workflow preview */}
-              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200/80">
-                <div className="text-xs font-bold text-slate-800 mb-3 flex items-center justify-between">
-                  <span>{selectedSingleWorkflow ? `${selectedSingleWorkflow.title} workflow` : 'No matching Payroll workflow'}</span>
-                  <span className="text-[11px] font-normal text-slate-500">Configured phase preview</span>
-                </div>
-                {selectedSingleWorkflow ? <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
-                  {selectedSingleWorkflow.steps.map((phase, idx) => {
-                    const intakeCompletesOnSubmit = idx === 0 && phase.requiredAction === 'Receive';
-                    const activeAfterSubmit = intakeCompletesOnSubmit ? false : idx === (selectedSingleWorkflow.steps[0]?.requiredAction === 'Receive' ? 1 : 0);
-                    return <div key={phase.stepNumber} className={`p-2.5 rounded-lg border text-left ${activeAfterSubmit ? 'bg-blue-50/90 border-blue-200' : 'bg-white border-slate-200'}`}>
-                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-400">
-                        <span>PHASE {phase.stepNumber}</span>
-                        {intakeCompletesOnSubmit && <span className="text-emerald-600 font-bold">&bull; Intake</span>}
-                        {activeAfterSubmit && <span className="text-blue-600 font-bold">&bull; Next</span>}
-                      </div>
-                      <div className="text-xs font-bold text-slate-800 mt-0.5 line-clamp-1">{phase.name}</div>
-                      <div className="text-[11px] text-slate-500 line-clamp-1">{phase.assigneeName}</div>
-                    </div>;
-                  })}
-                </div> : <p className="text-xs text-amber-700">Create one active Payroll workflow for {singleClassificationType || 'the selected document type'} before registering this entry.</p>}
-              </div>
             </form>
           ) : (
             /* ======================================================== */
@@ -516,7 +517,16 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-end gap-2">
+                    <button
+                      type="button"
+                      aria-label="Show payroll workflow"
+                      disabled={!selectedBatchWorkflow}
+                      onClick={() => setIsWorkflowPreviewOpen(true)}
+                      className="h-8 px-2 text-xs font-semibold text-blue-600 transition-colors hover:text-blue-800 hover:underline disabled:cursor-not-allowed disabled:text-slate-400 disabled:no-underline"
+                    >
+                      Workflow
+                    </button>
                     <button
                       type="button"
                       id="btn-batch-add-item"
@@ -642,13 +652,14 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">
                   Transmittal Attachments (Cover Letter, Master Summary Matrix)
                 </label>
-                <div className="border-2 border-dashed border-slate-200 hover:border-blue-400 bg-slate-50/60 rounded-xl p-4 text-center cursor-pointer transition-colors">
+                <input id="batch-payroll-files" aria-label="Batch supporting files" className="hidden" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.txt,.csv,.docx,.xlsx" onChange={e => setBatchFiles(prev => [...prev, ...Array.from(e.target.files || [])])} />
+                <label htmlFor="batch-payroll-files" className="block border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50/30 bg-slate-50/60 rounded-xl p-4 text-center cursor-pointer transition-colors">
                   <UploadCloud className="w-6 h-6 text-slate-400 mx-auto mb-1.5" />
                   <p className="text-xs font-semibold text-slate-700">
                     Click to attach master transmittal files
                   </p>
-                  <input aria-label="Batch supporting files" type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.txt,.csv,.docx,.xlsx" onChange={e => setBatchFiles(prev => [...prev, ...Array.from(e.target.files || [])])} />
-                </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">PDF, images, DOCX, or XLSX up to 10MB</p>
+                </label>
 
                 {batchFiles.length > 0 && (
                   <div className="mt-2.5 space-y-1.5">
@@ -672,32 +683,13 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                 )}
               </div>
 
-              {/* Batch workflow assignment summary */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50/60 border border-blue-200/80 rounded-xl p-4 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                    <Layers className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-blue-900">Configured Payroll Workflow:</span>
-                      <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-900">
-                        Phase 1 completed at registration &rarr; Phase 2 Initial Checking assignee
-                      </span>
-                    </div>
-                    <p className="text-xs text-blue-700 mt-0.5">
-                      Phase names, actions, and assignments come from the active Payroll workflow. Registration completes its first internal phase, then the batch is assigned to the configured Phase 2 desk before eligible items are routed to employment work groups.
-                    </p>
-                  </div>
-                </div>
-              </div>
             </form>
           )}
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 sm:p-5 border-t border-slate-200 bg-slate-50/90 flex items-center justify-between shrink-0">
-          <div className="text-xs text-slate-500">
+        <footer className="p-4 sm:px-6 border-t border-slate-200 bg-slate-50 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between shrink-0">
+          <div className="min-w-0 flex-1 text-xs leading-5 text-slate-500 sm:pr-4">
             {mode === 'single' ? (
               <span>Employment classification is assigned by <strong>Phase 2 personnel</strong>.</span>
             ) : (
@@ -705,11 +697,11 @@ export const RegisterPayrollModal: React.FC<Props> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex shrink-0 items-center justify-end gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-200/60 rounded-xl transition-colors"
+              className="px-4 py-2.5 text-xs sm:text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-200/70 rounded-lg transition-colors cursor-pointer"
             >
               Cancel
             </button>
@@ -718,7 +710,7 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                 type="submit"
                 form="single-payroll-form"
                 disabled={!singleTitle.trim() || isDuplicateSingleBarcode}
-                className="flex items-center gap-1.5 px-5 py-2 text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs transition-colors"
+                className="flex items-center gap-1.5 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-sm transition-colors"
               >
                 <span>Register Single Payroll</span>
                 <ArrowRight className="w-4 h-4" />
@@ -728,15 +720,91 @@ export const RegisterPayrollModal: React.FC<Props> = ({
                 type="submit"
                 form="batch-payroll-form"
                 disabled={items.length === 0}
-                className="flex items-center gap-1.5 px-5 py-2 text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs transition-colors"
+                className="flex items-center gap-1.5 px-5 py-2.5 text-xs sm:text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-sm transition-colors"
               >
                 <span>Register Batch ({items.length} Items)</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}
           </div>
-        </div>
-      </div>
+        </footer>
+
+        {isWorkflowPreviewOpen && previewWorkflow && (
+          <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
+            <section role="dialog" aria-modal="true" aria-labelledby="payroll-workflow-title" className="flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+              <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 bg-slate-900 px-5 py-4 text-white sm:px-6">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600">
+                    <Layers className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-300">Payroll workflow</p>
+                    <h3 id="payroll-workflow-title" className="mt-1 text-base font-bold sm:text-lg">{previewWorkflow.title}</h3>
+                    <p className="mt-1 text-xs text-slate-300">{mode === 'single' ? 'Single Payroll Entry' : 'Payroll Batch Entry'} &bull; {previewDocumentType}</p>
+                  </div>
+                </div>
+                <button type="button" aria-label="Close payroll workflow" onClick={() => setIsWorkflowPreviewOpen(false)} className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white">
+                  <X className="h-5 w-5" />
+                </button>
+              </header>
+
+              <div className="min-h-0 overflow-y-auto p-5 sm:p-6">
+                <div className="mb-5 grid grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Configured phases</p>
+                    <p className="mt-1 text-lg font-bold text-slate-900">{previewWorkflow.steps.length}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">After registration</p>
+                    <p className="mt-1 truncate text-sm font-bold text-slate-900">{previewWorkflow.steps[1]?.name || previewWorkflow.steps[0]?.name}</p>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  {previewWorkflow.steps.map((step, index) => {
+                    const registrationCompletes = index === 0 && step.requiredAction === 'Receive';
+                    const routing = step.assignmentSource === 'personnel_pool'
+                      ? `Personnel pool (${step.personnelPoolUserIds?.length || 0} eligible)`
+                      : step.assignmentSource === 'employment_routing' || step.payrollAssignmentSource === 'employment_routing'
+                        ? 'Employment routing rules'
+                        : step.assigneeName;
+                    return (
+                      <article key={step.stepNumber} className="flex gap-3 rounded-xl border border-slate-200 bg-white p-4">
+                        <div className="flex flex-col items-center">
+                          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold ${registrationCompletes ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-600 text-white'}`}>
+                            {registrationCompletes ? <CheckCircle2 className="h-4 w-4" /> : step.stepNumber}
+                          </span>
+                          {index < previewWorkflow.steps.length - 1 && <span className="mt-2 h-full min-h-5 w-px bg-slate-200" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Phase {step.stepNumber}</p>
+                              <h4 className="mt-0.5 text-sm font-bold text-slate-900">{step.name}</h4>
+                            </div>
+                            <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">{step.requiredAction}</span>
+                          </div>
+                          {step.description && <p className="mt-2 text-xs leading-5 text-slate-500">{step.description}</p>}
+                          <div className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-600">
+                            <UserCheck className="h-3.5 w-3.5 text-blue-500" />
+                            <span>{routing}</span>
+                          </div>
+                          {registrationCompletes && <p className="mt-2 text-[11px] font-medium text-emerald-700">Completed automatically during registration</p>}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:px-6">
+                <p className="text-[11px] text-slate-500">Single and batch payroll entries follow this configured workflow.</p>
+                <button type="button" onClick={() => setIsWorkflowPreviewOpen(false)} className="rounded-lg bg-blue-600 px-5 py-2.5 text-xs font-semibold text-white hover:bg-blue-700">Done</button>
+              </footer>
+            </section>
+          </div>
+        )}
+      </section>
     </div>
   );
 };

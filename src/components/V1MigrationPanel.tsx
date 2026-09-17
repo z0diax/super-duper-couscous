@@ -1,203 +1,91 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Archive, CalendarDays, ChevronLeft, ChevronRight, FileText, Lock, Search, Users, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { 
-  Database, 
-  ShieldCheck, 
-  CheckCircle2, 
-  FileStack, 
-  Archive, 
-  Layers, 
-  Lock, 
-  Clock, 
-  AlertCircle,
-  ExternalLink,
-  RefreshCw,
-  FileText
-} from 'lucide-react';
+import { queryArchive, type ArchiveDataset, type ArchiveResponse, type ArchiveRow } from '../services/archiveApi';
+import { readWorkspaceValue, writeWorkspaceValue } from '../services/workspace';
+
+const datasets: Array<{ id: ArchiveDataset; label: string; description: string; icon: React.ElementType }> = [
+  { id: 'document', label: 'Documents', description: 'Historical incoming and released documents', icon: FileText },
+  { id: 'ewp_records', label: 'EWP Records', description: 'Employee welfare program records', icon: Users },
+  { id: 'leave_requests', label: 'Leave Requests', description: 'Historical employee leave filings', icon: CalendarDays },
+];
+const initialPagination = { page: 1, pageSize: 25, totalRecords: 0, totalPages: 1 };
+const display = (row: ArchiveRow, key: string) => row[key] == null || row[key] === '' ? '—' : String(row[key]);
+const date = (raw: unknown) => {
+  if (!raw) return '—';
+  const parsed = new Date(String(raw).replace(' ', 'T'));
+  return Number.isNaN(parsed.getTime()) ? String(raw) : parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+};
+const money = (raw: unknown) => raw == null || raw === '' ? '—' : new Intl.NumberFormat(undefined, { style: 'currency', currency: 'PHP' }).format(Number(raw));
+const statusClass = (raw: unknown) => {
+  const normalized = String(raw || '').toLowerCase();
+  if (normalized.includes('release') || normalized.includes('approve') || normalized.includes('complete')) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (normalized.includes('hold') || normalized.includes('cancel') || normalized.includes('disapprove')) return 'border-rose-200 bg-rose-50 text-rose-700';
+  return 'border-blue-200 bg-blue-50 text-blue-700';
+};
+const Status = ({ value }: { value: string }) => <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(value)}`}>{value}</span>;
+const Th = ({ children }: { children: React.ReactNode }) => <th className="bg-slate-50 px-4 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">{children}</th>;
+const Td = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => <td className={`max-w-[260px] px-4 py-3 align-top text-slate-600 ${className}`}>{children}</td>;
+const Primary = ({ children }: { children: React.ReactNode }) => <strong className="block font-semibold text-slate-800">{children}</strong>;
+const Secondary = ({ children }: { children: React.ReactNode }) => <small className="mt-0.5 block max-w-[260px] truncate text-[11px] text-slate-400">{children}</small>;
+
+const ArchiveTable = ({ dataset, rows }: { dataset: ArchiveDataset; rows: ArchiveRow[] }) => {
+  if (dataset === 'document') return <table className="w-full min-w-[980px] text-left text-xs"><thead><tr><Th>Barcode / ID</Th><Th>Document</Th><Th>Office</Th><Th>Classification</Th><Th>Status</Th><Th>Action Taken</Th><Th>Recorded</Th></tr></thead><tbody>{rows.map(row => <tr key={String(row.id)} className="border-t border-slate-100 hover:bg-slate-50/80"><Td><Primary><span className="font-mono">{display(row,'barcode')}</span></Primary><Secondary>ID {display(row,'id')}</Secondary></Td><Td><Primary>{display(row,'title')}</Primary><Secondary>{display(row,'remarks')}</Secondary></Td><Td>{display(row,'office')}</Td><Td>{display(row,'classification')}</Td><Td><Status value={display(row,'status')} /></Td><Td>{display(row,'action_taken')}</Td><Td>{date(row.timestamp)}</Td></tr>)}</tbody></table>;
+  if (dataset === 'ewp_records') return <table className="w-full min-w-[930px] text-left text-xs"><thead><tr><Th>Barcode / ID</Th><Th>Employee</Th><Th>Office</Th><Th>Purpose</Th><Th>Amount</Th><Th>Status</Th><Th>Recorded</Th></tr></thead><tbody>{rows.map(row => <tr key={String(row.id)} className="border-t border-slate-100 hover:bg-slate-50/80"><Td><Primary><span className="font-mono">{display(row,'barcode')}</span></Primary><Secondary>ID {display(row,'id')}</Secondary></Td><Td><Primary>{display(row,'employee_name')}</Primary></Td><Td>{display(row,'office')}</Td><Td><Primary>{display(row,'purpose')}</Primary><Secondary>{display(row,'remarks')}</Secondary></Td><Td className="font-mono font-semibold">{money(row.amount)}</Td><Td><Status value={display(row,'status')} /></Td><Td>{date(row.created_timestamp)}</Td></tr>)}</tbody></table>;
+  return <table className="w-full min-w-[1020px] text-left text-xs"><thead><tr><Th>Barcode / ID</Th><Th>Employee</Th><Th>Office</Th><Th>Leave Type</Th><Th>Leave Period</Th><Th>Status</Th><Th>Filed</Th></tr></thead><tbody>{rows.map(row => <tr key={String(row.id)} className="border-t border-slate-100 hover:bg-slate-50/80"><Td><Primary><span className="font-mono">{display(row,'barcode')}</span></Primary><Secondary>ID {display(row,'id')}</Secondary></Td><Td><Primary>{display(row,'employee_name')}</Primary></Td><Td>{display(row,'office')}</Td><Td><Primary>{display(row,'type')}</Primary><Secondary>{[row.subtype,row.subtype_detail].filter(Boolean).join(' · ') || '—'}</Secondary></Td><Td>{date(row.start_date)} – {date(row.end_date)}</Td><Td><Status value={display(row,'status')} /></Td><Td>{date(row.created_timestamp)}</Td></tr>)}</tbody></table>;
+};
 
 export const V1MigrationPanel: React.FC = () => {
-  const { migrationSummaries, documents, leaveApplications, auditLogs, runMigrationCheck, setSelectedDocument } = useApp();
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verifiedStatus, setVerifiedStatus] = useState<string | null>(null);
-
-  const legacyDocs = documents.filter(d => d.isLegacyV1);
-
-  const migrationSummary = { totalDocumentsMigrated: legacyDocs.length, leaveRecordsPreserved: leaveApplications.filter(l => l.isLegacyV1).length, auditLogsPreserved: auditLogs.filter(a => legacyDocs.some(d => d.id === a.documentId)).length };
-  const handleVerifyChecksums = async () => {
-    setIsVerifying(true);
-    const result = await runMigrationCheck();
-    setIsVerifying(false);
-    if (result) setVerifiedStatus(result.totalV1Records === 0 ? 'No historical records have been imported.' : `Checked ${result.totalV1Records} historical documents. Attachment exceptions: ${result.exceptionsCount}. Original archive checksums are required to verify source equivalence.`);
+  const { currentUser } = useApp();
+  const [active, setActive] = useState<ArchiveDataset>(() => {
+    const saved = readWorkspaceValue<ArchiveDataset>(currentUser.id, 'archive.active-dataset', 'document');
+    return datasets.some(dataset => dataset.id === saved) ? saved : 'document';
+  });
+  const [searchInput, setSearchInput] = useState('');
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [result, setResult] = useState<ArchiveResponse>({ items: [], counts: { document: 0, ewp_records: 0, leave_requests: 0 }, pagination: initialPagination });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const selectDataset = (dataset: ArchiveDataset) => {
+    writeWorkspaceValue(currentUser.id, 'archive.active-dataset', dataset);
+    setActive(dataset); setSearchInput(''); setQuery(''); setPage(1);
   };
 
-  return (
-    <div className="space-y-6 pb-12">
-      {/* Title & Governance Banner */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-                Historical Archive & Integrity
-              </h1>
-              <span className="text-xs bg-indigo-100 text-indigo-800 font-semibold px-2 py-0.5 rounded border border-indigo-200 flex items-center gap-1">
-                <Lock className="w-3 h-3" />
-                <span>Read-Only Records</span>
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Read-only preservation of historical documents, employee leave records, and audit logs.
-            </p>
-          </div>
+  useEffect(() => { const timer = window.setTimeout(() => { setQuery(searchInput.trim()); setPage(1); }, 300); return () => window.clearTimeout(timer); }, [searchInput]);
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const response = await queryArchive({ table: active, q: query, page, pageSize });
+      setResult(response);
+      if (response.pagination.page !== page) setPage(response.pagination.page);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : 'Historical records could not be loaded.'); }
+    finally { setLoading(false); }
+  }, [active, page, pageSize, query]);
+  useEffect(() => { void load(); }, [load]);
+  const selected = datasets.find(dataset => dataset.id === active)!;
+  const start = result.pagination.totalRecords ? (result.pagination.page - 1) * result.pagination.pageSize + 1 : 0;
+  const end = Math.min(result.pagination.page * result.pagination.pageSize, result.pagination.totalRecords);
 
-          <button
-            id="btn-verify-migration-checksums"
-            onClick={handleVerifyChecksums}
-            disabled={isVerifying}
-            className="px-4 py-2 text-xs sm:text-sm font-semibold text-white bg-indigo-700 hover:bg-indigo-800 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
-          >
-            <RefreshCw className={`w-4 h-4 ${isVerifying ? 'animate-spin' : ''}`} />
-            <span>{isVerifying ? 'Verifying Integrity...' : 'Verify Cryptographic Checksums'}</span>
-          </button>
-        </div>
+  return <div className="space-y-5 pb-12">
+    <header className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
+      <div className="flex items-start gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white"><Archive className="h-5 w-5" /></span><div><div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-bold tracking-tight text-slate-950">Historical Archive</h1><span className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-700"><Lock className="h-3 w-3" />Read only</span></div><p className="mt-1 text-sm text-slate-500">Search legacy documents, EWP records, and leave requests preserved in the archive database.</p></div></div>
+    </header>
 
-        {/* Verification Alert */}
-        {verifiedStatus && (
-          <div className="mt-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{verifiedStatus}</span>
-          </div>
-        )}
-
-        {/* 4 KPI Metrics */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 pt-4 border-t border-slate-100">
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-            <span className="text-[11px] font-semibold text-slate-500">Preserved Documents</span>
-            <div className="text-xl font-bold text-slate-900 mt-0.5 font-mono">
-              {migrationSummary.totalDocumentsMigrated.toLocaleString()}
-            </div>
-            <span className="text-[10px] text-emerald-700 font-medium">100% Read-Only Protected</span>
-          </div>
-
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-            <span className="text-[11px] font-semibold text-slate-500">Continuous Leave Records</span>
-            <div className="text-xl font-bold text-slate-900 mt-0.5 font-mono">
-              {migrationSummary.leaveRecordsPreserved.toLocaleString()}
-            </div>
-            <span className="text-[10px] text-emerald-700 font-medium">Mapped to Employee IDs</span>
-          </div>
-
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-            <span className="text-[11px] font-semibold text-slate-500">Immutable Audit Logs</span>
-            <div className="text-xl font-bold text-slate-900 mt-0.5 font-mono">
-              {migrationSummary.auditLogsPreserved.toLocaleString()}
-            </div>
-            <span className="text-[10px] text-emerald-700 font-medium">Timestamps Preserved</span>
-          </div>
-
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-            <span className="text-[11px] font-semibold text-slate-500">Preservation Rule</span>
-            <div className="text-base font-bold text-indigo-900 mt-0.5">
-              Read-Only Lock
-            </div>
-            <span className="text-[10px] text-slate-500">Excluded from active queues</span>
-          </div>
-        </div>
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+      <div className="border-b border-slate-200 bg-slate-50/60 p-3 sm:p-4">
+        <div className="grid gap-2 sm:grid-cols-3" role="tablist" aria-label="Historical archive datasets">{datasets.map(dataset => { const Icon=dataset.icon; const isSelected=active===dataset.id; return <button key={dataset.id} type="button" role="tab" aria-selected={isSelected} onClick={() => selectDataset(dataset.id)} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${isSelected?'border-blue-500 bg-white shadow-sm ring-2 ring-blue-100':'border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white'}`}><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isSelected?'bg-blue-600 text-white':'bg-slate-100 text-slate-500'}`}><Icon className="h-4 w-4" /></span><span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><strong className="text-sm text-slate-900">{dataset.label}</strong><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${isSelected?'bg-blue-100 text-blue-700':'bg-slate-100 text-slate-600'}`}>{(result.counts[dataset.id] || 0).toLocaleString()}</span></span><small className="mt-0.5 block truncate text-[11px] text-slate-500">{dataset.description}</small></span></button> })}</div>
       </div>
 
-      {/* Section 9 Principles & Policy Guarantees */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs space-y-4">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-          Archive Preservation Rules
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-            <div className="flex items-center gap-2 font-bold text-slate-900">
-              <Lock className="w-4 h-4 text-indigo-600" />
-              <span>1. Zero Re-Routing of Closed Docs</span>
-            </div>
-            <p className="text-slate-600 leading-relaxed">
-              Historical documents remain read-only references and are excluded from active operational workflows.
-            </p>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-            <div className="flex items-center gap-2 font-bold text-slate-900">
-              <Database className="w-4 h-4 text-indigo-600" />
-              <span>2. Original Number Preservation</span>
-            </div>
-            <p className="text-slate-600 leading-relaxed">
-              Original tracking numbers remain intact and searchable alongside current document records.
-            </p>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-            <div className="flex items-center gap-2 font-bold text-slate-900">
-              <ShieldCheck className="w-4 h-4 text-indigo-600" />
-              <span>3. Leave Ledger Continuity</span>
-            </div>
-            <p className="text-slate-600 leading-relaxed">
-              Historical leave filings and credit balances remain connected to verified employee records.
-            </p>
-          </div>
-        </div>
+      <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-end sm:justify-between">
+        <label className="block min-w-0 flex-1"><span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Search {selected.label}</span><span className="relative block"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input id="archive-search-input" value={searchInput} onChange={event => setSearchInput(event.target.value)} placeholder={`Search ${selected.label.toLowerCase()} by barcode, name, office, status, or details`} className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-9 text-sm outline-none transition focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100" />{searchInput && <button type="button" aria-label="Clear archive search" onClick={() => setSearchInput('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:bg-slate-200"><X className="h-3.5 w-3.5" /></button>}</span></label>
+        <p className="shrink-0 text-xs text-slate-500"><strong className="text-slate-800">{result.pagination.totalRecords.toLocaleString()}</strong> matching records</p>
       </div>
 
-      {/* Sample Preserved V1 Archive Records */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200 shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-          <div>
-            <h3 className="text-base font-bold text-slate-900">
-              Preserved Historical Records ({legacyDocs.length})
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Open a preserved record to inspect its archived metadata, scanned files, and historical notes.
-            </p>
-          </div>
-        </div>
+      {error ? <div className="m-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : <div className="relative overflow-x-auto">{loading && <div className="absolute inset-0 z-10 flex min-h-56 items-center justify-center bg-white/75 text-sm font-semibold text-slate-500">Loading historical records…</div>}{result.items.length ? <ArchiveTable dataset={active} rows={result.items} /> : <div className="flex min-h-56 flex-col items-center justify-center px-4 text-center"><Search className="h-8 w-8 text-slate-300" /><strong className="mt-3 text-sm text-slate-800">No matching records</strong><p className="mt-1 text-xs text-slate-500">Try a different keyword or clear the search.</p></div>}</div>}
 
-        <div className="space-y-3">
-          {legacyDocs.map(doc => (
-            <div
-              key={doc.id}
-              onClick={() => setSelectedDocument(doc)}
-              className="p-4 rounded-xl border border-slate-200 hover:border-indigo-400 bg-slate-50/50 hover:bg-slate-50 transition-colors cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-            >
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-indigo-800 bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200">
-                    {doc.trackingNumber}
-                  </span>
-                  <span className="text-[10px] font-bold text-slate-500 uppercase">
-                    Archive ID: {doc.legacyId}
-                  </span>
-                </div>
-
-                <h4 className="font-bold text-sm text-slate-900 mt-1">
-                  {doc.title}
-                </h4>
-                <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
-                  {doc.subject} &bull; Received {new Date(doc.dateReceived).toLocaleDateString()} from {doc.sourceOffice}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-1 rounded">
-                  Archive Preserved
-                </span>
-                <button
-                  id={`btn-view-legacy-${doc.id}`}
-                  className="px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 rounded transition-colors"
-                >
-                  View Archive
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-    </div>
-  );
+      <footer className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 px-4 py-3 text-xs text-slate-600 sm:flex-row sm:items-center sm:justify-between"><span>{result.pagination.totalRecords ? <>Showing <strong>{start.toLocaleString()}–{end.toLocaleString()}</strong> of <strong>{result.pagination.totalRecords.toLocaleString()}</strong></> : 'Showing 0 records'}</span><div className="flex items-center gap-2"><select aria-label="Archive rows per page" value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5"><option value={10}>10 per page</option><option value={25}>25 per page</option><option value={50}>50 per page</option></select><button type="button" aria-label="Previous archive page" disabled={page<=1||loading} onClick={() => setPage(current => current-1)} className="rounded-lg border border-slate-200 bg-white p-1.5 disabled:opacity-40"><ChevronLeft className="h-4 w-4" /></button><strong className="min-w-20 text-center">{result.pagination.page} / {result.pagination.totalPages}</strong><button type="button" aria-label="Next archive page" disabled={page>=result.pagination.totalPages||loading} onClick={() => setPage(current => current+1)} className="rounded-lg border border-slate-200 bg-white p-1.5 disabled:opacity-40"><ChevronRight className="h-4 w-4" /></button></div></footer>
+    </section>
+  </div>;
 };

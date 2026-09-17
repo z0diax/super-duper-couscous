@@ -186,6 +186,13 @@ test('ordinary document workflows configure and use a personnel pool', async ({ 
 
   await page.locator('#btn-register-doc-header').click();
   await expect(page.getByLabel('Assign Phase 2 to')).toBeVisible();
+  await page.getByRole('button', { name: 'Show Workflow', exact: true }).click();
+  const workflowPreview = page.getByRole('dialog', { name: 'Document workflow' });
+  await expect(workflowPreview).toContainText('Communication personnel pool workflow');
+  await expect(workflowPreview).toContainText('Personnel pool · 2 eligible');
+  await expect(workflowPreview).toContainText('Completed automatically during registration');
+  await workflowPreview.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.getByText('3 Phases Configured', { exact: true })).toHaveCount(0);
   await page.locator('#btn-close-register-modal').click();
 
   await page.getByRole('button', { name: 'Document Registry', exact: true }).click();

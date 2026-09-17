@@ -39,7 +39,7 @@ export const LoginPortal: React.FC = () => {
 
             <div className="my-10 max-w-lg lg:my-auto">
               <span className="inline-flex items-center gap-2 rounded-full border border-blue-400/40 bg-blue-400/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-blue-200"><ShieldCheck className="h-3.5 w-3.5" />Secure records access</span>
-              <h1 className="mt-5 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">HRMDO Records<br className="hidden sm:block" /> Management System</h1>
+              <h1 className="mt-5 text-3xl font-bold leading-tight tracking-tight sm:text-4xl">HRMDO<br className="hidden sm:block" /> Records Management System</h1>
               <p className="mt-4 max-w-md text-sm leading-6 text-slate-300">A secure workspace for document routing, payroll processing, leave records, archives, and accountable public service.</p>
               <div className="mt-8 hidden grid-cols-2 gap-3 sm:grid lg:grid">
                 <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><Workflow className="h-5 w-5 text-blue-300" /><p className="mt-2 text-xs font-semibold">Controlled workflows</p><p className="mt-1 text-[11px] leading-4 text-slate-400">Clear phase ownership and routing.</p></div>

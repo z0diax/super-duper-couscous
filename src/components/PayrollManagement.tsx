@@ -8,7 +8,6 @@ import {
 import { 
   Layers, 
   Plus, 
-  Search, 
   Filter, 
   Sliders, 
   ArrowRight, 
@@ -55,7 +54,6 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     can
   } = useApp();
 
-  const [searchQuery, setSearchQuery] = useWorkspaceState(currentUser.id, 'payroll.search', '');
   const [stageFilter, setStageFilter] = useWorkspaceState<string>(currentUser.id, 'payroll.stage-filter', 'all');
   const [officeFilter, setOfficeFilter] = useWorkspaceState<string>(currentUser.id, 'payroll.office-filter', 'all');
   const [isRulesModalOpen, setIsRulesModalOpen] = useWorkspaceState(currentUser.id, 'payroll.modal.routing-rules', false);
@@ -108,15 +106,10 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
 
   // Filter batches
   const filteredBatches = ownedPayrollBatches.filter(batch => {
-    const matchesSearch = 
-      batch.batchNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      batch.office.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      batch.payrollType.toLowerCase().includes(searchQuery.toLowerCase());
-
     const matchesStage = stageFilter === 'all' || matchesAggregateStage(batch, stageFilter);
     const matchesOffice = officeFilter === 'all' || batch.office === officeFilter;
 
-    return matchesSearch && matchesStage && matchesOffice;
+    return matchesStage && matchesOffice;
   });
   const batchListPageCount = Math.max(1, Math.ceil(filteredBatches.length / BATCH_LIST_PAGE_SIZE));
   const currentBatchListPage = Math.min(Math.max(batchListPage, 1), batchListPageCount);
@@ -132,14 +125,8 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   // Single payroll vouchers from documents
   const singlePayrollDocs = documents.filter(d => d.classification === 'Payroll' && ownsPayrollEntry(d));
   const filteredSingleDocs = singlePayrollDocs.filter(doc => {
-    const matchesSearch = 
-      doc.trackingNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (doc.barcode && doc.barcode.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      doc.sourceOffice.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      doc.documentType.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesOffice = officeFilter === 'all' || doc.sourceOffice === officeFilter;
-    return matchesSearch && matchesOffice;
+    return matchesOffice;
   });
 
   // Calculate metrics
@@ -246,20 +233,6 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                 </button>
               </div>
             )}
-            {/* Search bar */}
-            <div className="relative flex-1 sm:w-64">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => {
-                  setSearchQuery(e.target.value);
-                  setBatchListPage(1);
-                }}
-                placeholder="Search barcode, office..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
           </div>
         </div>
 

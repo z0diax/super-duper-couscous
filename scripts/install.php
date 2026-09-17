@@ -8,6 +8,8 @@ $pdo->exec('USE `'.$c['database'].'`');
 foreach (explode(';',file_get_contents(dirname(__DIR__).'/database/schema.sql')) as $sql) if (trim($sql)!=='') $pdo->exec($sql);
 $columns=$pdo->query("SHOW COLUMNS FROM app_users LIKE 'sidebar_modules'")->fetchAll();
 if (!$columns) $pdo->exec('ALTER TABLE app_users ADD COLUMN sidebar_modules LONGTEXT NULL AFTER avatar_initials');
+$columns=$pdo->query("SHOW COLUMNS FROM app_users LIKE 'avatar_seed'")->fetchAll();
+if (!$columns) $pdo->exec('ALTER TABLE app_users ADD COLUMN avatar_seed VARCHAR(190) NULL AFTER avatar_initials');
 $pdo->beginTransaction();
 try {
     $version=(int)$pdo->query('SELECT schema_version FROM app_meta WHERE id=1 FOR UPDATE')->fetchColumn();

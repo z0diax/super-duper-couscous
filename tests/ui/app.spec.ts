@@ -116,7 +116,7 @@ test('user creation creates a usable login with the selected permissions', async
 test('leave registration switches dynamic fields without retaining stale values', async ({ page }) => {
   await page.goto(`${fixture.base}/`); await page.getByLabel('Email address').fill('admin@example.test'); await page.getByLabel('Password', { exact: true }).fill(testPassword); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await page.getByRole('button', { name: 'Leave Records', exact: true }).click();
-  await page.getByRole('button', { name: 'Register Leave Application', exact: true }).click();
+  await page.getByRole('button', { name: 'Register Leave or EWP', exact: true }).click();
   await expect(page.locator('form').last().locator('input, select, textarea').first()).toHaveAttribute('id','leave-input-barcode');
   await expect(page.locator('#leave-input-barcode')).toHaveValue('');
   await page.getByPlaceholder('Enter employee or applicant name').fill('Browser Test Applicant');

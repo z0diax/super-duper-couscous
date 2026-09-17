@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { LeaveApplicationRecord, LeaveDateRange, LeaveType } from '../types';
-import { CalendarClock, Eye, FileCheck2, Filter, Pencil, Plus, RefreshCcw, RotateCcw, Search, Trash2, X } from 'lucide-react';
+import { CalendarClock, Eye, FileCheck2, Filter, HeartHandshake, Pencil, Plus, RefreshCcw, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { queryLeaveRegistry } from '../services/leaveApi';
+import { readWorkspaceValue, writeWorkspaceValue } from '../services/workspace';
 import { OFFICE_OPTIONS } from '../data/offices';
 import { LeaveDateRangePicker } from './LeaveDateRangePicker';
 
@@ -92,7 +93,7 @@ const parseDateValue = (value: string) => {
 };
 
 export const LeaveContinuity: React.FC = () => {
-  const { auditLogs, currentUser, fileLeaveApplication, updateLeaveApplication, deleteLeaveApplication, changeLeaveApplicationStatus, can } = useApp();
+  const { auditLogs, ewpRecords, currentUser, fileLeaveApplication, registerEwpRecord, updateLeaveApplication, deleteLeaveApplication, changeLeaveApplicationStatus, can } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -102,6 +103,11 @@ export const LeaveContinuity: React.FC = () => {
   const [records, setRecords] = useState<LeaveApplicationRecord[]>([]); const [summary, setSummary] = useState({total:0,forComputation:0,processing:0,forSignature:0,onHold:0,released:0});
   const [pagination, setPagination] = useState({page:1,pageSize:10,totalRecords:0,totalPages:1}); const [offices,setOffices]=useState<string[]>([]); const [queryError,setQueryError]=useState(''); const [isQuerying,setIsQuerying]=useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [registryMode, setRegistryMode] = useState<'leave'|'ewp'>(()=>readWorkspaceValue(currentUser.id,'leave.registry-mode','leave'));
+  const [intakeMode, setIntakeMode] = useState<'leave'|'ewp'>('leave');
+  const [ewpAmount, setEwpAmount] = useState('');
+  const [ewpPurpose, setEwpPurpose] = useState('');
+  const [ewpSearch, setEwpSearch] = useState('');
   const [editingRecord, setEditingRecord] = useState<LeaveApplicationRecord | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<LeaveApplicationRecord | null>(null);
   const [datesRecord, setDatesRecord] = useState<LeaveApplicationRecord | null>(null);
@@ -117,6 +123,7 @@ export const LeaveContinuity: React.FC = () => {
   const [leaveDetails, setLeaveDetails] = useState('');
   const [dateRanges, setDateRanges] = useState<DateRangeDraft[]>([emptyDateRange()]);
   const [remarks, setRemarks] = useState('');
+  const selectRegistryMode = (mode: 'leave'|'ewp') => { writeWorkspaceValue(currentUser.id,'leave.registry-mode',mode); setRegistryMode(mode); };
 
   const canViewLeave = currentUser.role === 'admin' || currentUser.sidebarModules === undefined || currentUser.sidebarModules.includes('leave');
   const loadRegistry=useCallback(async()=>{ setIsQuerying(true); setQueryError(''); try { const result=await queryLeaveRegistry({q:searchQuery,status:filterStatus==='all'?'':filterStatus,leaveType:filterType==='all'?'':filterType,office:filterOffice,filedFrom,filedTo,leaveDate,page,pageSize,sort}); setRecords(result.items); setSummary(result.summary); setPagination(result.pagination); setOffices(result.offices); if(result.pagination.page!==page)setPage(result.pagination.page); } catch(error){setQueryError(error instanceof Error?error.message:'Leave records could not be loaded.');} finally {setIsQuerying(false);}},[filedFrom,filedTo,filterOffice,filterStatus,filterType,leaveDate,page,pageSize,searchQuery,sort]);
@@ -138,10 +145,16 @@ export const LeaveContinuity: React.FC = () => {
   const resetForm = () => {
     setEmployeeName(''); setOffice(''); setBarcode('');
     setLeaveType('Vacation Leave'); setLeaveSubtype(''); setLeaveDetails(''); setDateRanges([emptyDateRange()]);
-    setRemarks(''); setEditingRecord(null);
+    setRemarks(''); setEwpAmount(''); setEwpPurpose(''); setIntakeMode('leave'); setEditingRecord(null);
   };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!editingRecord && intakeMode === 'ewp') {
+      if (!barcode.trim() || !employeeName.trim() || !office.trim() || !ewpAmount || !ewpPurpose.trim()) return;
+      const saved = await registerEwpRecord({ barcode: barcode.trim(), employeeName: employeeName.trim(), office: office.trim(), amount: Number(ewpAmount), purpose: ewpPurpose.trim(), remarks: remarks.trim() });
+      if (!saved) return;
+      setIsModalOpen(false); resetForm(); selectRegistryMode('ewp'); return;
+    }
     if (!employeeName.trim() || !office.trim() || dateRanges.some(range => !range.startDate || !range.endDate)) return;
     const payload = {
       ...(editingRecord ? { id: editingRecord.id } : {}),
@@ -167,6 +180,9 @@ export const LeaveContinuity: React.FC = () => {
     ['Total Leave Records', summary.total, 'text-slate-900'], ['For Computation', summary.forComputation, 'text-amber-700'], ['Processing', summary.processing, 'text-blue-700'], ['For Signature', summary.forSignature, 'text-violet-700'], ['On Hold', summary.onHold, 'text-orange-700'], ['Released', summary.released, 'text-emerald-700'],
   ];
   const hasActiveFilters=!!(searchQuery||filterType!=='all'||filterStatus!=='all'||filterOffice||filedFrom||filedTo||leaveDate||sort!=='registered_desc');
+  const filteredEwpRecords = ewpRecords.filter(record => !ewpSearch.trim() || [record.barcode,record.employeeName,record.office,record.purpose,record.remarks].join(' ').toLowerCase().includes(ewpSearch.trim().toLowerCase())).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const ewpTotalAmount = ewpRecords.reduce((total,record)=>total+Number(record.amount||0),0);
+  const ewpOfficeCount = new Set(ewpRecords.map(record=>record.office)).size;
 
   return <div className="space-y-4 pb-12">
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
@@ -174,24 +190,25 @@ export const LeaveContinuity: React.FC = () => {
         <div className="flex min-w-0 items-start gap-3.5">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm"><CalendarClock className="h-5 w-5" /></div>
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">Leave records</p>
-            <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">Leave Records</h1>
-            <p className="mt-1 text-sm text-slate-500">Register and track employee leave applications.</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-600">Employee services registry</p>
+            <h1 className="mt-1 text-xl font-bold tracking-tight text-slate-950">Leave &amp; EWP Records</h1>
+            <p className="mt-1 text-sm text-slate-500">Register and track employee leave applications and EWP records.</p>
           </div>
         </div>
-        {canRegister && <button id="btn-file-new-leave" aria-label="Register Leave Application" onClick={() => { resetForm(); setIsModalOpen(true); }} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-2xs transition-colors hover:bg-blue-700">
-          <Plus className="h-4 w-4" /> Register Leave
+        {canRegister && <button id="btn-file-new-leave" aria-label="Register Leave or EWP" onClick={() => { resetForm(); setIsModalOpen(true); }} className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-2xs transition-colors hover:bg-blue-700">
+          <Plus className="h-4 w-4" /> Register Record
         </button>}
       </div>
-      <div className="grid grid-cols-2 border-t border-slate-100 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid gap-2 border-t border-slate-100 bg-slate-50/60 p-4 sm:grid-cols-2" role="tablist" aria-label="Leave and EWP registries"><button type="button" role="tab" aria-selected={registryMode==='leave'} onClick={()=>selectRegistryMode('leave')} className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition ${registryMode==='leave'?'border-blue-500 bg-white shadow-sm ring-2 ring-blue-100':'border-slate-200 bg-white/70 hover:bg-white'}`}><span className="flex items-center gap-3"><span className={`flex h-9 w-9 items-center justify-center rounded-lg ${registryMode==='leave'?'bg-blue-600 text-white':'bg-slate-100 text-slate-500'}`}><CalendarClock className="h-4 w-4"/></span><span><strong className="block text-sm text-slate-900">Leave Applications</strong><small className="text-[11px] text-slate-500">Leave dates, processing, and release</small></span></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">{summary.total}</span></button><button type="button" role="tab" aria-selected={registryMode==='ewp'} onClick={()=>selectRegistryMode('ewp')} className={`flex items-center justify-between rounded-xl border px-4 py-3 text-left transition ${registryMode==='ewp'?'border-violet-500 bg-white shadow-sm ring-2 ring-violet-100':'border-slate-200 bg-white/70 hover:bg-white'}`}><span className="flex items-center gap-3"><span className={`flex h-9 w-9 items-center justify-center rounded-lg ${registryMode==='ewp'?'bg-violet-600 text-white':'bg-slate-100 text-slate-500'}`}><HeartHandshake className="h-4 w-4"/></span><span><strong className="block text-sm text-slate-900">EWP Records</strong><small className="text-[11px] text-slate-500">Welfare assistance and amounts</small></span></span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">{ewpRecords.length}</span></button></div>
+      {registryMode==='leave'?<div className="grid grid-cols-2 border-t border-slate-100 sm:grid-cols-3 lg:grid-cols-6">
         {summaries.map(([label, count, color]) => <div key={String(label)} className="min-w-0 overflow-hidden border-r border-slate-100 px-5 py-4 last:border-r-0">
           <p title={String(label)} className="truncate whitespace-nowrap text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
           <p className={`mt-1 text-2xl font-bold ${color}`}>{count}</p>
         </div>)}
-      </div>
+      </div>:<div className="grid grid-cols-2 border-t border-slate-100 sm:grid-cols-4"><div className="border-r border-slate-100 px-5 py-4"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Total EWP Records</p><p className="mt-1 text-2xl font-bold text-slate-900">{ewpRecords.length}</p></div><div className="border-r border-slate-100 px-5 py-4"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Total Assistance</p><p className="mt-1 text-xl font-bold text-violet-700">{new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP',maximumFractionDigits:2}).format(ewpTotalAmount)}</p></div><div className="border-r border-slate-100 px-5 py-4"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Offices Covered</p><p className="mt-1 text-2xl font-bold text-slate-900">{ewpOfficeCount}</p></div><div className="px-5 py-4"><p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Registry Status</p><p className="mt-1 text-sm font-bold text-emerald-700">Current Records</p></div></div>}
     </section>
 
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+    {registryMode==='leave'&&<><section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
       <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Filter className="h-4 w-4 text-slate-500"/><h2 className="text-sm font-bold text-slate-800">Find Leave Applications</h2></div>{hasActiveFilters&&<button onClick={()=>{setSearchQuery('');setFilterType('all');setFilterStatus('all');setFilterOffice('');setFiledFrom('');setFiledTo('');setLeaveDate('');setSort('registered_desc');setPage(1);}} className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"><RotateCcw className="h-3.5 w-3.5"/>Reset filters</button>}</div>
       <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-12">
         <label className="md:col-span-2 xl:col-span-5"><span className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">Search</span><div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400"/><input id="leave-search-input" value={searchQuery} onChange={event=>{setSearchQuery(event.target.value);setPage(1);}} placeholder="Employee, barcode, office, leave type or status" className="w-full rounded-lg border border-slate-200 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"/></div></label>
@@ -229,24 +246,30 @@ export const LeaveContinuity: React.FC = () => {
       </div>
       {queryError&&<div className="border-t border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-700">{queryError}</div>}
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-xs text-slate-600"><span>{pagination.totalRecords?`Showing ${(pagination.page-1)*pagination.pageSize+1}–${Math.min(pagination.page*pagination.pageSize,pagination.totalRecords)} of ${pagination.totalRecords}`:'Showing 0 records'}</span><div className="flex items-center gap-2"><select aria-label="Page Size" value={pageSize} onChange={e=>{setPageSize(Number(e.target.value));setPage(1);}} className="rounded border border-slate-200 px-2 py-1"><option>10</option><option>25</option><option>50</option></select><button disabled={page<=1||isQuerying} onClick={()=>setPage(value=>value-1)} className="rounded border px-3 py-1.5 disabled:opacity-40">Previous</button><strong>Page {pagination.page} of {pagination.totalPages}</strong><button disabled={page>=pagination.totalPages||isQuerying} onClick={()=>setPage(value=>value+1)} className="rounded border px-3 py-1.5 disabled:opacity-40">Next</button></div></footer>
-    </section>
+    </section></>}
+
+    {registryMode==='ewp'&&<section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
+      <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3"><span className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-100 text-violet-700"><HeartHandshake className="h-4 w-4" /></span><div><h2 className="text-sm font-bold text-slate-900">EWP Records</h2><p className="mt-0.5 text-[11px] text-slate-500">{ewpRecords.length} current employee welfare program {ewpRecords.length===1?'record':'records'}</p></div></div><label className="relative block sm:w-80"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input aria-label="Search EWP Records" value={ewpSearch} onChange={event=>setEwpSearch(event.target.value)} placeholder="Search barcode, name, office or purpose" className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-xs outline-none focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"/></label></div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-xs"><thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500"><tr><th className="px-5 py-3">Barcode</th><th className="px-4 py-3">Name</th><th className="px-4 py-3">Office</th><th className="px-4 py-3">Amount</th><th className="px-4 py-3">Purpose</th><th className="px-4 py-3">Remarks</th><th className="px-5 py-3">Registered</th></tr></thead><tbody className="divide-y divide-slate-100">{filteredEwpRecords.map(record=><tr key={record.id} className="hover:bg-slate-50/70"><td className="px-5 py-3 font-mono font-semibold text-blue-700">{record.barcode}</td><td className="px-4 py-3 font-semibold text-slate-900">{record.employeeName}</td><td className="px-4 py-3 text-slate-600">{record.office}</td><td className="px-4 py-3 font-mono font-semibold text-slate-800">{new Intl.NumberFormat('en-PH',{style:'currency',currency:'PHP'}).format(record.amount)}</td><td className="max-w-[260px] px-4 py-3 text-slate-700">{record.purpose}</td><td className="max-w-[220px] px-4 py-3 text-slate-500">{record.remarks||'—'}</td><td className="whitespace-nowrap px-5 py-3 text-slate-500">{displayDateTime(record.createdAt)}</td></tr>)}{filteredEwpRecords.length===0&&<tr><td colSpan={7} className="px-6 py-12 text-center"><HeartHandshake className="mx-auto h-8 w-8 text-slate-300"/><p className="mt-2 font-semibold text-slate-700">No EWP records found</p><p className="mt-1 text-xs text-slate-400">{ewpSearch?'No records match the current search.':'Registered EWP records will appear here.'}</p></td></tr>}</tbody></table></div>
+    </section>}
 
     {isModalOpen && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
       <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-slate-900 px-5 py-4 text-white">
-          <div className="flex items-center gap-3"><span className="rounded-lg bg-blue-600 p-2"><CalendarClock className="h-5 w-5" /></span><div><h2 className="font-bold">{editingRecord ? 'Edit Leave Application' : 'Register Leave Application'}</h2><p className="text-xs text-slate-300">{editingRecord ? 'Update the official record and recalculate its Leave Days.' : 'Register an official employee application for HRMDO processing.'}</p></div></div>
+          <div className="flex items-center gap-3"><span className="rounded-lg bg-blue-600 p-2">{intakeMode==='ewp'?<HeartHandshake className="h-5 w-5"/>:<CalendarClock className="h-5 w-5" />}</span><div><h2 className="font-bold">{editingRecord ? 'Edit Leave Application' : intakeMode==='ewp' ? 'Register EWP Record' : 'Register Leave Application'}</h2><p className="text-xs text-slate-300">{editingRecord ? 'Update the official record and recalculate its Leave Days.' : intakeMode==='ewp' ? 'Record employee welfare program assistance and purpose.' : 'Register an official employee application for HRMDO processing.'}</p></div></div>
           <button onClick={() => { setIsModalOpen(false); resetForm(); }} className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-white"><X className="h-4 w-4" /></button>
         </header>
         <form onSubmit={submit} className="space-y-4 p-5 text-xs">
+          {!editingRecord&&<section className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-slate-600">1. Leave Intake Mode</p><div className="grid gap-3 sm:grid-cols-2"><button type="button" aria-pressed={intakeMode==='leave'} onClick={()=>setIntakeMode('leave')} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${intakeMode==='leave'?'border-blue-500 bg-blue-50 ring-2 ring-blue-100':'border-slate-200 bg-white hover:border-slate-300'}`}><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${intakeMode==='leave'?'bg-blue-600 text-white':'bg-slate-100 text-slate-500'}`}><CalendarClock className="h-5 w-5"/></span><span><strong className="block text-sm text-slate-900">Leave Application</strong><small className="mt-0.5 block text-[11px] text-slate-500">File employee leave dates and details.</small></span></button><button type="button" aria-pressed={intakeMode==='ewp'} onClick={()=>setIntakeMode('ewp')} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition ${intakeMode==='ewp'?'border-violet-500 bg-violet-50 ring-2 ring-violet-100':'border-slate-200 bg-white hover:border-slate-300'}`}><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${intakeMode==='ewp'?'bg-violet-600 text-white':'bg-slate-100 text-slate-500'}`}><HeartHandshake className="h-5 w-5"/></span><span><strong className="block text-sm text-slate-900">EWP Record</strong><small className="mt-0.5 block text-[11px] text-slate-500">Record welfare assistance and amount.</small></span></button></div></section>}
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="font-semibold text-slate-700">Barcode / Tracking No. <span className="font-normal text-slate-400">(optional)</span><input id="leave-input-barcode" value={barcode} onChange={event => setBarcode(event.target.value)} placeholder="Leave blank for N/A" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
-            <label className="font-semibold text-slate-700">Employee / Applicant *<input id="leave-input-applicant" required value={employeeName} onChange={event => setEmployeeName(event.target.value)} placeholder="Enter employee or applicant name" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
+            <label className="font-semibold text-slate-700">Barcode / Tracking No. {intakeMode==='leave'?<span className="font-normal text-slate-400">(optional)</span>:'*'}<input id="leave-input-barcode" required={intakeMode==='ewp'} value={barcode} onChange={event => setBarcode(event.target.value)} placeholder={intakeMode==='ewp'?'Enter EWP barcode':'Leave blank for N/A'} className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
+            <label className="font-semibold text-slate-700">{intakeMode==='ewp'?'Name':'Employee / Applicant'} *<input id="leave-input-applicant" required value={employeeName} onChange={event => setEmployeeName(event.target.value)} placeholder={intakeMode==='ewp'?'Enter employee name':'Enter employee or applicant name'} className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100" /></label>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
+          {intakeMode==='leave'?<div className="grid gap-4 sm:grid-cols-2">
             <label className="font-semibold text-slate-700">Office *<select id="leave-select-office" required value={office} onChange={event => setOffice(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"><option value="">Select applicant office</option>{office && !(OFFICE_OPTIONS as readonly string[]).includes(office) && <option value={office}>{office}</option>}{OFFICE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
             <label className="font-semibold text-slate-700">Leave Type *<select id="select-filing-leave-type" value={leaveType} onChange={event => { setLeaveType(event.target.value as LeaveType); setLeaveSubtype(''); setLeaveDetails(''); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100">{LEAVE_TYPES.map(type => <option key={type}>{type}</option>)}</select></label>
-          </div>
-          {(detailLabels(leaveType)[0] || detailLabels(leaveType)[1]) && <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+          </div>:<><div className="grid gap-4 sm:grid-cols-2"><label className="font-semibold text-slate-700">Office *<select id="leave-select-office" required value={office} onChange={event => setOffice(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"><option value="">Select employee office</option>{OFFICE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label className="font-semibold text-slate-700">Amount *<input id="ewp-input-amount" required type="number" min="0.01" step="0.01" value={ewpAmount} onChange={event=>setEwpAmount(event.target.value)} placeholder="0.00" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"/></label></div><label className="block font-semibold text-slate-700">Purpose *<textarea id="ewp-input-purpose" required value={ewpPurpose} onChange={event=>setEwpPurpose(event.target.value)} rows={3} placeholder="Enter the purpose of the EWP assistance" className="mt-1 w-full resize-y rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"/></label></>}
+          {intakeMode==='leave' && (detailLabels(leaveType)[0] || detailLabels(leaveType)[1]) && <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
             <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-blue-700">Leave Details</p>
             {detailLabels(leaveType)[0] && <label className="block font-semibold text-slate-700">{detailLabels(leaveType)[0]} *
               <select id="select-leave-subtype" required value={leaveSubtype} onChange={event => { setLeaveSubtype(event.target.value); if (leaveType === 'Others' && event.target.value !== 'OTHER') setLeaveDetails(''); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100">
@@ -261,15 +284,15 @@ export const LeaveContinuity: React.FC = () => {
               <textarea id="input-leave-specific-details" required={leaveType === 'Sick Leave' || (leaveType === 'Others' && leaveSubtype === 'OTHER')} value={leaveDetails} onChange={event => setLeaveDetails(event.target.value)} rows={2} placeholder={leaveType === 'Vacation Leave' ? 'e.g. Cebu City or Japan' : leaveType === 'Sick Leave' ? 'Brief business-required illness information' : ''} className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" />
             </label>}
           </section>}
-          <section className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-bold text-slate-800">Leave Dates</h3><p className="text-[10px] text-slate-500">Select the first and last date on the calendar. Add another range only for non-consecutive dates.</p></div><button id="btn-add-leave-range" type="button" onClick={() => setDateRanges(previous => [...previous, emptyDateRange()])} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 font-semibold text-blue-700 hover:bg-blue-50"><Plus className="h-3.5 w-3.5" /> Add Range</button></div>
+          {intakeMode==='leave'&&<section className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-bold text-slate-800">Leave Dates</h3><p className="text-[10px] text-slate-500">Select the first and last date on the calendar. Add another range only for non-consecutive dates.</p></div><button id="btn-add-leave-range" type="button" onClick={() => setDateRanges(previous => [...previous, emptyDateRange()])} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 font-semibold text-blue-700 hover:bg-blue-50"><Plus className="h-3.5 w-3.5" /> Add Range</button></div>
             <div className="mt-3 space-y-3">{dateRanges.map((range,index) => <div key={range.id || index} data-testid={`leave-date-range-${index}`} className="rounded-lg border border-slate-200 bg-white p-3"><div className="mb-2 flex items-center justify-between"><span className="font-bold text-slate-600">Date Range {index+1}</span>{dateRanges.length>1 && <button aria-label={`Remove date range ${index+1}`} type="button" onClick={() => setDateRanges(previous => previous.filter((_,i)=>i!==index))} className="rounded-md p-1 text-rose-500 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>}</div><div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
               <label className="min-w-0 font-semibold text-slate-700">Date Range *<div className="mt-1"><LeaveDateRangePicker startDate={range.startDate} endDate={range.endDate} dayType={range.dayType} onChange={(startDate,endDate) => setDateRanges(previous => previous.map((item,i) => i===index ? { ...item, startDate, endDate } : item))} /></div></label>
               <label className="font-semibold text-slate-700">Duration *<select value={range.dayType} onChange={event => changeRange(index,'dayType',event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100"><option value="WHOLE_DAY">Whole Day</option><option value="AM_HALF_DAY">AM Half-Day</option><option value="PM_HALF_DAY">PM Half-Day</option></select></label>
             </div></div>)}</div>
             <div className="mt-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2"><span className="font-semibold text-blue-800">Calculated Leave Days</span><strong id="calculated-leave-days" className="text-base text-blue-900">{formatDays(calculatedDays(dateRanges))}</strong></div>
-          </section>
+          </section>}
           <label className="block font-semibold text-slate-700">Remarks<textarea value={remarks} onChange={event => setRemarks(event.target.value)} rows={3} className="mt-1 w-full resize-y rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
-          <footer className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button id="btn-submit-filing" type="submit" disabled={!employeeName.trim()} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">{editingRecord ? 'Save Changes' : 'Register Leave Application'}</button></footer>
+          <footer className="flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" onClick={() => { setIsModalOpen(false); resetForm(); }} className="rounded-lg px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100">Cancel</button><button id="btn-submit-filing" type="submit" disabled={!employeeName.trim() || (intakeMode==='ewp'&&(!barcode.trim()||!office||!ewpAmount||!ewpPurpose.trim()))} className={`rounded-lg px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 ${intakeMode==='ewp'?'bg-violet-600 hover:bg-violet-700':'bg-blue-600 hover:bg-blue-700'}`}>{editingRecord ? 'Save Changes' : intakeMode==='ewp' ? 'Register EWP Record' : 'Register Leave Application'}</button></footer>
         </form>
       </div>
     </div>}

@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { SidebarModule, UserAccount, UserRole } from '../types';
 import { AssigneeDesignationsModal } from './AssigneeDesignationsModal';
 import { SystemRolesModal } from './SystemRolesModal';
+import { UserAvatar } from './UserAvatar';
 import { 
   Users, 
   UserPlus, 
@@ -73,6 +74,8 @@ const ROLE_CONFIGS: Record<UserRole, { label: string; badgeClass: string; desc: 
   },
 };
 
+const AVATAR_CHOICES = Array.from({ length: 24 }, (_, index) => `hrmdo-personnel-avatar-${index + 1}`);
+
 const PERSONNEL_LIST_PAGE_SIZE = 10;
 
 export const UsersDashboard: React.FC = () => {
@@ -112,6 +115,7 @@ export const UsersDashboard: React.FC = () => {
     position: string;
     division: string;
     office: string;
+    avatarSeed: string;
     sidebarModules: SidebarModule[];
   }>({
     name: '',
@@ -121,6 +125,7 @@ export const UsersDashboard: React.FC = () => {
     position: 'Human Resource Management Officer I',
     division: 'Compensation & Benefits Division',
     office: 'Human Resource Management and Development Office',
+    avatarSeed: AVATAR_CHOICES[0],
     sidebarModules: ['dashboard','queues','payroll','registry','leave'],
   });
 
@@ -207,6 +212,7 @@ export const UsersDashboard: React.FC = () => {
       position: 'HR Management Officer I',
       division: 'Compensation & Benefits Division',
       office: 'Human Resource Management and Development Office',
+      avatarSeed: AVATAR_CHOICES[0],
       sidebarModules: ['dashboard','queues','payroll','registry','leave'],
     });
     setIsUserFormOpen(true);
@@ -223,6 +229,7 @@ export const UsersDashboard: React.FC = () => {
       position: user.position,
       division: user.division,
       office: user.office,
+      avatarSeed: user.avatarSeed || user.id,
       sidebarModules: user.sidebarModules || ['dashboard','queues','payroll','registry','leave'],
     });
     setIsUserFormOpen(true);
@@ -244,6 +251,7 @@ export const UsersDashboard: React.FC = () => {
         position: formData.position.trim(),
         division: formData.division.trim(),
         office: formData.office.trim(),
+        avatarSeed: formData.avatarSeed,
         sidebarModules: formData.sidebarModules,
       }))) return;
     } else {
@@ -256,6 +264,7 @@ export const UsersDashboard: React.FC = () => {
         position: formData.position.trim(),
         division: formData.division.trim(),
         office: formData.office.trim(),
+        avatarSeed: formData.avatarSeed,
         sidebarModules: formData.sidebarModules,
       }))) return;
     }
@@ -513,9 +522,7 @@ export const UsersDashboard: React.FC = () => {
 
                   {/* Profile Info */}
                   <div className="flex items-start gap-3.5 mb-3.5">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-xs">
-                      {user.avatarInitials}
-                    </div>
+                    <UserAvatar seed={user.avatarSeed || user.id} name={user.name} initials={user.avatarInitials} className="h-12 w-12 rounded-xl ring-1 ring-slate-200 shadow-xs" />
 
                     <div className="min-w-0 flex-1">
                       <h3 className="text-sm font-bold text-slate-900 truncate" title={user.name}>
@@ -640,9 +647,7 @@ export const UsersDashboard: React.FC = () => {
                     >
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-slate-800 text-white font-bold flex items-center justify-center shrink-0">
-                            {user.avatarInitials}
-                          </div>
+                          <UserAvatar seed={user.avatarSeed || user.id} name={user.name} initials={user.avatarInitials} className="h-8 w-8 rounded-lg ring-1 ring-slate-200" />
                           <div>
                             <div className="flex items-center gap-1.5">
                               <span className="font-bold text-slate-900">{user.name}</span>
@@ -833,6 +838,42 @@ export const UsersDashboard: React.FC = () => {
                   <input aria-label="Account password" type="password" autoComplete="new-password" required={!editingUser} minLength={3} maxLength={72} value={password} onChange={e => setPassword(e.target.value)} placeholder={editingUser ? 'Leave blank to keep the current password' : 'Set an initial password'} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white p-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
                 </label>
               </div>
+              </section>
+
+              <section className="border-t border-slate-200 pt-5">
+                <div className="mb-4 flex items-start justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900">Profile avatar</h4>
+                    <p className="mt-0.5 text-xs text-slate-500">Choose the illustration used for this personnel account.</p>
+                  </div>
+                  <UserAvatar
+                    seed={formData.avatarSeed}
+                    name={formData.name.trim() || 'New personnel'}
+                    className="h-14 w-14 rounded-2xl ring-2 ring-blue-100 shadow-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-6" role="radiogroup" aria-label="Choose personnel avatar">
+                  {[
+                    ...(formData.avatarSeed && !AVATAR_CHOICES.includes(formData.avatarSeed) ? [formData.avatarSeed] : []),
+                    ...AVATAR_CHOICES,
+                  ].map((seed, index) => {
+                    const selected = formData.avatarSeed === seed;
+                    return (
+                      <button
+                        key={seed}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        aria-label={index === 0 && !AVATAR_CHOICES.includes(seed) ? 'Current avatar' : `Avatar choice ${AVATAR_CHOICES.indexOf(seed) + 1}`}
+                        onClick={() => setFormData(previous => ({ ...previous, avatarSeed: seed }))}
+                        className={`group relative rounded-xl border p-1.5 transition ${selected ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-slate-50'}`}
+                      >
+                        <UserAvatar seed={seed} name={formData.name.trim() || 'New personnel'} className="aspect-square h-auto w-full rounded-lg" />
+                        {selected && <span className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm"><Check className="h-3 w-3" /></span>}
+                      </button>
+                    );
+                  })}
+                </div>
               </section>
 
               <section className="border-t border-slate-200 pt-5">

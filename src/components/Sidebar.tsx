@@ -19,6 +19,7 @@ import {
   Users
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
+import { SidebarWeatherCard } from './SidebarWeatherCard';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -130,8 +131,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <BrandLogo className="h-10 w-10 shrink-0 drop-shadow-md" title="HRMDO Records Management System" />
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-300">HRMDO Records</p>
-              <p className="mt-0.5 text-xs font-bold leading-tight text-white sm:text-sm">Management System</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-300">HRMDO</p>
+              <p className="mt-0.5 text-xs font-bold leading-tight text-white sm:text-sm">Records Management System</p>
               <p className="mt-0.5 text-[10px] font-medium text-slate-400">Records · Workflow · Archives</p>
             </div>
           </div>
@@ -218,21 +219,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
           })}
         </nav>
 
-        {/* Active Desk Info in Sidebar Bottom */}
+        {/* Local Date, Time & Weather */}
         <div className="p-3 border-t border-slate-800 shrink-0 bg-slate-950/40">
-          <div className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-800/60 border border-slate-700/60">
-            <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs text-white shrink-0">
-              {currentUser.avatarInitials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-semibold text-white truncate">
-                {currentUser.name}
-              </div>
-              <div className="text-[10px] text-slate-400 truncate">
-                {currentUser.roleTitle}
-              </div>
-            </div>
-          </div>
+          <SidebarWeatherCard />
         </div>
 
       </aside>
