@@ -43,7 +43,7 @@ export const LoginPortal: React.FC = () => {
               <p className="mt-4 max-w-md text-sm leading-6 text-slate-300">A secure workspace for document routing, payroll processing, leave records, and archives.</p>
               <div className="mt-8 hidden grid-cols-2 gap-3 sm:grid lg:grid">
                 <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><Workflow className="h-5 w-5 text-blue-300" /><p className="mt-2 text-xs font-semibold">Controlled workflows</p><p className="mt-1 text-[11px] leading-4 text-slate-400">Clear phase ownership and routing.</p></div>
-                <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><Archive className="h-5 w-5 text-blue-300" /><p className="mt-2 text-xs font-semibold">Reliable records</p><p className="mt-1 text-[11px] leading-4 text-slate-400">Traceable history in one system.</p></div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3"><Archive className="h-5 w-5 text-blue-300" /><p className="mt-2 text-xs font-semibold">Up-to-date records</p><p className="mt-1 text-[11px] leading-4 text-slate-400">Traceable history in one system.</p></div>
               </div>
             </div>
 

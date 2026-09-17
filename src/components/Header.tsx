@@ -98,18 +98,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
   const saveReadNotifications=(ids:string[])=>{ const retained=ids.slice(-200); setReadNotificationIds(retained); writeWorkspaceValue(currentUser.id,'notifications.read',retained); };
   const markAllNotificationsRead=()=>saveReadNotifications(Array.from(new Set([...readNotificationIds,...notifications.map(notification=>notification.id)])));
 
-  const openDocument = (document: DocumentRecord) => {
+  const openDocument = (document: DocumentRecord, notify = true) => {
     setSearchResults(null);
     setSelectedDocument(document);
-    showToast('success', document.status === 'Awaiting_External_Return' ? 'Document Outside HRMDO' : 'Document Found', document.status === 'Awaiting_External_Return' ? `${document.trackingNumber} is awaiting return from ${document.currentLocation || 'its external destination'}.` : `Opened tracking file for ${document.trackingNumber}`);
+    if (notify) showToast('success', document.status === 'Awaiting_External_Return' ? 'Document Outside HRMDO' : 'Document Found', document.status === 'Awaiting_External_Return' ? `${document.trackingNumber} is awaiting return from ${document.currentLocation || 'its external destination'}.` : `Opened tracking file for ${document.trackingNumber}`);
     setSearchInput('');
   };
 
-  const openPayrollBatch = (batch: PayrollBatch, item?: PayrollItem) => {
+  const openPayrollBatch = (batch: PayrollBatch, item?: PayrollItem, notify = true) => {
     setSearchResults(null);
     setActiveTab('payroll');
     openBatchModal(batch);
-    showToast('success', 'Payroll Batch Found', item ? `Opened ${batch.batchNumber} containing payroll ${item.barcode}.` : `Opened payroll batch ${batch.batchNumber}.`);
+    if (notify) showToast('success', 'Payroll Batch Found', item ? `Opened ${batch.batchNumber} containing payroll ${item.barcode}.` : `Opened payroll batch ${batch.batchNumber}.`);
     setSearchInput('');
   };
 
@@ -121,8 +121,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
   const openNotification = (notification: HeaderNotification) => {
     if (!readNotificationIds.includes(notification.id)) saveReadNotifications([...readNotificationIds,notification.id]);
     setIsNotificationsOpen(false);
-    if (notification.document) openDocument(notification.document);
-    else if (notification.batch) openPayrollBatch(notification.batch);
+    if (notification.document) openDocument(notification.document, false);
+    else if (notification.batch) openPayrollBatch(notification.batch, undefined, false);
   };
 
   const handleQuickSearch = (e: React.FormEvent) => {
