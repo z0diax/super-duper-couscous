@@ -17,16 +17,24 @@ import {
 
 interface DashboardProps {
   onOpenRegisterModal: () => void;
+  canRegisterDocument: boolean;
+  canViewRegistry: boolean;
+  canViewLeave: boolean;
+  canViewAudit: boolean;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRegisterDocument, canViewRegistry, canViewLeave, canViewAudit }) => {
   const { 
     documents, 
     currentUser, 
     setActiveTab, 
     setSelectedDocument, 
-    auditLogs 
+    auditLogs, showToast
   } = useApp();
+  const openRestricted = (allowed: boolean, tab: 'registry' | 'leave' | 'audit', label: string) => {
+    if (allowed) setActiveTab(tab);
+    else showToast('warning', 'Access restricted', `You are not authorized to access ${label}. Ask an administrator to enable this section for your account.`);
+  };
 
   const activeV2Docs = documents.filter(d => !d.isLegacyV1);
   const pendingApprovalDocs = activeV2Docs.filter(d => d.status === 'Pending_Approval');
@@ -71,14 +79,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
                 </span>
               )}
             </button>
-            <button
+            {canRegisterDocument && <button
               id="btn-dash-register-new"
               onClick={onOpenRegisterModal}
               className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Register Document</span>
-            </button>
+            </button>}
           </div>
         </div>
       </div>
@@ -108,7 +116,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
 
         {/* Card 2: Active Pipeline */}
         <div 
-          onClick={() => setActiveTab('registry')}
+          onClick={() => openRestricted(canViewRegistry, 'registry', 'Document Registry')}
           className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs hover:border-blue-400 transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between text-slate-400 mb-2">
@@ -146,7 +154,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
 
         {/* Card 4: Concluded & Released */}
         <div 
-          onClick={() => setActiveTab('registry')}
+          onClick={() => openRestricted(canViewRegistry, 'registry', 'Document Registry')}
           className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs hover:border-emerald-400 transition-all cursor-pointer group"
         >
           <div className="flex items-center justify-between text-slate-400 mb-2">
@@ -206,14 +214,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
                   No documents currently require action from {currentUser.roleTitle}. You can register incoming items or review central archives.
                 </p>
                 <div className="mt-4 flex items-center justify-center gap-3">
-                  <button
+                  {canRegisterDocument && <button
                     onClick={onOpenRegisterModal}
                     className="px-3 py-1.5 text-xs font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
                     + Register Document
-                  </button>
+                  </button>}
                   <button
-                    onClick={() => setActiveTab('registry')}
+                    onClick={() => openRestricted(canViewRegistry, 'registry', 'Document Registry')}
                     className="px-3 py-1.5 text-xs font-medium bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                   >
                     Search Registry
@@ -279,7 +287,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
               Quick Actions
             </h3>
             <div className="space-y-2">
-              <button
+              {canRegisterDocument && <button
                 id="btn-dash-quick-register"
                 onClick={onOpenRegisterModal}
                 className="w-full flex items-center justify-between p-2.5 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-xs font-medium transition-colors cursor-pointer"
@@ -289,11 +297,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
                   <span>Register Incoming Document</span>
                 </div>
                 <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-              </button>
+              </button>}
 
               <button
                 id="btn-dash-quick-registry"
-                onClick={() => setActiveTab('registry')}
+                onClick={() => openRestricted(canViewRegistry, 'registry', 'Document Registry')}
                 className="w-full flex items-center justify-between p-2.5 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-xs font-medium transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2">
@@ -305,7 +313,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
 
               <button
                 id="btn-dash-quick-leave"
-                onClick={() => setActiveTab('leave')}
+                onClick={() => openRestricted(canViewLeave, 'leave', 'Leave Records')}
                 className="w-full flex items-center justify-between p-2.5 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-700 text-slate-700 text-xs font-medium transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-2">
@@ -328,7 +336,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal }) => 
               </div>
               <button
                 id="btn-dash-all-audit-link"
-                onClick={() => setActiveTab('audit')}
+                onClick={() => openRestricted(canViewAudit, 'audit', 'Audit Trail & Reports')}
                 className="text-xs font-medium text-blue-600 hover:text-blue-800 cursor-pointer"
               >
                 Audit Log

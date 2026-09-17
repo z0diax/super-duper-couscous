@@ -56,8 +56,18 @@ function useApplication() {
   useEffect(() => {
     if (!isAuthenticated) return;
     void refreshState();
-    const timer = setInterval(() => { if (!busy.current && document.visibilityState === 'visible') void refreshState(); }, 30000);
-    return () => clearInterval(timer);
+    // Keep assigned queues and notification counts current without requiring
+    // the user to reload the page. The API remains the source of truth, while
+    // focus/online events provide an immediate refresh after returning to the app.
+    const timer = setInterval(() => { if (!busy.current && document.visibilityState === 'visible') void refreshState(); }, 5000);
+    const refreshWhenActive = () => { if (!busy.current) void refreshState(); };
+    window.addEventListener('focus', refreshWhenActive);
+    window.addEventListener('online', refreshWhenActive);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', refreshWhenActive);
+      window.removeEventListener('online', refreshWhenActive);
+    };
   }, [isAuthenticated, refreshState]);
   useEffect(() => {
     if (!currentUser.id) { setWorkspaceRestoredForUser(''); return; }

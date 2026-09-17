@@ -41,6 +41,15 @@ const MainLayout: React.FC = () => {
   const [isRegisterPayrollModalOpen, setIsRegisterPayrollModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-payroll', false);
   const operationTabs = currentUser.role === 'admin' ? ['dashboard','queues','payroll','registry','leave'] : currentUser.sidebarModules || ['dashboard','queues','payroll','registry','leave'];
   const canViewLeaveTab = operationTabs.includes('leave');
+  const canRegisterDocument = currentUser.role === 'admin' || operationTabs.includes('registry');
+  const canRegisterPayroll = currentUser.role === 'admin' || operationTabs.includes('payroll');
+  const canViewRegistry = currentUser.role === 'admin' || operationTabs.includes('registry');
+  const canViewAudit = currentUser.role === 'admin' || can('canSupervise');
+
+  React.useEffect(() => {
+    if (!canRegisterDocument) setIsRegisterModalOpen(false);
+    if (!canRegisterPayroll) setIsRegisterPayrollModalOpen(false);
+  }, [canRegisterDocument, canRegisterPayroll, setIsRegisterModalOpen, setIsRegisterPayrollModalOpen]);
 
   React.useEffect(() => {
     const privilegedTab = ['workflows','catalogue','users','migration'].includes(activeTab) && can('canAdmin');
@@ -83,8 +92,8 @@ const MainLayout: React.FC = () => {
       <Sidebar
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
-        onOpenRegisterModal={() => setIsRegisterModalOpen(true)}
-        onOpenPayrollModal={() => setIsRegisterPayrollModalOpen(true)}
+        onOpenRegisterModal={() => { if (canRegisterDocument) setIsRegisterModalOpen(true); }}
+        onOpenPayrollModal={() => { if (canRegisterPayroll) setIsRegisterPayrollModalOpen(true); }}
       />
 
       {/* Main Content Area (offset by sidebar width on desktop) */}
@@ -93,15 +102,15 @@ const MainLayout: React.FC = () => {
         {/* Top Header */}
         <Header 
           onOpenSidebar={() => setIsSidebarOpen(true)}
-          onOpenRegisterModal={() => setIsRegisterModalOpen(true)}
-          onOpenPayrollModal={() => setIsRegisterPayrollModalOpen(true)}
+          onOpenRegisterModal={() => { if (canRegisterDocument) setIsRegisterModalOpen(true); }}
+          onOpenPayrollModal={() => { if (canRegisterPayroll) setIsRegisterPayrollModalOpen(true); }}
         />
 
         {/* Dynamic Main Body Content */}
         <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
           {can('canAdmin') && !workflowTemplates.some(w => w.isActive) && <div className="mb-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">Before registering documents, configure your users, review the classification catalogue, and create active workflows. Payroll batches also require employment routing rules.</div>}
           {activeTab === 'dashboard' && (
-            <Dashboard onOpenRegisterModal={() => setIsRegisterModalOpen(true)} />
+            <Dashboard onOpenRegisterModal={() => { if (canRegisterDocument) setIsRegisterModalOpen(true); }} canRegisterDocument={canRegisterDocument} canViewRegistry={canViewRegistry} canViewLeave={canViewLeaveTab} canViewAudit={canViewAudit} />
           )}
 
           {activeTab === 'queues' && (
@@ -109,11 +118,11 @@ const MainLayout: React.FC = () => {
           )}
 
           {activeTab === 'payroll' && (
-            <PayrollManagement onOpenRegisterBatchModal={() => setIsRegisterPayrollModalOpen(true)} />
+            <PayrollManagement onOpenRegisterBatchModal={() => { if (canRegisterPayroll) setIsRegisterPayrollModalOpen(true); }} />
           )}
 
           {activeTab === 'registry' && (
-            <DocumentRegistry onOpenRegisterModal={() => setIsRegisterModalOpen(true)} />
+            <DocumentRegistry onOpenRegisterModal={() => { if (canRegisterDocument) setIsRegisterModalOpen(true); }} />
           )}
 
           {activeTab === 'leave' && canViewLeaveTab && (

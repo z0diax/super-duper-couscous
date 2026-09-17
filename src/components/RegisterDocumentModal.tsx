@@ -12,7 +12,6 @@ import {
   Building2,
   AlertTriangle,
   Check,
-  Eye,
   UserCheck
 } from 'lucide-react';
 import { resolveWorkflow } from '../services/workflow';
@@ -197,7 +196,10 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
               </div>
 
               <div>
-                <label htmlFor="reg-input-doctype" className="mb-1 block text-xs font-semibold text-slate-700">Document Type {classification === 'Others' ? '*' : ''}</label>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label htmlFor="reg-input-doctype" className="block text-xs font-semibold text-slate-700">Document Type {classification === 'Others' ? '*' : ''}</label>
+                  <button type="button" disabled={!resolvedWorkflow} onClick={() => setIsWorkflowPreviewOpen(true)} className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-50 hover:text-blue-800 disabled:cursor-not-allowed disabled:text-slate-400">Workflow</button>
+                </div>
                 <div className="flex items-center gap-2">
                   <select
                     id="reg-input-doctype"
@@ -211,7 +213,6 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
                       </option>
                     ))}
                   </select>
-                  <button type="button" disabled={!resolvedWorkflow} onClick={() => setIsWorkflowPreviewOpen(true)} className="inline-flex h-[42px] shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"><Eye className="h-3.5 w-3.5" /><span className="hidden lg:inline">Show Workflow</span><span className="lg:hidden">Workflow</span></button>
                 </div>
               </div>
             </div>

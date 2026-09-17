@@ -741,6 +741,15 @@ export const WorkflowManager: React.FC = () => {
                 </div>
               </div>
 
+              {/* Workflow at a glance */}
+              <div className="border-b border-slate-100 bg-blue-50/40 px-5 py-4 sm:px-6">
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2.5"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">1</span><div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Match</p><p className="text-xs font-semibold text-slate-800">Document assignment</p></div></div>
+                  <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2.5"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">2</span><div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Route</p><p className="text-xs font-semibold text-slate-800">Process each phase</p></div></div>
+                  <div className="flex items-center gap-2 rounded-lg border border-blue-100 bg-white px-3 py-2.5"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[10px] font-bold text-white">3</span><div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Complete</p><p className="text-xs font-semibold text-slate-800">Release or archive</p></div></div>
+                </div>
+              </div>
+
               {/* Steps Pipeline Preview */}
               <div className="p-5 sm:p-6">
                 <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
@@ -752,7 +761,7 @@ export const WorkflowManager: React.FC = () => {
                   {activeTemplate.steps.map((step, idx) => (
                     <div
                       key={step.stepNumber}
-                      className="relative rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-blue-200 hover:bg-blue-50/30"
+                      className="relative rounded-xl border border-slate-200 border-l-4 border-l-blue-500 bg-white p-4 shadow-2xs transition-colors hover:border-blue-200 hover:bg-blue-50/30"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3.5">
@@ -1034,7 +1043,7 @@ export const WorkflowManager: React.FC = () => {
                         </div>
 
                         <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Phase Type</label>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Processing type</label>
                           <select value={stageTypeOf(step)} onChange={e => handleEditStageTypeChange(idx, e.target.value as NonNullable<WorkflowStepTemplate['stageType']>)} className="w-full text-xs bg-slate-50 border border-slate-200 rounded-lg p-2 focus:bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer">
                             <option value="INTERNAL_PROCESSING">Internal Processing</option><option value="EXTERNAL_HANDOFF_REVIEW">External Handoff / Review</option><option value="FINAL_RELEASE">Final Release</option>
                           </select>
@@ -1042,7 +1051,7 @@ export const WorkflowManager: React.FC = () => {
 
                         <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''}>
                           <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                            Required Processing Action
+                            Action required
                           </label>
                           <select
                             value={step.requiredAction}
@@ -1059,7 +1068,7 @@ export const WorkflowManager: React.FC = () => {
 
                         <div className="sm:col-span-2">
                           <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                            Task Instructions / Description
+                            Instructions
                           </label>
                           <input
                             type="text"
@@ -1070,14 +1079,14 @@ export const WorkflowManager: React.FC = () => {
                         </div>
 
                         {canChoosePayrollAssignment(editFormData.classification, step, idx) && <div className="sm:col-span-2 flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50/70 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Routing</p><p className="mt-1 text-xs font-semibold text-slate-900">{payrollRoutingSummary(editFormData.classification, step, idx)}</p><p className="mt-1 text-[11px] text-slate-600">This setting controls who receives the payroll when it enters Phase {idx + 1}.</p></div>
-                          <button type="button" onClick={() => setRoutingSettingsTarget({ mode: 'edit', index: idx })} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"><Sliders className="h-3.5 w-3.5" />Routing Settings</button>
+                          <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Routing</p><p className="mt-1 text-xs font-semibold text-slate-900">{payrollRoutingSummary(editFormData.classification, step, idx)}</p><p className="mt-1 text-[11px] text-slate-600">This setting controls who receives the document when it enters this phase.</p></div>
+                          <button type="button" onClick={() => setRoutingSettingsTarget({ mode: 'edit', index: idx })} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"><Sliders className="h-3.5 w-3.5" />Configure assignment</button>
                         </div>}
 
                         <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(editFormData.classification, step, idx) !== 'workflow' ? 'hidden' : ''}>
                           <div className="flex items-center justify-between mb-1">
                             <label className="block text-[11px] font-semibold text-slate-700">
-                              Assignee Type & Designation
+                              Assigned team or role
                             </label>
                             <button
                               type="button"
@@ -1130,7 +1139,7 @@ export const WorkflowManager: React.FC = () => {
 
                         <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(editFormData.classification, step, idx) !== 'workflow' ? 'hidden' : ''}>
                           <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                            Person in Charge
+                            Specific assignee
                           </label>
                           <select aria-label="Assigned officer" value={step.assigneeUserId || ''} onChange={e => {
                               const user = users.find(u => u.id === e.target.value);
@@ -1140,8 +1149,10 @@ export const WorkflowManager: React.FC = () => {
                             }} className="w-full text-xs border rounded-lg p-2"><option value="">Use role or team queue</option>{users.map(u => <option key={u.id} value={u.id}>{u.name} — {u.roleTitle}</option>)}</select>
                         </div>
 
-                        <div className={`${stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''} sm:col-span-2 flex flex-wrap items-center gap-4 pt-1`}>
-                          <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" checked={step.allowHold ?? false} onChange={e => handleEditStepChange(idx, 'allowHold', e.target.checked)} className="w-3.5 h-3.5 text-amber-600 rounded cursor-pointer" /><span>Allow Hold at this Phase</span></label>
+                        <details className={`${stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''} sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50/70`}>
+                          <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-slate-700 marker:text-slate-400">Phase rules</summary>
+                          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-200 px-3 py-3">
+                          <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" checked={step.allowHold ?? false} onChange={e => handleEditStepChange(idx, 'allowHold', e.target.checked)} className="w-3.5 h-3.5 text-amber-600 rounded cursor-pointer" /><span>Allow hold</span></label>
                           <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                             <input
                               type="checkbox"
@@ -1149,7 +1160,7 @@ export const WorkflowManager: React.FC = () => {
                               onChange={e => handleEditStepChange(idx, 'allowReturn', e.target.checked)}
                               className="w-3.5 h-3.5 text-blue-600 rounded cursor-pointer"
                             />
-                            <span>Allow Return for Rework</span>
+                            <span>Allow rework</span>
                           </label>
 
                           <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
@@ -1159,9 +1170,10 @@ export const WorkflowManager: React.FC = () => {
                               onChange={e => handleEditStepChange(idx, 'requiresAttachment', e.target.checked)}
                               className="w-3.5 h-3.5 text-blue-600 rounded cursor-pointer"
                             />
-                            <span>Mandatory Supporting File Attachment</span>
+                            <span>Require attachment</span>
                           </label>
-                        </div>
+                          </div>
+                        </details>
 
                         {stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' && <ExternalStageFields step={step} onChange={(field, value) => handleEditStepChange(idx, field, value)} designations={assigneeDesignations} users={users} onManage={() => setIsDesignationsModalOpen(true)} />}
                       </div>
@@ -1413,7 +1425,7 @@ export const WorkflowManager: React.FC = () => {
                         </div>
 
                         <div>
-                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Phase Type</label>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">Processing type</label>
                           <select value={stageTypeOf(step)} onChange={e => handleCreateStageTypeChange(idx, e.target.value as NonNullable<WorkflowStepTemplate['stageType']>)} className="w-full text-xs bg-white border border-slate-300 rounded-lg p-2 focus:ring-1 focus:ring-blue-500 focus:outline-none cursor-pointer">
                             <option value="INTERNAL_PROCESSING">Internal Processing</option><option value="EXTERNAL_HANDOFF_REVIEW">External Handoff / Review</option><option value="FINAL_RELEASE">Final Release</option>
                           </select>
@@ -1421,7 +1433,7 @@ export const WorkflowManager: React.FC = () => {
 
                         <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''}>
                           <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                            Required Processing Action
+                            Action required
                           </label>
                           <select
                             value={step.requiredAction}
@@ -1450,14 +1462,14 @@ export const WorkflowManager: React.FC = () => {
                         </div>
 
                         {canChoosePayrollAssignment(newClassification, step, idx) && <div className="sm:col-span-2 flex flex-col gap-3 rounded-xl border border-blue-200 bg-blue-50/70 p-3.5 sm:flex-row sm:items-center sm:justify-between">
-                          <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Routing</p><p className="mt-1 text-xs font-semibold text-slate-900">{payrollRoutingSummary(newClassification, step, idx)}</p><p className="mt-1 text-[11px] text-slate-600">This setting controls who receives the payroll when it enters Phase {idx + 1}.</p></div>
-                          <button type="button" onClick={() => setRoutingSettingsTarget({ mode: 'create', index: idx })} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"><Sliders className="h-3.5 w-3.5" />Routing Settings</button>
+                          <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Routing</p><p className="mt-1 text-xs font-semibold text-slate-900">{payrollRoutingSummary(newClassification, step, idx)}</p><p className="mt-1 text-[11px] text-slate-600">This setting controls who receives the document when it enters this phase.</p></div>
+                          <button type="button" onClick={() => setRoutingSettingsTarget({ mode: 'create', index: idx })} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100"><Sliders className="h-3.5 w-3.5" />Configure assignment</button>
                         </div>}
 
                         <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(newClassification, step, idx) !== 'workflow' ? 'hidden' : ''}>
                           <div className="flex items-center justify-between mb-1">
                             <label className="block text-[11px] font-semibold text-slate-700">
-                              Assigned Role or Department
+                              Assigned team or role
                             </label>
                             <button
                               type="button"
@@ -1510,7 +1522,7 @@ export const WorkflowManager: React.FC = () => {
 
                         <div className={stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' || payrollAssignmentSourceOf(newClassification, step, idx) !== 'workflow' ? 'hidden' : ''}>
                           <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                            Person in Charge
+                            Specific assignee
                           </label>
                           <select aria-label="Assigned officer" value={step.assigneeUserId || ''} onChange={e => {
                               const user = users.find(u => u.id === e.target.value);
@@ -1520,8 +1532,10 @@ export const WorkflowManager: React.FC = () => {
                             }} className="w-full text-xs border rounded-lg p-2"><option value="">Use role or team queue</option>{users.map(u => <option key={u.id} value={u.id}>{u.name} — {u.roleTitle}</option>)}</select>
                         </div>
 
-                        <div className={`${stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''} sm:col-span-2 flex flex-wrap items-center gap-4 pt-1`}>
-                          <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" checked={step.allowHold ?? false} onChange={e => handleCreateStepChange(idx, 'allowHold', e.target.checked)} className="w-3.5 h-3.5 text-amber-600 rounded cursor-pointer" /><span>Allow Hold at this Phase</span></label>
+                        <details className={`${stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' ? 'hidden' : ''} sm:col-span-2 rounded-lg border border-slate-200 bg-white`}>
+                          <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-slate-700 marker:text-slate-400">Phase rules</summary>
+                          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-200 px-3 py-3">
+                          <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer"><input type="checkbox" checked={step.allowHold ?? false} onChange={e => handleCreateStepChange(idx, 'allowHold', e.target.checked)} className="w-3.5 h-3.5 text-amber-600 rounded cursor-pointer" /><span>Allow hold</span></label>
                           <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
                             <input
                               type="checkbox"
@@ -1529,7 +1543,7 @@ export const WorkflowManager: React.FC = () => {
                               onChange={e => handleCreateStepChange(idx, 'allowReturn', e.target.checked)}
                               className="w-3.5 h-3.5 text-blue-600 rounded cursor-pointer"
                             />
-                            <span>Allow Return for Rework</span>
+                            <span>Allow rework</span>
                           </label>
 
                           <label className="flex items-center gap-1.5 text-xs text-slate-700 cursor-pointer">
@@ -1539,9 +1553,10 @@ export const WorkflowManager: React.FC = () => {
                               onChange={e => handleCreateStepChange(idx, 'requiresAttachment', e.target.checked)}
                               className="w-3.5 h-3.5 text-blue-600 rounded cursor-pointer"
                             />
-                            <span>Mandatory Attachment</span>
+                            <span>Require attachment</span>
                           </label>
-                        </div>
+                          </div>
+                        </details>
                         {stageTypeOf(step) === 'EXTERNAL_HANDOFF_REVIEW' && <ExternalStageFields step={step} onChange={(field, value) => handleCreateStepChange(idx, field, value)} designations={assigneeDesignations} users={users} onManage={() => setIsDesignationsModalOpen(true)} />}
                       </div>
                     </div>
@@ -1665,3 +1680,4 @@ export const WorkflowManager: React.FC = () => {
     </div>
   );
 };
+
