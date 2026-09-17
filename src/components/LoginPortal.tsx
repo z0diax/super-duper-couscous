@@ -62,7 +62,7 @@ export const LoginPortal: React.FC = () => {
                 <span className="mb-2 block text-xs font-semibold text-slate-700">Email address or username</span>
                 <div className="relative">
                   <Mail className="pointer-events-none absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
-                  <input value={identifier} onChange={event => setIdentifier(event.target.value)} type="text" autoComplete="username" required placeholder="Username or name@hrmdo.gov.ph" className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100" />
+                  <input value={identifier} onChange={event => setIdentifier(event.target.value)} type="text" autoComplete="username" required placeholder="Username or email" className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100" />
                 </div>
               </label>
               <label className="block">
