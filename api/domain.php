@@ -147,7 +147,7 @@ function assert_barcode(array $s,string $barcode,array $additional=[],string $ex
     foreach ($s['payrollBatches'] as $r) { $codes[]=$r['batchBarcode']??''; $codes[]=$r['batchNumber']; }
     foreach ($s['payrollItems'] as $r) $codes[]=$r['barcode'];
     foreach ($s['leaveApplications'] as $r) if (($r['id']??'')!==$excludeLeaveId) { $codes[]=$r['barcode']??''; $codes[]=$r['trackingNumber']??''; }
-    foreach ($s['ewpRecords'] as $r) $codes[]=$r['barcode']??'';
+    foreach ($s['ewpRecords'] as $r) if (($r['id']??'')!==$excludeLeaveId) $codes[]=$r['barcode']??'';
     fail_unless(!in_array(strtolower($barcode),array_map('strtolower',$codes),true),'Barcode is already in use.',409);
 }
 function validated_leave_date_ranges($submitted): array {

@@ -7,8 +7,9 @@ foreach (['pdo_mysql','mbstring','fileinfo','Phar'] as $extension) if (!extensio
 if (PHP_VERSION_ID<80200) $errors[]='PHP 8.2 or later is required.';
 try {
     $pdo=database();
-    if ((int)$pdo->query('SELECT schema_version FROM app_meta WHERE id=1')->fetchColumn()!==2) $errors[]='Run the database installer.';
+    if ((int)$pdo->query('SELECT schema_version FROM app_meta WHERE id=1')->fetchColumn()!==3) $errors[]='Run the database installer.';
     if (!$pdo->query("SHOW COLUMNS FROM app_users LIKE 'sidebar_modules'")->fetch()) $errors[]='Run the database installer.';
+    if (!$pdo->query("SHOW TABLES LIKE 'application_settings'")->fetch()) $errors[]='Run the database installer.';
 }
 catch (Throwable $e) { $errors[]='Database is unavailable or not installed.'; }
 $directory=app_config()['upload_directory']; if (!is_dir($directory)) mkdir($directory,0700,true);

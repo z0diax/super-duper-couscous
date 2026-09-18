@@ -49,7 +49,7 @@ function useApplication() {
   }, [accept]);
   useEffect(() => {
     mounted.current = true;
-    getSession().then(user => { if (mounted.current && user) setCurrentUser(user); })
+    getSession().then(user => { if (mounted.current && user) { setCurrentUser(user); window.dispatchEvent(new Event('hrmdo:auth-changed')); } })
       .catch(error => setDatabaseError(error.message)).finally(() => setAuthReady(true));
     return () => { mounted.current = false; };
   }, []);
@@ -86,11 +86,11 @@ function useApplication() {
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, []);
   const login = async (identifier: string, password: string) => {
-    const user = await authenticate(identifier, password); sessionGeneration.current++; revision.current = -1; setState(emptyState); setDatabaseReady(false); setDatabaseError(null); setCurrentUser(user);
+    const user = await authenticate(identifier, password); sessionGeneration.current++; revision.current = -1; setState(emptyState); setDatabaseReady(false); setDatabaseError(null); setCurrentUser(user); window.dispatchEvent(new Event('hrmdo:auth-changed'));
   };
   const logout = async () => {
     if (busy.current) return;
-    try { await endSession(); sessionGeneration.current++; setCurrentUser(EMPTY_USER); setState(emptyState); setDocumentId(null); setBatchId(null); setSelectedWorkGroupId(null); setActiveTab('dashboard'); setDatabaseReady(false); revision.current = -1; }
+    try { await endSession(); sessionGeneration.current++; setCurrentUser(EMPTY_USER); setState(emptyState); setDocumentId(null); setBatchId(null); setSelectedWorkGroupId(null); setActiveTab('dashboard'); setDatabaseReady(false); revision.current = -1; window.dispatchEvent(new Event('hrmdo:auth-changed')); }
     catch (error) { showToast('error', 'Sign out failed', error.message); }
   };
   async function prepare(value: any): Promise<any> {
@@ -132,7 +132,7 @@ function useApplication() {
     addAssigneeDesignation: operation<AssigneeDesignation>('addAssigneeDesignation'), updateAssigneeDesignation: operation('updateAssigneeDesignation'), deleteAssigneeDesignation: operation('deleteAssigneeDesignation'), resetAssigneeDesignations: operation('resetAssigneeDesignations'),
     addSystemRole: operation<SystemRoleDefinition>('addSystemRole'), updateSystemRole: operation<SystemRoleDefinition>('updateSystemRole'), deleteSystemRole: operation('deleteSystemRole'), resetSystemRoles: operation('resetSystemRoles'),
     addUser: operation<UserAccount>('addUser'), updateUser: operation('updateUser'), deleteUser: operation('deleteUser'), changePassword: operation('changePassword'),
-    fileLeaveApplication: operation('fileLeaveApplication'), registerEwpRecord: operation('registerEwpRecord'), updateLeaveApplication: operation('updateLeaveApplication'), deleteLeaveApplication: operation('deleteLeaveApplication'),
+    fileLeaveApplication: operation('fileLeaveApplication'), registerEwpRecord: operation('registerEwpRecord'), updateEwpRecord: operation('updateEwpRecord'), deleteEwpRecord: operation('deleteEwpRecord'), updateLeaveApplication: operation('updateLeaveApplication'), deleteLeaveApplication: operation('deleteLeaveApplication'),
     completeLeaveComputation: operation<LeaveApplicationRecord>('completeLeaveComputation'), sendLeaveForSignature: operation<LeaveApplicationRecord>('sendLeaveForSignature'), releaseLeaveApplication: operation<LeaveApplicationRecord>('releaseLeaveApplication'),
     placeLeaveOnHold: operation<LeaveApplicationRecord>('placeLeaveOnHold'), recordLeaveCompliance: operation<LeaveApplicationRecord>('recordLeaveCompliance'), resumeLeaveProcessing: operation<LeaveApplicationRecord>('resumeLeaveProcessing'), cancelLeaveApplication: operation<LeaveApplicationRecord>('cancelLeaveApplication'),
     changeLeaveApplicationStatus: operation<LeaveApplicationRecord>('changeLeaveApplicationStatus'),

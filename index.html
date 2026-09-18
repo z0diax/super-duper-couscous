@@ -13,6 +13,9 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function(){try{var m=localStorage.getItem('hrmdo-dts.appearance.mode');var d=m==='dark'||(m!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.appearance=d?'dark':'light';document.documentElement.dataset.systemTheme='classic';}catch(e){document.documentElement.dataset.appearance='light';}})();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
