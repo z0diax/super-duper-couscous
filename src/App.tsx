@@ -19,6 +19,7 @@ import { RegisterPayrollModal } from './components/RegisterPayrollModal';
 import { PayrollBatchDetailModal } from './components/PayrollBatchDetailModal';
 import { LoginPortal } from './components/LoginPortal';
 import { useWorkspaceState } from './services/workspace';
+import { ThemeEffects } from './theme/ThemeEffects';
 
 const MainLayout: React.FC = () => {
   const { 
@@ -83,7 +84,8 @@ const MainLayout: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 flex font-sans selection:bg-blue-600 selection:text-white">
+    <div className="relative isolate min-h-screen bg-slate-100 text-slate-900 flex font-sans selection:bg-blue-600 selection:text-white">
+      <ThemeEffects />
       {/* Toast Notification Container */}
       <Toast />
       {isSaving && <div role="status" aria-live="polite" className="fixed inset-0 z-[100] bg-slate-900/20 flex items-center justify-center cursor-wait"><div className="rounded-xl bg-white px-6 py-4 shadow-xl font-semibold">Saving changes…</div></div>}
@@ -97,7 +99,7 @@ const MainLayout: React.FC = () => {
       />
 
       {/* Main Content Area (offset by sidebar width on desktop) */}
-      <div className="flex-1 lg:pl-64 sm:lg:pl-72 flex flex-col min-h-screen w-full transition-all duration-200">
+      <div className="relative z-10 flex-1 lg:pl-64 sm:lg:pl-72 flex flex-col min-h-screen w-full transition-all duration-200">
         
         {/* Top Header */}
         <Header 

@@ -1,6 +1,6 @@
 import { PasswordForm } from './PasswordForm';
 import { UserAvatar } from './UserAvatar';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { isDocumentActionableForUser } from '../services/documentTaskAssignment';
 import { DocumentRecord, PayrollBatch, PayrollItem, SidebarModule } from '../types';
@@ -8,6 +8,8 @@ import { readWorkspaceValue, writeWorkspaceValue } from '../services/workspace';
 import { useTheme } from '../theme/ThemeProvider';
 import type { AppearanceMode, SystemThemeId } from '../theme/themeTypes';
 import { SYSTEM_THEMES } from '../theme/themeRegistry';
+import { ThemeNavEffects } from '../theme/ThemeEffects';
+import { previewWeatherLocation, type WeatherPreview } from '../services/themeApi';
 import { 
   Search, 
   Plus, 
@@ -23,7 +25,7 @@ import {
   CircleAlert,
   Inbox,
   Clock3
-  ,Monitor, Sun, Moon
+  ,Monitor, Sun, Moon, Palette, Check, Sparkles, CloudSun, MapPin, RefreshCw, ArrowLeft
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -57,7 +59,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
     clearToast,
     logout, can
   } = useApp();
-  const { appearanceMode, setAppearanceMode, systemTheme, systemThemeSetting, updateSystemTheme } = useTheme();
+  const { appearanceMode, setAppearanceMode, effectsEnabled, setEffectsEnabled, systemTheme, systemThemeSetting, updateSystemTheme, activateWeatherSync, refreshWeatherSync } = useTheme();
   const canManageSystemTheme = can('canAdmin');
 
   const [searchInput, setSearchInput] = useState('');
@@ -65,11 +67,54 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [isPersonaOpen, setIsPersonaOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isThemeCatalogueOpen, setIsThemeCatalogueOpen] = useState(false);
+  const [isWeatherConfigOpen, setIsWeatherConfigOpen] = useState(false);
+  const [weatherLocation, setWeatherLocation] = useState('');
+  const [weatherPreview, setWeatherPreview] = useState<WeatherPreview | null>(null);
+  const [weatherError, setWeatherError] = useState('');
+  const [isWeatherBusy, setIsWeatherBusy] = useState(false);
+  const [isThemeSaving, setIsThemeSaving] = useState(false);
+  const themeMutationInFlight = useRef(false);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => readWorkspaceValue(currentUser.id, 'notifications.read', []));
   const allOperationModules: SidebarModule[] = ['dashboard', 'queues', 'payroll', 'registry', 'leave'];
   const visibleOperationModules = currentUser.role === 'admin'
     ? allOperationModules
     : currentUser.sidebarModules || allOperationModules;
+  const applySystemTheme = async (next: SystemThemeId) => {
+    if (themeMutationInFlight.current) return;
+    if (next === 'weather-sync') {
+      setWeatherLocation(systemThemeSetting?.location?.query || ''); setWeatherPreview(null); setWeatherError(''); setIsWeatherConfigOpen(true); return;
+    }
+    if (next === systemTheme) return;
+    const definition = SYSTEM_THEMES[next];
+    if (!window.confirm(`Change System Theme?\n\n${definition.name} will be applied to all users of the HRMDO Records Management System.`)) return;
+    themeMutationInFlight.current = true; setIsThemeSaving(true);
+    try { await updateSystemTheme(next); showToast('success', 'System theme updated', `${definition.name} now applies to all users.`); setIsThemeCatalogueOpen(false); }
+    catch (error) { showToast('error', 'System theme was not changed', error instanceof Error ? error.message : 'Please try again.'); }
+    finally { themeMutationInFlight.current = false; setIsThemeSaving(false); }
+  };
+  const checkWeatherLocation = async () => {
+    setIsWeatherBusy(true); setWeatherError(''); setWeatherPreview(null);
+    try { setWeatherPreview(await previewWeatherLocation(weatherLocation)); }
+    catch (error) { setWeatherError(error instanceof Error ? error.message : 'Unable to check this location.'); }
+    finally { setIsWeatherBusy(false); }
+  };
+  const applyWeatherSync = async () => {
+    if (themeMutationInFlight.current || !weatherPreview || !window.confirm(`Apply Weather Sync?\n\n${weatherPreview.location.name} will determine the visual atmosphere for all users.`)) return;
+    themeMutationInFlight.current = true;
+    setIsWeatherBusy(true); setWeatherError('');
+    try { const setting=await activateWeatherSync(weatherLocation); showToast('success','Weather Sync activated',`${setting.location?.name || weatherPreview.location.name} now controls the global weather theme.`); setIsWeatherConfigOpen(false); setIsThemeCatalogueOpen(false); }
+    catch (error) { setWeatherError(error instanceof Error ? error.message : 'Weather Sync could not be activated.'); }
+    finally { themeMutationInFlight.current = false; setIsWeatherBusy(false); }
+  };
+  const forceWeatherRefresh = async () => {
+    if (themeMutationInFlight.current) return;
+    themeMutationInFlight.current = true;
+    setIsWeatherBusy(true); setWeatherError('');
+    try { const setting=await refreshWeatherSync(); showToast('success','Weather refreshed',`${setting.weather?.label || 'Current conditions'} · ${setting.effectiveWeatherTheme || 'Weather Sync'}`); }
+    catch (error) { setWeatherError(error instanceof Error ? error.message : 'Weather could not be refreshed.'); }
+    finally { themeMutationInFlight.current = false; setIsWeatherBusy(false); }
+  };
 
   const deskMatchesUser = (desk?: { userId?: string; assignmentType?: string; roleId?: string; team?: string }) => {
     if (!desk) return false;
@@ -207,8 +252,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
   };
 
   return (
-    <header className={`bg-slate-900 text-white border-b border-slate-800 sticky top-0 shadow-xs h-16 ${searchResults !== null ? 'z-50' : 'z-30'}`}>
-      <div className="h-full px-4 sm:px-6 flex items-center justify-between gap-3 sm:gap-6">
+    <header className={`app-header relative isolate text-white border-b border-slate-800 sticky top-0 shadow-xs h-16 ${searchResults !== null ? 'z-50' : 'z-30'}`}>
+      <ThemeNavEffects />
+      <div className="relative z-10 h-full px-4 sm:px-6 flex items-center justify-between gap-3 sm:gap-6">
         
         {/* Left: Mobile Menu Toggle */}
         <div className="flex items-center gap-3">
@@ -403,20 +449,20 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
                         </button>
                       ))}
                     </div>
+                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Sparkles className="h-4 w-4 shrink-0 text-blue-600" />
+                        <span><strong className="block text-[11px] text-slate-800">Theme Effects</strong><span className="block text-[10px] text-slate-500">Decorative animations</span></span>
+                      </div>
+                      <div className="grid grid-cols-2 rounded-lg bg-slate-100 p-0.5" role="group" aria-label="Theme effects">
+                        {[true, false].map(enabled => <button key={String(enabled)} type="button" aria-pressed={effectsEnabled === enabled} onClick={() => setEffectsEnabled(enabled)} className={`rounded-md px-2.5 py-1 text-[10px] font-bold transition-colors ${effectsEnabled === enabled ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:bg-white'}`}>{enabled ? 'On' : 'Off'}</button>)}
+                      </div>
+                    </div>
                   </div>
                   {canManageSystemTheme && <div className="border-t border-slate-100 px-3 py-2.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">System Theme</p><p className="mt-1 text-[10px] leading-4 text-slate-500">Applies to all users.</p></div>
-                      <select aria-label="Global system theme" value={systemTheme} onChange={async event => {
-                        const next = event.target.value as SystemThemeId;
-                        if (next === systemTheme) return;
-                        if (!window.confirm('Change System Theme?\n\nThis theme will be applied to all users of the HRMDO Records Management System.')) return;
-                        try { await updateSystemTheme(next); showToast('success', 'System theme updated', `${event.target.options[event.target.selectedIndex]?.text || 'The selected theme'} now applies to all users.`); }
-                        catch (error) { showToast('error', 'System theme was not changed', error instanceof Error ? error.message : 'Please try again.'); }
-                      }} className="max-w-32 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700">
-                        {Object.values(SYSTEM_THEMES).filter(theme => theme.enabled).map(theme => <option key={theme.id} value={theme.id}>{theme.name}</option>)}
-                      </select>
-                    </div>
+                    <button type="button" onClick={() => { setIsPersonaOpen(false); setIsThemeCatalogueOpen(true); }} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-slate-100">
+                      <Palette className="h-4 w-4 text-blue-600" /><span className="min-w-0 flex-1"><strong className="block text-xs text-slate-800">System Theme</strong><span className="block truncate text-[10px] text-slate-500">{SYSTEM_THEMES[systemTheme].name} · Applies to all users</span></span><ChevronRight className="h-4 w-4 text-slate-400" />
+                    </button>
                     {systemThemeSetting?.updatedAt && <p className="mt-2 text-[10px] text-slate-400">Updated {new Date(systemThemeSetting.updatedAt).toLocaleString()}{systemThemeSetting.updatedBy?.name ? ` by ${systemThemeSetting.updatedBy.name}` : ''}</p>}
                   </div>}
                   <div className="border-t border-slate-100 px-2 py-1.5">
@@ -433,6 +479,35 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSidebar, onOpenRegisterMod
               </>
             )}
           </div>
+
+          {isThemeCatalogueOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-xs sm:p-6" role="dialog" aria-modal="true" aria-labelledby="system-theme-title">
+            <section className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
+              <header className="app-header flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 px-5 py-4 text-white sm:px-6">
+                <div className="flex gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600"><Palette className="h-5 w-5" /></span><div><h2 id="system-theme-title" className="font-bold">System Theme</h2><p className="mt-1 text-xs text-slate-300">Choose the visual identity applied to every user. Personal Light and Dark preferences remain independent.</p></div></div>
+                <button type="button" aria-label="Close system theme catalogue" onClick={() => { setIsThemeCatalogueOpen(false); setIsWeatherConfigOpen(false); }} className="rounded-lg p-1.5 text-slate-300 hover:bg-slate-800 hover:text-white"><X className="h-5 w-5" /></button>
+              </header>
+              {isWeatherConfigOpen ? <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+                <button type="button" onClick={() => { setIsWeatherConfigOpen(false); setWeatherError(''); }} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700"><ArrowLeft className="h-3.5 w-3.5"/>All themes</button>
+                <div className="mx-auto max-w-xl">
+                  <div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><CloudSun className="h-5 w-5"/></span><div><h3 className="font-bold text-slate-900">Weather Sync</h3><p className="mt-1 text-xs leading-5 text-slate-500">Resolve and confirm a city or municipality before weather-driven theming is applied globally.</p></div></div>
+                  {systemTheme==='weather-sync' && systemThemeSetting?.location && <section className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                    <div className="flex items-center justify-between gap-3"><strong className="text-xs text-blue-800">Currently active</strong><button type="button" disabled={isWeatherBusy} onClick={() => void forceWeatherRefresh()} className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-[11px] font-bold text-blue-700 disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${isWeatherBusy?'animate-spin':''}`}/>Refresh Weather</button></div>
+                    <dl className="mt-3 grid gap-3 text-xs sm:grid-cols-2"><div><dt className="text-slate-500">Location</dt><dd className="mt-1 font-semibold text-slate-900">{systemThemeSetting.location.name}</dd></div><div><dt className="text-slate-500">Current weather</dt><dd className="mt-1 font-semibold text-slate-900">{systemThemeSetting.weather?.label || 'Unavailable'} · <span className="capitalize">{systemThemeSetting.effectiveWeatherTheme}</span></dd></div><div><dt className="text-slate-500">Last updated</dt><dd className="mt-1 font-semibold text-slate-900">{systemThemeSetting.weather?.updatedAt ? new Date(systemThemeSetting.weather.updatedAt).toLocaleString() : 'Unavailable'}</dd></div><div><dt className="text-slate-500">Status</dt><dd className="mt-1 font-semibold text-slate-900">{systemThemeSetting.weatherStale?'Temporarily unavailable · using last update':'Weather data current'}</dd></div></dl>
+                  </section>}
+                  <label className="mt-5 block text-xs font-bold text-slate-700" htmlFor="weather-sync-location">Location</label>
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row"><div className="relative flex-1"><MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input id="weather-sync-location" value={weatherLocation} maxLength={120} onChange={event=>{setWeatherLocation(event.target.value);setWeatherPreview(null);setWeatherError('');}} placeholder="e.g. Tacloban City" className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900"/></div><button type="button" disabled={isWeatherBusy || weatherLocation.trim().length<2} onClick={() => void checkWeatherLocation()} className="rounded-lg border border-blue-300 bg-white px-4 py-2.5 text-xs font-bold text-blue-700 disabled:opacity-50">{isWeatherBusy?'Checking…':'Check Location'}</button></div>
+                  {weatherError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{weatherError}</p>}
+                  {weatherPreview && <section className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Resolved location</p><p className="mt-1 text-sm font-bold text-slate-900">{weatherPreview.location.name}</p><div className="mt-3 grid grid-cols-2 gap-3 text-xs"><div><span className="text-slate-500">Current weather</span><strong className="mt-1 block text-slate-900">{weatherPreview.weather.label}</strong></div><div><span className="text-slate-500">Visual state</span><strong className="mt-1 block capitalize text-slate-900">{weatherPreview.weather.effectiveTheme}</strong></div></div><button type="button" disabled={isWeatherBusy} onClick={() => void applyWeatherSync()} className="mt-4 w-full rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white disabled:opacity-50">{isWeatherBusy?'Applying…':'Apply Weather Sync'}</button></section>}
+                </div>
+              </div> : <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto p-4 sm:grid-cols-2 sm:p-5">
+                {Object.values(SYSTEM_THEMES).filter(theme => theme.enabled).map(theme => { const active = theme.id === systemTheme; return <button key={theme.id} type="button" aria-pressed={active} disabled={isThemeSaving || isWeatherBusy} onClick={() => void applySystemTheme(theme.id)} className={`relative rounded-xl border p-4 text-left transition-colors disabled:cursor-wait disabled:opacity-60 ${active ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-100' : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-slate-50'}`}>
+                  <span className="flex items-center justify-between gap-3"><span className="flex gap-1.5" aria-hidden="true"><span className="h-5 w-5 rounded-full ring-1 ring-black/10" style={{backgroundColor:theme.preview.primary}}/><span className="h-5 w-5 rounded-full ring-1 ring-black/10" style={{backgroundColor:theme.preview.secondary}}/><span className="h-5 w-5 rounded-full ring-1 ring-black/10" style={{backgroundColor:theme.preview.surface}}/></span>{active && <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2 py-1 text-[10px] font-bold text-white"><Check className="h-3 w-3"/>Current</span>}</span>
+                  <strong className="mt-3 block text-sm text-slate-900">{theme.name}</strong><span className="mt-1 block text-xs leading-5 text-slate-500">{theme.description}</span>
+                </button>; })}
+              </div>}
+              <footer className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-slate-50 px-5 py-3.5"><p className="text-[11px] text-slate-500">Changes require confirmation and are recorded in the audit trail.</p><button type="button" onClick={() => { setIsThemeCatalogueOpen(false); setIsWeatherConfigOpen(false); }} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">Close</button></footer>
+            </section>
+          </div>}
 
         </div>
 

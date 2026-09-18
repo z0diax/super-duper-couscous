@@ -49,7 +49,7 @@ function useApplication() {
   }, [accept]);
   useEffect(() => {
     mounted.current = true;
-    getSession().then(user => { if (mounted.current && user) { setCurrentUser(user); window.dispatchEvent(new Event('hrmdo:auth-changed')); } })
+    getSession().then(user => { if (mounted.current && user) { setCurrentUser(user); window.dispatchEvent(new CustomEvent('hrmdo:auth-changed',{detail:{userId:user.id}})); } })
       .catch(error => setDatabaseError(error.message)).finally(() => setAuthReady(true));
     return () => { mounted.current = false; };
   }, []);
@@ -86,11 +86,11 @@ function useApplication() {
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, []);
   const login = async (identifier: string, password: string) => {
-    const user = await authenticate(identifier, password); sessionGeneration.current++; revision.current = -1; setState(emptyState); setDatabaseReady(false); setDatabaseError(null); setCurrentUser(user); window.dispatchEvent(new Event('hrmdo:auth-changed'));
+    const user = await authenticate(identifier, password); sessionGeneration.current++; revision.current = -1; setState(emptyState); setDatabaseReady(false); setDatabaseError(null); setCurrentUser(user); window.dispatchEvent(new CustomEvent('hrmdo:auth-changed',{detail:{userId:user.id}}));
   };
   const logout = async () => {
     if (busy.current) return;
-    try { await endSession(); sessionGeneration.current++; setCurrentUser(EMPTY_USER); setState(emptyState); setDocumentId(null); setBatchId(null); setSelectedWorkGroupId(null); setActiveTab('dashboard'); setDatabaseReady(false); revision.current = -1; window.dispatchEvent(new Event('hrmdo:auth-changed')); }
+    try { await endSession(); sessionGeneration.current++; setCurrentUser(EMPTY_USER); setState(emptyState); setDocumentId(null); setBatchId(null); setSelectedWorkGroupId(null); setActiveTab('dashboard'); setDatabaseReady(false); revision.current = -1; window.dispatchEvent(new CustomEvent('hrmdo:auth-changed',{detail:{userId:null}})); }
     catch (error) { showToast('error', 'Sign out failed', error.message); }
   };
   async function prepare(value: any): Promise<any> {

@@ -36,6 +36,22 @@ test('user accounts can sign in; non-admin accounts cannot alter configuration',
   await admin.action('deleteUser',[admin.state.users.find(u=>u.role==='admin').id],422);
   assert(!JSON.stringify(admin.state).includes(testPassword)); assert(!JSON.stringify(admin.state).includes('password_hash'));
 });
+test('global theme state is readable to users and revisioned only on meaningful changes',async()=>{
+  if (!employee) {
+    await admin.action('addUser',[userData('employee')]);
+    employee=await new Client(fixture.base).login('employee@example.test');
+  }
+  const initial=await admin.request('settings.php');
+  const employeeView=await employee.request('settings.php');
+  assert.equal(employeeView.theme,initial.theme); assert.equal(employeeView.revision,initial.revision);
+  const changed=await admin.request('settings.php','PUT',{theme:'government'});
+  assert.equal(changed.theme,'government'); assert.equal(changed.revision,initial.revision+1);
+  const unchanged=await admin.request('settings.php','PUT',{theme:'government'});
+  assert.equal(unchanged.revision,changed.revision);
+  await employee.request('settings.php','PUT',{theme:'classic'},403);
+  const restored=await admin.request('settings.php','PUT',{theme:'classic'});
+  assert.equal(restored.theme,'classic'); assert.equal(restored.revision,changed.revision+1);
+});
 test('EWP intake validates and stores a current record',async()=>{
   const record=(await admin.action('registerEwpRecord',[{barcode:'EWP-TEST-001',employeeName:'Test Employee',office:'HRMDO',amount:2500.50,purpose:'Medical assistance',remarks:'Complete requirements'}])).result;
   assert.equal(record.barcode,'EWP-TEST-001'); assert.equal(record.amount,2500.5); assert.equal(record.status,'Recorded');

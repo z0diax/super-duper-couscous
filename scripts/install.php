@@ -42,6 +42,10 @@ try {
         $pdo->prepare('INSERT IGNORE INTO application_settings (setting_key,setting_value) VALUES (?,?)')->execute(['system_theme','classic']);
         $pdo->exec('UPDATE app_meta SET schema_version=3,revision=revision+1 WHERE id=1');
     }
+    if ($version<4) {
+        $pdo->prepare('INSERT IGNORE INTO application_settings (setting_key,setting_value) VALUES (?,?)')->execute(['system_theme_revision','1']);
+        $pdo->exec('UPDATE app_meta SET schema_version=4,revision=revision+1 WHERE id=1');
+    }
     if ((int)$pdo->query("SELECT COUNT(*) FROM app_users WHERE role='admin'")->fetchColumn()===0) {
         $email=getenv('HRMDO_ADMIN_EMAIL')?:($c['admin_email']??''); $password=getenv('HRMDO_ADMIN_PASSWORD');
         $hash=$password?password_hash($password,PASSWORD_DEFAULT):($c['admin_password_hash']??'');

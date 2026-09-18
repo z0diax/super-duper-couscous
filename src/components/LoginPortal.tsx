@@ -78,7 +78,7 @@ export const LoginPortal: React.FC = () => {
                 {isSubmitting ? 'Signing in...' : 'Sign in'}
               </button>
             </form>
-
+    
             <div className="mt-7 border-t border-slate-100 pt-5 text-center"><p className="text-xs text-slate-400">Access is managed by the HRMDO system administrator.</p></div>
           </div>
         </div>
