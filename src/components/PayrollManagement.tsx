@@ -39,6 +39,7 @@ interface Props {
 }
 
 const BATCH_LIST_PAGE_SIZE = 10;
+const SINGLE_LIST_PAGE_SIZE = 10;
 
 export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal }) => {
   const { 
@@ -61,6 +62,8 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   // A new key makes list the default for existing users who were previously given the grid fallback.
   const [batchDisplay, setBatchDisplay] = useWorkspaceState<'grid' | 'list'>(currentUser.id, 'payroll.batch-display.v2', 'list');
   const [batchListPage, setBatchListPage] = useWorkspaceState<number>(currentUser.id, 'payroll.batch-list-page', 1);
+  const [singleDisplay, setSingleDisplay] = useWorkspaceState<'grid' | 'list'>(currentUser.id, 'payroll.single-display.v1', 'list');
+  const [singleListPage, setSingleListPage] = useWorkspaceState<number>(currentUser.id, 'payroll.single-list-page', 1);
   const [editingBatchId, setEditingBatchId] = useWorkspaceState<string | null>(currentUser.id, 'payroll.editing-batch', null);
   const [deleteConfirmBatchId, setDeleteConfirmBatchId] = useState<string | null>(null);
   const [deleteConfirmSingleDocumentId, setDeleteConfirmSingleDocumentId] = useState<string | null>(null);
@@ -103,14 +106,25 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     const status = batch.progress.derivedStatus;
     return status === 'PROCESSING_WITH_HOLDS' || status === 'ON_HOLD' ? 'bg-amber-100 text-amber-800' : status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' : status.includes('RELEASE') ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800';
   };
+  const singleStatusTone = (status: string) => status === 'Archived' || status === 'Released'
+    ? 'bg-emerald-100 text-emerald-800'
+    : status === 'Ready_For_Release'
+    ? 'bg-purple-100 text-purple-800'
+    : status === 'On_Hold' || status === 'Returned'
+    ? 'bg-amber-100 text-amber-800'
+    : 'bg-blue-100 text-blue-800';
+  const entryTimestamp = (entry: { dateEncoded?: string; dateReceived?: string }) =>
+    Date.parse(entry.dateEncoded || entry.dateReceived || '') || 0;
 
   // Filter batches
-  const filteredBatches = ownedPayrollBatches.filter(batch => {
-    const matchesStage = stageFilter === 'all' || matchesAggregateStage(batch, stageFilter);
-    const matchesOffice = officeFilter === 'all' || batch.office === officeFilter;
+  const filteredBatches = ownedPayrollBatches
+    .filter(batch => {
+      const matchesStage = stageFilter === 'all' || matchesAggregateStage(batch, stageFilter);
+      const matchesOffice = officeFilter === 'all' || batch.office === officeFilter;
 
-    return matchesStage && matchesOffice;
-  });
+      return matchesStage && matchesOffice;
+    })
+    .sort((a, b) => entryTimestamp(b) - entryTimestamp(a));
   const batchListPageCount = Math.max(1, Math.ceil(filteredBatches.length / BATCH_LIST_PAGE_SIZE));
   const currentBatchListPage = Math.min(Math.max(batchListPage, 1), batchListPageCount);
   const paginatedBatches = filteredBatches.slice(
@@ -124,10 +138,29 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
 
   // Single payroll vouchers from documents
   const singlePayrollDocs = documents.filter(d => d.classification === 'Payroll' && ownsPayrollEntry(d));
-  const filteredSingleDocs = singlePayrollDocs.filter(doc => {
-    const matchesOffice = officeFilter === 'all' || doc.sourceOffice === officeFilter;
-    return matchesOffice;
-  });
+  const filteredSingleDocs = singlePayrollDocs
+    .filter(doc => {
+      const matchesOffice = officeFilter === 'all' || doc.sourceOffice === officeFilter;
+      const completed = doc.status === 'Archived' || doc.status === 'Released';
+      const readyForRelease = doc.status === 'Ready_For_Release';
+      const matchesStage = stageFilter === 'all'
+        || (stageFilter === 'initial_checking' && !completed && doc.currentStepNumber <= 2)
+        || (stageFilter === 'verification_signing' && !completed && !readyForRelease && doc.currentStepNumber >= 3)
+        || (stageFilter === 'release' && readyForRelease)
+        || (stageFilter === 'completed' && completed);
+      return matchesOffice && matchesStage;
+    })
+    .sort((a, b) => entryTimestamp(b) - entryTimestamp(a));
+  const singleListPageCount = Math.max(1, Math.ceil(filteredSingleDocs.length / SINGLE_LIST_PAGE_SIZE));
+  const currentSingleListPage = Math.min(Math.max(singleListPage, 1), singleListPageCount);
+  const paginatedSingleDocs = filteredSingleDocs.slice(
+    (currentSingleListPage - 1) * SINGLE_LIST_PAGE_SIZE,
+    currentSingleListPage * SINGLE_LIST_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    if (singleListPage !== currentSingleListPage) setSingleListPage(currentSingleListPage);
+  }, [currentSingleListPage, setSingleListPage, singleListPage]);
 
   // Calculate metrics
   const totalActiveBatches = ownedPayrollBatches.filter(b => b.progress.derivedStatus !== 'COMPLETED').length;
@@ -223,29 +256,28 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
           </div>
 
           <div className="flex items-center gap-2">
-            {viewMode === 'batches' && (
-              <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5" aria-label="Batch display mode">
-                <button type="button" aria-label="Grid view" title="Grid view" onClick={() => setBatchDisplay('grid')} className={`rounded-md p-1.5 transition-colors ${batchDisplay === 'grid' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-400 hover:text-slate-700'}`}>
-                  <LayoutGrid className="h-4 w-4" />
-                </button>
-                <button type="button" aria-label="List view" title="List view" onClick={() => setBatchDisplay('list')} className={`rounded-md p-1.5 transition-colors ${batchDisplay === 'list' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-400 hover:text-slate-700'}`}>
-                  <List className="h-4 w-4" />
-                </button>
-              </div>
-            )}
+            <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50 p-0.5" aria-label={viewMode === 'batches' ? 'Batch display mode' : 'Single payroll display mode'}>
+              <button type="button" aria-label="Grid view" title="Grid view" onClick={() => viewMode === 'batches' ? setBatchDisplay('grid') : setSingleDisplay('grid')} className={`rounded-md p-1.5 transition-colors ${(viewMode === 'batches' ? batchDisplay : singleDisplay) === 'grid' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-400 hover:text-slate-700'}`}>
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+              <button type="button" aria-label="List view" title="List view" onClick={() => viewMode === 'batches' ? setBatchDisplay('list') : setSingleDisplay('list')} className={`rounded-md p-1.5 transition-colors ${(viewMode === 'batches' ? batchDisplay : singleDisplay) === 'list' ? 'bg-white text-blue-600 shadow-2xs' : 'text-slate-400 hover:text-slate-700'}`}>
+                <List className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Filter Row */}
         <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100 text-xs">
           <span className="text-slate-400 font-medium flex items-center gap-1">
-            <Filter className="w-3.5 h-3.5" /> Filter Stage:
+            <Filter className="w-3.5 h-3.5" /> Filter Phase:
           </span>
 
           <button
             onClick={() => {
               setStageFilter('all');
               setBatchListPage(1);
+              setSingleListPage(1);
             }}
             className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
               stageFilter === 'all'
@@ -253,12 +285,13 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            All Stages
+            All Phases
           </button>
           <button
             onClick={() => {
               setStageFilter('initial_checking');
               setBatchListPage(1);
+              setSingleListPage(1);
             }}
             className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
               stageFilter === 'initial_checking'
@@ -266,12 +299,13 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                 : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
             }`}
           >
-            Stage 2: Initial Checking
+            Sorting &amp; Endorsement of Payroll
           </button>
           <button
             onClick={() => {
               setStageFilter('verification_signing');
               setBatchListPage(1);
+              setSingleListPage(1);
             }}
             className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
               stageFilter === 'verification_signing'
@@ -279,12 +313,13 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                 : 'bg-blue-50 text-blue-800 hover:bg-blue-100'
             }`}
           >
-            Stage 3: Parallel Groups
+            Verification &amp; Signing of Payroll
           </button>
           <button
             onClick={() => {
               setStageFilter('release');
               setBatchListPage(1);
+              setSingleListPage(1);
             }}
             className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
               stageFilter === 'release'
@@ -292,12 +327,13 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                 : 'bg-purple-50 text-purple-800 hover:bg-purple-100'
             }`}
           >
-            Stage 4: Release
+            Release
           </button>
           <button
             onClick={() => {
               setStageFilter('completed');
               setBatchListPage(1);
+              setSingleListPage(1);
             }}
             className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
               stageFilter === 'completed'
@@ -436,7 +472,25 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                 <span>Batch / Office</span><span>Payroll Type</span><span>Period</span><span>Items</span><span>Stage</span><span className="text-right">Actions</span>
               </div>
               <div className="divide-y divide-slate-100">
-                {paginatedBatches.map(batch => {
+                {filteredBatches.length === 0 ? (
+                  <div className="space-y-3 px-5 py-12 text-center">
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                      <FileSpreadsheet className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900">No Batch Payroll Entries Found</h3>
+                    <p className="mx-auto max-w-md text-xs text-slate-500">
+                      Batch payroll entries group multiple payroll items for classification, verification, signing, and final release through the four-phase workflow.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={onOpenRegisterBatchModal}
+                      className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs transition-all hover:bg-blue-700"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Register Batch Payroll</span>
+                    </button>
+                  </div>
+                ) : paginatedBatches.map(batch => {
                 const batchItems = payrollItems.filter(item => item.batchId === batch.id);
                 const editable = canEditBatch(batch);
                 const progress = batch.progress;
@@ -498,7 +552,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
               </div>
               <h3 className="text-base font-bold text-slate-900">No Single Payroll Vouchers Found</h3>
               <p className="text-xs text-slate-500 max-w-md mx-auto">
-                Single payroll vouchers are individual employee or department salary claims docketed with dedicated 5-phase routing to specialized processors.
+                Single payroll vouchers are individual employee or department salary claims docketed through the four-phase workflow to specialized processors.
               </p>
               <button
                 onClick={onOpenRegisterBatchModal}
@@ -508,11 +562,10 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                 <span>Register Single Payroll</span>
               </button>
             </div>
-          ) : (
+          ) : singleDisplay === 'grid' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredSingleDocs.map(doc => {
                 const currentStep = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
-                const isCompleted = doc.status === 'Archived' || doc.status === 'Released';
 
                 return (
                   <div
@@ -541,13 +594,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                           )}
                         </div>
 
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                          isCompleted
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : doc.status === 'Ready_For_Release'
-                            ? 'bg-purple-100 text-purple-800'
-                            : 'bg-blue-100 text-blue-800'
-                        }`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${singleStatusTone(doc.status)}`}>
                           {doc.status.replace(/_/g, ' ')}
                         </span>
                       </div>
@@ -629,6 +676,40 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                 );
               })}
             </div>
+          ) : (
+            <>
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xs">
+                <div className="hidden grid-cols-[minmax(190px,1.35fr)_minmax(150px,1fr)_minmax(130px,0.8fr)_minmax(150px,1fr)_130px_180px] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3 text-[11px] font-bold uppercase tracking-wide text-slate-500 lg:grid">
+                  <span>Voucher / Office</span><span>Document Type</span><span>Classification</span><span>Workflow Phase</span><span>Status</span><span className="text-right">Actions</span>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {paginatedSingleDocs.map(doc => {
+                    const currentStep = doc.workflowSteps.find(step => step.stepNumber === doc.currentStepNumber);
+                    return (
+                      <div key={doc.id} className="grid grid-cols-1 gap-3 px-5 py-4 transition-colors hover:bg-slate-50 lg:grid-cols-[minmax(190px,1.35fr)_minmax(150px,1fr)_minmax(130px,0.8fr)_minmax(150px,1fr)_130px_180px] lg:items-center lg:gap-4">
+                        <div><p className="font-mono text-xs font-bold text-blue-700">{doc.barcode || doc.trackingNumber}</p><p className="mt-1 truncate text-xs font-medium text-slate-800">{doc.sourceOffice}</p></div>
+                        <div><p className="truncate text-xs font-medium text-slate-700">{doc.documentType}</p><p className="mt-1 text-[10px] text-slate-400">Received {new Date(doc.dateReceived).toLocaleDateString()}</p></div>
+                        <p className="truncate text-xs text-slate-600">{doc.employmentClassification || 'Unclassified'}</p>
+                        <div><p className="truncate text-xs font-medium text-slate-700">{currentStep?.name || 'Routing in progress'}</p><p className="mt-1 text-[10px] text-slate-500">Phase {doc.currentStepNumber} of {doc.totalSteps}</p></div>
+                        <span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${singleStatusTone(doc.status)}`}>{doc.status.replace(/_/g, ' ')}</span>
+                        <div className="flex items-center justify-start gap-1 lg:justify-end">
+                          {can('canAdmin') && (deleteConfirmSingleDocumentId === doc.id ? <><button type="button" onClick={() => handleDeleteSinglePayroll(doc.id)} className="rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-rose-700">Confirm</button><button type="button" onClick={() => setDeleteConfirmSingleDocumentId(null)} className="rounded-lg px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-200">Cancel</button></> : <button type="button" aria-label={`Delete ${doc.trackingNumber}`} title="Delete single payroll voucher" onClick={() => setDeleteConfirmSingleDocumentId(doc.id)} className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>)}
+                          <button type="button" onClick={() => setSelectedDocument(doc)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50">Inspect</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 px-1 text-xs text-slate-500">
+                <span>Showing {(currentSingleListPage - 1) * SINGLE_LIST_PAGE_SIZE + 1}&ndash;{Math.min(currentSingleListPage * SINGLE_LIST_PAGE_SIZE, filteredSingleDocs.length)} of {filteredSingleDocs.length} single entries</span>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setSingleListPage(currentSingleListPage - 1)} disabled={currentSingleListPage === 1} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45">Previous</button>
+                  <span className="font-medium text-slate-600">Page {currentSingleListPage} of {singleListPageCount}</span>
+                  <button type="button" onClick={() => setSingleListPage(currentSingleListPage + 1)} disabled={currentSingleListPage === singleListPageCount} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45">Next</button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}

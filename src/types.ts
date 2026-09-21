@@ -534,6 +534,10 @@ export interface LeaveApplicationRecord {
   createdByName?: string;
   createdAt?: string;
   updatedAt?: string;
+  statusRemarks?: string;
+  statusChangedAt?: string;
+  statusChangedByUserId?: string;
+  statusChangedByName?: string;
   releasedAt?: string | null;
   releasedByUserId?: string;
   releasedByName?: string;

@@ -451,7 +451,7 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
     if ($action==='recordExternalHandoff') {
         fail_unless($isExternal && ($step['externalStatus']??null)==='PENDING_HANDOFF','This document is not awaiting an external handoff.',409);
         $owner=$step['handoffOwner']['userId']??null;
-        fail_unless($owner===$u['id'],'Only the assigned outbound handoff officer can send this document outside HRMDO.',403);
+        fail_unless($owner===$u['id'] || has_cap($s,$u,'canAdmin'),'Only the assigned outbound handoff officer can send this document outside HRMDO.',403);
         $handoff=$args[1]??[]; fail_unless(is_array($handoff),'External handoff details are required.');
         $destination=required($handoff,'destinationOffice');
         if (($step['externalDestinationMode']??'')==='FIXED_DESTINATION') fail_unless(strcasecmp($destination,(string)$step['externalDestinationOffice'])===0,'Use the fixed destination configured for this workflow stage.');
@@ -468,7 +468,7 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
     if ($action==='recordExternalReturn') {
         fail_unless($isExternal && ($step['externalStatus']??null)==='OUTSIDE_HRMDO','This document is not currently outside HRMDO.',409);
         $receiver=$step['returnReceiver']??[];
-        fail_unless(assignment_matches($u,$receiver),'Only the configured return receiver can record this return.',403);
+        fail_unless(assignment_matches($u,$receiver) || has_cap($s,$u,'canAdmin'),'Only the configured return receiver can record this return.',403);
         $return=$args[1]??[]; fail_unless(is_array($return),'External return details are required.');
         $returnedFrom=required($return,'returnedFrom'); $sentTo=$step['externalHandoff']['destinationOffice']??'';
         fail_unless($sentTo==='' || strcasecmp($returnedFrom,$sentTo)===0,'The return office must match the recorded external destination.');
@@ -505,7 +505,7 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
     fail_unless(!$isExternal,'Use the external handoff and return actions for this workflow stage.',409);
     if ($action==='submitDocumentCompliance') {
         fail_unless(($doc['status']??'')==='On_Hold','This document is not awaiting compliance.',409);
-        fail_unless(assignment_matches($u,$step['assignedTo']),'Only the assigned phase processor can submit compliance.',403);
+        fail_unless(assignment_matches($u,$step['assignedTo']) || has_cap($s,$u,'canAdmin'),'Only the assigned phase processor can submit compliance.',403);
         $submission=$args[1]??[]; fail_unless(is_array($submission),'Compliance details are required.');
         $files=$submission['files']??[]; fail_unless(is_array($files),'Invalid compliance attachments.');
         if ($files) { $added=attach_files($pdo,$u,$files,$doc['id'],$n+1); $doc['attachments']=array_merge($doc['attachments'],$added); $doc['complianceAttachments']=$added; }
@@ -515,7 +515,7 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
     if ($action==='recheckDocumentHold') {
         $resumeFrom=$doc['status']??'';
         fail_unless(in_array($resumeFrom,['On_Hold','Ready_For_Recheck'],true),'This document is not in an active hold cycle.',409);
-        fail_unless(assignment_matches($u,$step['assignedTo']),'Only the assigned phase processor can resume this document.',403);
+        fail_unless(assignment_matches($u,$step['assignedTo']) || has_cap($s,$u,'canAdmin'),'Only the assigned phase processor can resume this document.',403);
         $submission=$args[1]??[]; fail_unless(is_array($submission),'Compliance details are invalid.');
         if ($resumeFrom==='On_Hold') {
             $files=$submission['files']??[]; fail_unless(is_array($files),'Invalid compliance attachments.');
@@ -528,8 +528,8 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
     }
     fail_unless(!in_array($doc['status'],['On_Hold','Ready_For_Recheck'],true) || in_array($action,['addDocumentRemark','uploadSupportingFile'],true),'Resolve the current hold before processing this phase.',409);
     if ($action==='reassignTask') require_cap($s,$u,'canSupervise');
-    elseif (!in_array($action,['addDocumentRemark','uploadSupportingFile'],true)) fail_unless(assignment_matches($u,$step['assignedTo']) || ($action==='releaseDocument' && $doc['status']==='Ready_For_Release' && $step['status']==='Completed' && has_cap($s,$u,'canRelease')),'This task is assigned to another officer.',403);
-    else fail_unless(assignment_matches($u,$step['assignedTo']),'Only the assigned phase processor can add supporting information.',403);
+    elseif (!in_array($action,['addDocumentRemark','uploadSupportingFile'],true)) fail_unless(assignment_matches($u,$step['assignedTo']) || has_cap($s,$u,'canAdmin') || ($action==='releaseDocument' && $doc['status']==='Ready_For_Release' && $step['status']==='Completed' && has_cap($s,$u,'canRelease')),'This task is assigned to another officer.',403);
+    else fail_unless(assignment_matches($u,$step['assignedTo']) || has_cap($s,$u,'canAdmin'),'Only the assigned phase processor can add supporting information.',403);
     if ($action==='placeDocumentHold') {
         fail_unless(!empty($step['allowHold']),'Holding is disabled for this workflow phase.',409);
         fail_unless(!in_array($doc['status'],['On_Hold','Ready_For_Recheck'],true),'This document is already in a hold cycle.',409);
@@ -538,7 +538,7 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
         $doc['preHoldStatus']=$doc['status']; $doc['status']='On_Hold'; $doc['holdReason']=$reason; $doc['holdRemarks']=$notes; $doc['holdPhaseNumber']=$n+1; $doc['heldAt']=now(); $doc['heldByUserId']=$u['id']; $doc['heldByName']=$u['name']; $step['status']='On_Hold';
         unset($doc['holdResolvedAt'],$doc['holdResolvedByUserId'],$doc['holdResolvedByName'],$doc['complianceSubmittedAt'],$doc['complianceSubmittedByUserId'],$doc['complianceSubmittedByName'],$doc['complianceRemarks'],$doc['complianceAttachments']);
     } elseif ($action==='claimTask') {
-        fail_unless(empty($step['assignedTo']['userId']) || $step['assignedTo']['userId']===$u['id'],'Task has already been claimed.',409);
+        fail_unless(has_cap($s,$u,'canAdmin') || empty($step['assignedTo']['userId']) || $step['assignedTo']['userId']===$u['id'],'Task has already been claimed.',409);
         $step['assignedTo']['userId']=$u['id']; $step['assignedTo']['displayName']=$u['name'];
     } elseif ($action==='reassignTask') {
         required(['reason'=>$args[3]??''],'reason',2000); $target=$s['users'][index_of($s['users'],(string)$args[1])];

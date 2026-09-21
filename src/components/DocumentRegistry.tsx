@@ -30,19 +30,23 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
   const [statusFilter, setStatusFilter] = useWorkspaceState<string>(currentUser.id, 'registry.status-filter', 'all');
   const [priorityFilter, setPriorityFilter] = useWorkspaceState<string>(currentUser.id, 'registry.priority-filter', 'all');
   const [deleteConfirmDocumentId, setDeleteConfirmDocumentId] = useState<string | null>(null);
+  // Single payroll vouchers use the document workflow engine internally, but
+  // they belong exclusively to Payroll Management in the user-facing UI.
+  const registryDocuments = documents.filter(doc => doc.classification !== 'Payroll');
+  const effectiveClassificationFilter = classificationFilter === 'Payroll' ? 'all' : classificationFilter;
 
   const handleDeleteDocument = async (documentId: string) => {
     if (!(await deleteDocument(documentId))) return;
     setDeleteConfirmDocumentId(null);
   };
 
-  const filteredDocs = documents.filter(doc => {
+  const filteredDocs = registryDocuments.filter(doc => {
     // Dataset filter
     if (datasetFilter === 'v2' && doc.isLegacyV1) return false;
     if (datasetFilter === 'v1' && !doc.isLegacyV1) return false;
 
     // Classification filter
-    if (classificationFilter !== 'all' && doc.classification !== classificationFilter) return false;
+    if (effectiveClassificationFilter !== 'all' && doc.classification !== effectiveClassificationFilter) return false;
 
     // Status filter
     if (statusFilter !== 'all' && doc.status !== statusFilter) return false;
@@ -106,7 +110,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            All Records ({documents.length})
+            All Records ({registryDocuments.length})
           </button>
           <button
             id="tab-dataset-v2"
@@ -117,7 +121,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                 : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
             }`}
           >
-            Active Records ({documents.filter(d => !d.isLegacyV1).length})
+            Active Records ({registryDocuments.filter(d => !d.isLegacyV1).length})
           </button>
           <button
             id="tab-dataset-v1"
@@ -128,7 +132,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                 : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
             }`}
           >
-            Historical Archive ({documents.filter(d => d.isLegacyV1).length})
+            Historical Archive ({registryDocuments.filter(d => d.isLegacyV1).length})
           </button>
           <button
             id="tab-outside-hrmdo"
@@ -137,7 +141,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
               statusFilter === 'Awaiting_External_Return' ? 'bg-amber-600 text-white font-semibold' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
             }`}
           >
-            Outside HRMDO ({documents.filter(d => d.status === 'Awaiting_External_Return').length})
+            Outside HRMDO ({registryDocuments.filter(d => d.status === 'Awaiting_External_Return').length})
           </button>
         </div>
       </div>
@@ -147,13 +151,12 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
           {/* Classification */}
           <select
             id="registry-filter-class"
-            value={classificationFilter}
+            value={effectiveClassificationFilter}
             onChange={e => setClassificationFilter(e.target.value)}
             className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">Classification (All)</option>
             <option value="Communication">Communication</option>
-            <option value="Payroll">Payroll</option>
             <option value="Request">Request</option>
             <option value="Others">Others</option>
           </select>
