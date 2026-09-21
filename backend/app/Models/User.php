@@ -12,15 +12,32 @@ class User extends Authenticatable
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable;
 
+    protected $table = 'app_users';
+
+    public $incrementing = false;
+
+    protected $keyType = 'string';
+
+    public $timestamps = false;
+
     /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
      */
     protected $fillable = [
+        'id',
         'name',
         'email',
-        'password',
+        'password_hash',
+        'role',
+        'role_title',
+        'office',
+        'division',
+        'position',
+        'avatar_initials',
+        'avatar_seed',
+        'sidebar_modules',
     ];
 
     /**
@@ -29,7 +46,7 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $hidden = [
-        'password',
+        'password_hash',
         'remember_token',
     ];
 
@@ -41,8 +58,29 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'sidebar_modules' => 'array',
+        ];
+    }
+
+    public function getAuthPassword(): string
+    {
+        return $this->password_hash;
+    }
+
+    public function publicProfile(): array
+    {
+        return [
+            'id' => $this->id,
+            'email' => $this->email,
+            'name' => $this->name,
+            'role' => $this->role,
+            'roleTitle' => $this->role_title,
+            'office' => $this->office,
+            'division' => $this->division,
+            'position' => $this->position,
+            'avatarInitials' => $this->avatar_initials,
+            'avatarSeed' => $this->avatar_seed ?: $this->id,
+            'sidebarModules' => $this->sidebar_modules,
         ];
     }
 }

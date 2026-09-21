@@ -8,9 +8,10 @@ This is the incremental Laravel backend for the HRMDO Document Tracking System. 
 - MySQL/MariaDB configuration compatible with the existing `HRMDO_*` environment variables
 - API routing enabled under `/api`
 - `GET /api/health` smoke-check endpoint
+- Legacy-compatible session authentication at `GET|POST|DELETE /api/auth.php`
 - Existing React/Vite frontend and PHP endpoints remain the active application contract
 
-The backend does not yet handle production application traffic. Do not change `VITE_API_URL` until the selected capability has matching contract tests for authentication, sessions, CSRF, authorization, revisions, files, and error responses.
+The authentication slice uses the existing `app_users` table and Laravel's session guard. It returns the legacy public user projection and CSRF token, and invalidates sessions when the stored password hash changes. The backend does not yet handle production application traffic. Do not change `VITE_API_URL` until the remaining capability contract tests are complete.
 
 ## Local verification
 
