@@ -188,6 +188,21 @@ php scripts/preflight.php
 
 The application is structured for production deployment and is suitable for operational use in a secured hosting environment after the required configuration and staff setup steps are completed.
 
+## Laravel evolution
+
+The `backend/` directory contains an additive Laravel 12 API scaffold. It currently runs beside the existing PHP API and exposes a health check at `/api/health`; it does not yet handle production traffic or replace the existing endpoints. The migration is intentionally incremental so the React/Vite frontend, MariaDB data, JSON record payloads, sessions, authorization rules, uploads, and rollback path can be validated one capability at a time.
+
+To verify the scaffold from its directory:
+
+```powershell
+cd backend
+php artisan about
+php artisan route:list --path=api
+php artisan test
+```
+
+Do not point `VITE_API_URL` at the Laravel backend until the compatibility layer and contract tests for the selected capability are complete.
+
 ## License
 
 This project is intended for internal operational use by the deploying office. Review the repository policy and local procurement guidance before broader public distribution.
