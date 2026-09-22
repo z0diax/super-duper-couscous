@@ -53,7 +53,52 @@
   --app-scrollbar-hover: #60a5fa;
 }
 html, body { background: var(--app-bg); color: var(--app-text); }
-body { transition: background-color .18s ease, color .18s ease; }
+body { min-width: 320px; overflow-x: hidden; transition: background-color .18s ease, color .18s ease; }
+button, input, select, textarea { font: inherit; }
+button { touch-action: manipulation; }
+
+/* Shared viewport-safe behavior for overlays that use the application's fixed modal pattern. */
+.fixed.inset-0.flex.items-center.justify-center {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+}
+
+.app-toast {
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  width: min(28rem, calc(100vw - 2rem));
+}
+
+.app-saving-overlay {
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+}
+
+@media (max-width: 639px) {
+  .fixed.inset-0.flex.items-center.justify-center {
+    align-items: flex-end;
+  }
+
+  .fixed.inset-0.flex.items-center.justify-center > section,
+  .fixed.inset-0.flex.items-center.justify-center > form,
+  .fixed.inset-0.flex.items-center.justify-center > div {
+    max-height: calc(100dvh - 1.5rem);
+    border-radius: 1rem 1rem 0.75rem 0.75rem;
+  }
+
+  .fixed.inset-0.flex.items-center.justify-center > div {
+    overflow-y: auto;
+  }
+
+  .app-toast {
+    left: max(1rem, env(safe-area-inset-left));
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    width: auto;
+    max-width: none;
+  }
+}
 [data-appearance="dark"] .bg-white { background-color: var(--app-surface); }
 [data-appearance="dark"] .bg-slate-50, [data-appearance="dark"] .bg-slate-50\/50, [data-appearance="dark"] .bg-slate-50\/70, [data-appearance="dark"] .bg-slate-100 { background-color: var(--app-surface-muted); }
 [data-appearance="dark"] .bg-slate-50\/60, [data-appearance="dark"] .bg-slate-50\/80, [data-appearance="dark"] .bg-slate-100\/70, [data-appearance="dark"] .bg-slate-200 { background-color: var(--app-surface-elevated); }

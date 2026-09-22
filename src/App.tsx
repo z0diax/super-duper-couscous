@@ -88,7 +88,7 @@ const MainLayout: React.FC = () => {
       <ThemeEffects />
       {/* Toast Notification Container */}
       <Toast />
-      {isSaving && <div role="status" aria-live="polite" className="fixed inset-0 z-[100] bg-slate-900/20 flex items-center justify-center cursor-wait"><div className="rounded-xl bg-white px-6 py-4 shadow-xl font-semibold">Saving changes…</div></div>}
+      {isSaving && <div role="status" aria-live="polite" className="app-saving-overlay fixed inset-0 z-[100] flex cursor-wait items-center justify-center bg-slate-900/20"><div className="max-w-full rounded-xl bg-white px-6 py-4 text-center font-semibold shadow-xl">Saving changes…</div></div>}
 
       {/* Left Navigation Sidebar */}
       <Sidebar
@@ -99,7 +99,7 @@ const MainLayout: React.FC = () => {
       />
 
       {/* Main Content Area (offset by sidebar width on desktop) */}
-      <div className="relative z-10 flex-1 lg:pl-64 sm:lg:pl-72 flex flex-col min-h-screen w-full transition-all duration-200">
+      <div className="relative z-10 flex min-h-screen w-full flex-1 flex-col transition-all duration-200 lg:pl-64 xl:pl-72">
         
         {/* Top Header */}
         <Header 
@@ -109,7 +109,7 @@ const MainLayout: React.FC = () => {
         />
 
         {/* Dynamic Main Body Content */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
           {can('canAdmin') && !workflowTemplates.some(w => w.isActive) && <div className="mb-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">Before registering documents, configure your users, review the classification catalogue, and create active workflows. Payroll batches also require employment routing rules.</div>}
           {activeTab === 'dashboard' && (
             <Dashboard onOpenRegisterModal={() => { if (canRegisterDocument) setIsRegisterModalOpen(true); }} canRegisterDocument={canRegisterDocument} canViewRegistry={canViewRegistry} canViewLeave={canViewLeaveTab} canViewAudit={canViewAudit} />
@@ -153,8 +153,8 @@ const MainLayout: React.FC = () => {
         </main>
 
         {/* Footer */}
-        <footer className="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500 mt-auto">
-          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+        <footer className="mt-auto border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-500">
+          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-3 sm:flex-row sm:px-6 lg:px-8">
             <span>
               Human Resource Management and Development Office (HRMDO) &bull; Records Management System
             </span>

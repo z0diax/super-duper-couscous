@@ -74,8 +74,8 @@ export const EditPayrollBatchModal: React.FC<Props> = ({ batch, items, isOpen, o
   };
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-xs">
-      <form onSubmit={handleSubmit} className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+    <div className="fixed inset-0 z-60 flex items-center justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-xs">
+      <form onSubmit={handleSubmit} className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between border-b border-slate-200 bg-slate-50 px-5 py-4">
           <div>
             <h2 className="text-base font-bold text-slate-900">Edit Payroll Batch</h2>

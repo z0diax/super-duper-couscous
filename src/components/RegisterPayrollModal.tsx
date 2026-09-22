@@ -235,7 +235,7 @@ export const RegisterPayrollModal: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3 sm:p-6 backdrop-blur-xs overflow-y-auto animate-in fade-in-50">
-      <section role="dialog" aria-modal="true" aria-labelledby="register-payroll-title" className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+      <section role="dialog" aria-modal="true" aria-labelledby="register-payroll-title" className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[calc(100dvh-1.5rem)]">
         {/* Modal Top Header */}
         <header className="p-5 border-b border-slate-800 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">

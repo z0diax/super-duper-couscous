@@ -38,7 +38,7 @@ export const Toast: React.FC = () => {
       role="alert"
       aria-label="Notification alert"
       id="toast-notification-banner"
-      className={`fixed bottom-5 right-5 z-[110] flex items-start gap-3 p-4 rounded-xl border shadow-lg backdrop-blur-sm max-w-md animate-in slide-in-from-bottom-3 duration-200 ${getBorderColor()}`}
+      className={`app-toast fixed z-[110] flex items-start gap-3 rounded-xl border p-4 shadow-lg backdrop-blur-sm animate-in slide-in-from-bottom-3 duration-200 ${getBorderColor()}`}
     >
       {getIcon()}
       <div className="flex-1 text-left pr-2">
@@ -47,6 +47,7 @@ export const Toast: React.FC = () => {
       </div>
       <button 
         id="btn-toast-close"
+        aria-label="Close notification"
         onClick={clearToast}
         className="p-1 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition-colors"
       >

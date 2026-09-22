@@ -138,7 +138,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/60 backdrop-blur-xs overflow-y-auto animate-in fade-in-50">
-      <section role="dialog" aria-modal="true" aria-labelledby="register-document-title" className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
+      <section role="dialog" aria-modal="true" aria-labelledby="register-document-title" className="bg-white rounded-2xl max-w-3xl w-full max-h-[calc(100dvh-1.5rem)] flex flex-col shadow-2xl border border-slate-200 overflow-hidden">
         
         {/* Modal Header */}
         <header className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800 shrink-0">
