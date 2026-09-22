@@ -97,7 +97,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
   // Release form state
   const [releasedTo, setReleasedTo] = useState(batch?.receivedFromLiaison || 'Office Liaison Officer');
-  const [releaseMode, setReleaseMode] = useState<'In-Person Pick-up' | 'Official Courier' | 'Electronic Copy' | 'Internal Messenger'>('In-Person Pick-up');
+  const [releaseMode] = useState<'In-Person Pick-up' | 'Official Courier' | 'Electronic Copy' | 'Internal Messenger'>('Electronic Copy');
   const [releaseRemarks, setReleaseRemarks] = useState('');
 
   React.useEffect(() => {
@@ -151,8 +151,9 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const batchWorkGroups = workGroups.filter(w => w.batchId === batch.id);
   const progress = batch.progress;
   const initialCheckingItems = items.filter(item => (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
+  const isAdmin = can('canAdmin');
   const initialCheckingDesk = batch.initialCheckingDesk || batch.assignedDesk;
-  const canInitialCheck = can('canSupervise') || (
+  const canInitialCheck = isAdmin || can('canSupervise') || (
     initialCheckingDesk.userId
       ? initialCheckingDesk.userId === currentUser.id
       : initialCheckingDesk.assignmentType === 'Role'
@@ -190,7 +191,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     return routingRuleFor(classification)?.assignmentMode === 'pool' && !routeSelections[item.id];
   }) : [];
   const releaseDesk = batch.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
-  const canReleaseBatch = can('canSupervise') || !!releaseDesk && (
+  const canReleaseBatch = isAdmin || can('canSupervise') || !!releaseDesk && (
     releaseDesk.userId
       ? releaseDesk.userId === currentUser.id
       : releaseDesk.assignmentType === 'Role'
@@ -651,7 +652,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                   {/* Active Work Group Details */}
                   {batchWorkGroups.filter(w => w.id === activeWorkGroupTab).map(wg => {
                     const wgItems = items.filter(i => wg.itemIds.includes(i.id));
-                    const isUserAssigned = currentUser.id === wg.assignedProcessorId || !!wg.assignedTeam && [currentUser.division,currentUser.office].includes(wg.assignedTeam) || !!wg.assignedRoleId && wg.assignedRoleId === currentUser.role;
+                    const isUserAssigned = isAdmin || currentUser.id === wg.assignedProcessorId || !!wg.assignedTeam && [currentUser.division,currentUser.office].includes(wg.assignedTeam) || !!wg.assignedRoleId && wg.assignedRoleId === currentUser.role;
                     const isCompleted = wg.status === 'Completed';
 
                     return (
@@ -824,7 +825,6 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
             <div className="min-h-0 overflow-y-auto">
                       <div className="space-y-4 p-4 sm:p-5">
                         <label className="block text-xs font-semibold text-slate-700">Recipient <span className="text-rose-500">*</span><input type="text" required value={releasedTo} onChange={e => setReleasedTo(e.target.value)} placeholder="Name of recipient or liaison" className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label>
-                        <label className="block text-xs font-semibold text-slate-700">Release method<select value={releaseMode} onChange={e => setReleaseMode(e.target.value as typeof releaseMode)} className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100"><option value="In-Person Pick-up">In-person pickup (office liaison)</option><option value="Official Courier">Official courier</option><option value="Electronic Copy">Electronic copy</option><option value="Internal Messenger">Internal messenger</option></select></label>
                         <label className="block text-xs font-semibold text-slate-700">Receipt remarks <span className="font-normal text-slate-400">(optional)</span><textarea rows={2} value={releaseRemarks} onChange={e => setReleaseRemarks(e.target.value)} placeholder="Receipt number or handover notes" className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label>
                       </div>
             </div>

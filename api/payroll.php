@@ -142,6 +142,7 @@ function payroll_initial_check_authorized(array $s,array $u,array $batch): bool 
     return payroll_desk_matches_user($s,$u,$desk);
 }
 function payroll_item_stage_authorized(array $s,array $u,array $batch,array $item): bool {
+    if (has_cap($s,$u,'canAdmin')) return true;
     $stage=payroll_item_stage($item);
     if ($stage==='initial_checking') return payroll_initial_check_authorized($s,$u,$batch);
     if ($stage==='verification_signing') return ($item['assignedToUserId']??null)===$u['id'] || (($item['assignedToRoleId']??'')!=='' && $item['assignedToRoleId']===$u['role']) || (($item['assignedToTeam']??'')!=='' && in_array($item['assignedToTeam'],[$u['division'],$u['office']],true));
@@ -371,7 +372,7 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
         fail_unless($group['status']!=='Completed','Work group is complete.',409);
         $teamMatch=($group['assignedTeam']??'')!=='' && in_array($group['assignedTeam'],[$u['division'],$u['office']],true);
         $roleMatch=($group['assignedRoleId']??'')!=='' && $group['assignedRoleId']===$u['role'];
-        fail_unless($group['assignedProcessorId']===$u['id'] || $teamMatch || $roleMatch,'This work group is assigned to another officer.',403);
+        fail_unless(has_cap($s,$u,'canAdmin') || $group['assignedProcessorId']===$u['id'] || $teamMatch || $roleMatch,'This work group is assigned to another officer.',403);
         choice($args[2]??null,['complete','exception'],'work group action');
         fail_unless(is_array($args[1]??null) && count($args[1])>0,'Select at least one item.');
         foreach ($args[1] as $id) {
@@ -405,7 +406,9 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
         fail_unless(is_array($releaseDesk) && payroll_desk_matches_user($s,$u,$releaseDesk),'This batch is assigned to another officer.',403);
         $ready=array_values(array_filter($s['payrollItems'],fn($item)=>$item['batchId']===$batch['id'] && $item['status']==='Ready_For_Release'));
         fail_unless(count($ready)>0,'No payroll items are ready for release.',409);
-        $details=$args[1]; required($details,'releasedTo'); choice($details['releaseMode']??null,['In-Person Pick-up','Official Courier','Electronic Copy','Internal Messenger'],'release mode');
+        $details=$args[1]; required($details,'releasedTo');
+        $details['releaseMode']=$details['releaseMode'] ?? 'Electronic Copy';
+        choice($details['releaseMode'],['In-Person Pick-up','Official Courier','Electronic Copy','Internal Messenger'],'release mode');
         $release=array_merge($details,['releasedAt'=>now(),'releasedBy'=>$u['name']]);
         foreach ($ready as $record) { $j=index_of($s['payrollItems'],$record['id']); $item=&$s['payrollItems'][$j]; $item['currentStage']='completed'; $item['status']='Released'; $item['releaseDetails']=$release; payroll_item_audit($item,$u,'PAYROLL_RELEASED','Officially released to '.$details['releasedTo'].'.'); unset($item); }
         $batch['releaseDetails']=$release;

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { EmploymentRoutingRule, EmploymentClassification } from '../types';
-import { X, Sliders, CheckCircle2, UserCheck, ShieldAlert, Clock, Save } from 'lucide-react';
+import { X, Sliders, CheckCircle2, UserCheck, ShieldAlert, Save } from 'lucide-react';
 
 interface Props {
   isOpen: boolean;
@@ -15,7 +15,6 @@ export const EmploymentRoutingRulesModal: React.FC<Props> = ({ isOpen, onClose }
   const [assignmentMode, setAssignmentMode] = useState<'fixed' | 'pool' | 'team'>('fixed');
   const [eligibleUserIds, setEligibleUserIds] = useState<string[]>([]);
   const [selectedTeam, setSelectedTeam] = useState('');
-  const [slaHours, setSlaHours] = useState<number>(24);
   const teams = Array.from(new Set(users.flatMap(user => [user.division, user.office]).filter(Boolean))).sort();
 
   if (!isOpen) return null;
@@ -26,7 +25,6 @@ export const EmploymentRoutingRulesModal: React.FC<Props> = ({ isOpen, onClose }
     setSelectedUserId(rule.primaryProcessorId || users[0]?.id || '');
     setEligibleUserIds(rule.eligibleProcessorIds || []);
     setSelectedTeam(rule.assignedTeam || teams[0] || '');
-    setSlaHours(rule.defaultSlaHours || 24);
   };
 
   const handleSave = async () => {
@@ -47,7 +45,6 @@ export const EmploymentRoutingRulesModal: React.FC<Props> = ({ isOpen, onClose }
       primaryProcessorRoleTitle: assignmentMode === 'fixed' ? targetUser!.roleTitle : '',
       eligibleProcessorIds: assignmentMode === 'pool' ? eligibleUserIds : [],
       assignedTeam: assignmentMode === 'team' ? selectedTeam : '',
-      defaultSlaHours: Number(slaHours) || 24,
     }))) return;
     setEditingRule(null);
   };
@@ -155,18 +152,7 @@ export const EmploymentRoutingRulesModal: React.FC<Props> = ({ isOpen, onClose }
                       {assignmentMode === 'pool' && <div><p className="mb-2 text-xs font-medium text-slate-700">Eligible personnel</p><div className="grid max-h-40 gap-2 overflow-y-auto rounded-lg border border-slate-200 p-2 sm:grid-cols-2">{users.map(user => <label key={user.id} className="flex items-start gap-2 rounded-md p-2 text-xs hover:bg-slate-50"><input type="checkbox" checked={eligibleUserIds.includes(user.id)} onChange={event => setEligibleUserIds(current => event.target.checked ? [...current, user.id] : current.filter(id => id !== user.id))} className="mt-0.5 h-4 w-4"/><span><strong className="block text-slate-800">{user.name}</strong><span className="text-slate-500">{user.roleTitle}</span></span></label>)}</div></div>}
                       {assignmentMode === 'team' && <div><label className="mb-1 block text-xs font-medium text-slate-700">Assigned team</label><select value={selectedTeam} onChange={event => setSelectedTeam(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Choose a team...</option>{teams.map(team => <option key={team} value={team}>{team}</option>)}</select></div>}
 
-                      <div className="flex items-center justify-between gap-4 pt-2">
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs font-medium text-slate-700">SLA Hours:</label>
-                          <input
-                            type="number"
-                            min={1}
-                            max={168}
-                            value={slaHours}
-                            onChange={e => setSlaHours(Number(e.target.value))}
-                            className="w-20 px-2 py-1 text-xs border border-slate-300 rounded-md"
-                          />
-                        </div>
+                      <div className="flex items-center justify-end gap-4 pt-2">
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => setEditingRule(null)}
@@ -185,15 +171,11 @@ export const EmploymentRoutingRulesModal: React.FC<Props> = ({ isOpen, onClose }
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center text-xs text-slate-600">
                       <div className="flex items-center gap-2">
                         <span className="text-slate-400">{(rule.assignmentMode || 'fixed') === 'fixed' ? 'Assigned personnel:' : (rule.assignmentMode === 'pool' ? 'Personnel pool:' : 'Team queue:')}</span>
                         <span className="font-semibold text-slate-800">{assignedLabel}</span>
                         {(rule.assignmentMode || 'fixed') === 'fixed' && <span className="text-slate-400">({rule.primaryProcessorRoleTitle})</span>}
-                      </div>
-                      <div className="flex items-center gap-1 text-slate-500">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        <span>SLA: {rule.defaultSlaHours}h</span>
                       </div>
                     </div>
                   )}

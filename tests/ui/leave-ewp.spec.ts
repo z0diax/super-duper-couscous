@@ -18,6 +18,7 @@ test('leave intake switches to EWP and registers the requested fields', async ({
   await page.locator('#leave-input-applicant').fill('Browser Employee');
   await page.locator('#leave-select-office').selectOption({ index: 1 });
   await page.locator('#ewp-input-amount').fill('1750.50');
+  await expect(page.locator('#ewp-input-amount')).toHaveValue('1,750.50');
   await page.locator('#ewp-input-purpose').fill('Medical assistance');
   await page.getByRole('textbox', { name: 'Remarks' }).fill('Submitted complete requirements');
   await page.getByRole('button', { name: 'Register EWP Record', exact: true }).click();

@@ -327,7 +327,8 @@ test('payroll routing supports personnel pools and team queues',async()=>{
   await admin.action('completeInitialCheckingAndRoute',[poolBatch.id,{[poolBatch.itemIds[0]]:alternateUser.id,[poolBatch.itemIds[1]]:processingUser.id}]);
   const poolGroups=admin.state.workGroups.filter(item=>item.batchId===poolBatch.id); assert.equal(poolGroups.length,2);
   assert.deepEqual(new Set(poolGroups.map(group=>group.assignedProcessorId)),new Set([alternateUser.id,processingUser.id]));
-  await admin.action('processWorkGroupItems',[poolGroups[0].id,poolGroups[0].itemIds,'complete'],403);
+  await admin.action('processWorkGroupItems',[poolGroups[0].id,poolGroups[0].itemIds,'complete']);
+  assert.equal(admin.state.payrollItems.find(item=>item.id===poolGroups[0].itemIds[0]).status,'Ready_For_Release');
 
   await admin.action('updateEmploymentRoutingRule',[{...casualRule,assignmentMode:'team',assignedTeam:processingUser.division}]);
   const teamBatch=(await admin.action('registerPayrollBatch',[{office:'HRMDO',payrollType:'Salary',batchBarcode:'TEAM-ROUTING-001',items:[{title:'Team routed payroll',barcode:'TEAM-PAY-001'}],files:[]}])).result;

@@ -71,6 +71,15 @@ const calculatedDays = (ranges: DateRangeDraft[]) => ranges.reduce((total, range
 }, 0);
 const dayTypeLabel = (type?: LeaveDateRange['dayType']) => type ? ({ WHOLE_DAY: 'Whole Day', AM_HALF_DAY: 'AM Half-Day', PM_HALF_DAY: 'PM Half-Day' }[type]) : 'Archived Date Range';
 const formatDays = (days: number) => `${days} day${days === 1 ? '' : 's'}`;
+const formatEwpAmount = (value: string) => {
+  const normalized = value.replace(/,/g, '').replace(/[^\d.]/g, '');
+  if (!normalized) return '';
+  const [integerPart, ...decimalParts] = normalized.split('.');
+  const integer = (integerPart || '0').replace(/^0+(?=\d)/, '') || '0';
+  const formattedInteger = Number(integer).toLocaleString('en-US');
+  if (!normalized.includes('.')) return formattedInteger;
+  return `${formattedInteger}.${decimalParts.join('').slice(0, 2)}`;
+};
 const rangeDays = (range: LeaveDateRange) => range.leaveDayUnits !== undefined ? range.leaveDayUnits / 2 : range.dayType && range.dayType !== 'WHOLE_DAY' ? 0.5 : Math.floor((new Date(`${range.endDate}T00:00:00Z`).getTime() - new Date(`${range.startDate}T00:00:00Z`).getTime()) / 86400000) + 1;
 const displayDate = (date: string) => new Intl.DateTimeFormat('en-PH',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(`${date}T00:00:00Z`));
 const displayDateTime = (value: string) => {
@@ -160,9 +169,10 @@ export const LeaveContinuity: React.FC = () => {
     event.preventDefault();
     if (intakeMode === 'ewp') {
       if (!barcode.trim() || !employeeName.trim() || !office.trim() || !ewpAmount || !ewpPurpose.trim()) return;
+      const amount = Number(ewpAmount.replace(/,/g, ''));
       const saved = editingEwpRecord
-        ? await updateEwpRecord({ id: editingEwpRecord.id, barcode: barcode.trim(), employeeName: employeeName.trim(), office: office.trim(), amount: Number(ewpAmount), purpose: ewpPurpose.trim(), remarks: remarks.trim() })
-        : await registerEwpRecord({ barcode: barcode.trim(), employeeName: employeeName.trim(), office: office.trim(), amount: Number(ewpAmount), purpose: ewpPurpose.trim(), remarks: remarks.trim() });
+        ? await updateEwpRecord({ id: editingEwpRecord.id, barcode: barcode.trim(), employeeName: employeeName.trim(), office: office.trim(), amount, purpose: ewpPurpose.trim(), remarks: remarks.trim() })
+        : await registerEwpRecord({ barcode: barcode.trim(), employeeName: employeeName.trim(), office: office.trim(), amount, purpose: ewpPurpose.trim(), remarks: remarks.trim() });
       if (!saved) return;
       setIsModalOpen(false); resetForm(); selectRegistryMode('ewp'); return;
     }
@@ -187,7 +197,7 @@ export const LeaveContinuity: React.FC = () => {
   };
   const openEwpEdit = (record: EwpRecord) => {
     setEditingEwpRecord(record); setEditingRecord(null); setIntakeMode('ewp'); setBarcode(record.barcode); setEmployeeName(record.employeeName);
-    setOffice(record.office); setEwpAmount(String(record.amount)); setEwpPurpose(record.purpose); setRemarks(record.remarks || ''); setIsModalOpen(true);
+    setOffice(record.office); setEwpAmount(formatEwpAmount(String(record.amount))); setEwpPurpose(record.purpose); setRemarks(record.remarks || ''); setIsModalOpen(true);
   };
   const confirmEwpDelete = async () => {
     if (!ewpDeleteRecord) return;
@@ -274,7 +284,7 @@ export const LeaveContinuity: React.FC = () => {
           {intakeMode==='leave'?<div className="grid gap-4 sm:grid-cols-2">
             <label className="font-semibold text-slate-700">Office *<select id="leave-select-office" required value={office} onChange={event => setOffice(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"><option value="">Select applicant office</option>{office && !(OFFICE_OPTIONS as readonly string[]).includes(office) && <option value={office}>{office}</option>}{OFFICE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
             <label className="font-semibold text-slate-700">Leave Type *<select id="select-filing-leave-type" value={leaveType} onChange={event => { setLeaveType(event.target.value as LeaveType); setLeaveSubtype(''); setLeaveDetails(''); }} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100">{LEAVE_TYPES.map(type => <option key={type}>{type}</option>)}</select></label>
-          </div>:<><div className="grid gap-4 sm:grid-cols-2"><label className="font-semibold text-slate-700">Office *<select id="leave-select-office" required value={office} onChange={event => setOffice(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"><option value="">Select employee office</option>{OFFICE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label className="font-semibold text-slate-700">Amount *<input id="ewp-input-amount" required type="number" min="0.01" step="0.01" value={ewpAmount} onChange={event=>setEwpAmount(event.target.value)} placeholder="0.00" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"/></label></div><label className="block font-semibold text-slate-700">Purpose *<textarea id="ewp-input-purpose" required value={ewpPurpose} onChange={event=>setEwpPurpose(event.target.value)} rows={3} placeholder="Enter the purpose of the EWP assistance" className="mt-1 w-full resize-y rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"/></label></>}
+          </div>:<><div className="grid gap-4 sm:grid-cols-2"><label className="font-semibold text-slate-700">Office *<select id="leave-select-office" required value={office} onChange={event => setOffice(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"><option value="">Select employee office</option>{OFFICE_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}</select></label><label className="font-semibold text-slate-700">Amount *<input id="ewp-input-amount" required type="text" inputMode="decimal" value={ewpAmount} onChange={event=>setEwpAmount(formatEwpAmount(event.target.value))} placeholder="0.00" className="mt-1 w-full rounded-lg border border-slate-300 p-2.5 font-mono font-normal outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"/></label></div><label className="block font-semibold text-slate-700">Purpose *<textarea id="ewp-input-purpose" required value={ewpPurpose} onChange={event => setEwpPurpose(event.target.value)} rows={3} placeholder="Enter the purpose of the EWP assistance" className="mt-1 w-full resize-y rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"/></label></>}
           {intakeMode==='leave' && (detailLabels(leaveType)[0] || detailLabels(leaveType)[1]) && <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
             <p className="mb-3 text-[10px] font-bold uppercase tracking-wider text-blue-700">Leave Details</p>
             {detailLabels(leaveType)[0] && <label className="block font-semibold text-slate-700">{detailLabels(leaveType)[0]} *

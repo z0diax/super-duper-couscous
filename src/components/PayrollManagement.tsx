@@ -113,6 +113,9 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     : status === 'On_Hold' || status === 'Returned'
     ? 'bg-amber-100 text-amber-800'
     : 'bg-blue-100 text-blue-800';
+  const singleStatusLabel = (status: string) => status === 'Pending_Approval'
+    ? 'In Process'
+    : status.replace(/_/g, ' ');
   const entryTimestamp = (entry: { dateEncoded?: string; dateReceived?: string }) =>
     Date.parse(entry.dateEncoded || entry.dateReceived || '') || 0;
 
@@ -595,7 +598,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                         </div>
 
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${singleStatusTone(doc.status)}`}>
-                          {doc.status.replace(/_/g, ' ')}
+                          {singleStatusLabel(doc.status)}
                         </span>
                       </div>
 
@@ -691,7 +694,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                         <div><p className="truncate text-xs font-medium text-slate-700">{doc.documentType}</p><p className="mt-1 text-[10px] text-slate-400">Received {new Date(doc.dateReceived).toLocaleDateString()}</p></div>
                         <p className="truncate text-xs text-slate-600">{doc.employmentClassification || 'Unclassified'}</p>
                         <div><p className="truncate text-xs font-medium text-slate-700">{currentStep?.name || 'Routing in progress'}</p><p className="mt-1 text-[10px] text-slate-500">Phase {doc.currentStepNumber} of {doc.totalSteps}</p></div>
-                        <span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${singleStatusTone(doc.status)}`}>{doc.status.replace(/_/g, ' ')}</span>
+                        <span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${singleStatusTone(doc.status)}`}>{singleStatusLabel(doc.status)}</span>
                         <div className="flex items-center justify-start gap-1 lg:justify-end">
                           {can('canAdmin') && (deleteConfirmSingleDocumentId === doc.id ? <><button type="button" onClick={() => handleDeleteSinglePayroll(doc.id)} className="rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-rose-700">Confirm</button><button type="button" onClick={() => setDeleteConfirmSingleDocumentId(null)} className="rounded-lg px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-200">Cancel</button></> : <button type="button" aria-label={`Delete ${doc.trackingNumber}`} title="Delete single payroll voucher" onClick={() => setDeleteConfirmSingleDocumentId(doc.id)} className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>)}
                           <button type="button" onClick={() => setSelectedDocument(doc)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50">Inspect</button>
