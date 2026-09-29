@@ -18,6 +18,7 @@ import { PayrollManagement } from './components/PayrollManagement';
 import { RegisterPayrollModal } from './components/RegisterPayrollModal';
 import { PayrollBatchDetailModal } from './components/PayrollBatchDetailModal';
 import { LoginPortal } from './components/LoginPortal';
+import { StartupLoader } from './components/StartupLoader';
 import { useWorkspaceState } from './services/workspace';
 import { ThemeEffects } from './theme/ThemeEffects';
 
@@ -59,7 +60,7 @@ const MainLayout: React.FC = () => {
   }, [activeTab, currentUser.id, currentUser.sidebarModules, can, setActiveTab]);
 
   if (!authReady) {
-    return <StartupMessage title="Checking your login session..." />;
+    return <StartupLoader message="Checking your login session..." />;
   }
 
   if (!isAuthenticated) {
@@ -67,7 +68,7 @@ const MainLayout: React.FC = () => {
   }
 
   if (!databaseReady) {
-    return <StartupMessage title="Connecting to the application database..." />;
+    return <StartupLoader message="Connecting to the application database..." />;
   }
 
   if (databaseError) {
