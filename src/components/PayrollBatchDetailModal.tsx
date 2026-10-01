@@ -3,6 +3,7 @@ import { downloadUrl } from '../services/http';
 import { useApp } from '../context/AppContext';
 import { useWorkspaceState } from '../services/workspace';
 import { PayrollBatch, EmploymentClassification } from '../types';
+import { getPayrollBatchDetail,type PayrollBatchDetail } from '../services/payrollApi';
 import { 
   X, 
   Layers, 
@@ -48,14 +49,14 @@ interface Props {
 }
 
 export const PayrollBatchDetailModal: React.FC<Props> = ({ 
-  batch, 
+  batch:sourceBatch, 
   isOpen, 
   onClose, 
   initialWorkGroupId 
 }) => {
   const { 
-    payrollItems, 
-    workGroups, 
+    payrollItems:legacyPayrollItems, 
+    workGroups:legacyWorkGroups, 
     currentUser, 
     users,
     updatePayrollItemClassification, 
@@ -67,8 +68,32 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     processWorkGroupItems, 
     releasePayrollBatch,
     employmentRoutingRules,
-    can
+    can,stateRevision
   } = useApp();
+  const payrollTargeted=import.meta.env.VITE_PAYROLL_TARGETED_READS==='1';
+  const [detail,setDetail]=useState<PayrollBatchDetail|null>(null);
+  const [detailLoading,setDetailLoading]=useState(payrollTargeted);
+  const [detailError,setDetailError]=useState(false);
+  const [detailRetry,setDetailRetry]=useState(0);
+  const [itemPage,setItemPage]=useState(1);
+  const [groupPage,setGroupPage]=useState(1);
+  React.useEffect(()=>{setItemPage(1);setGroupPage(1);setDetail(null);},[sourceBatch?.id]);
+  React.useEffect(()=>{
+    if(!payrollTargeted||!isOpen||!sourceBatch)return;
+    let active=true,pending=false;
+    const refresh=async()=>{
+      if(pending)return;pending=true;setDetailLoading(true);setDetailError(false);
+      try{const value=await getPayrollBatchDetail(sourceBatch.id,itemPage,groupPage,25);if(active){setDetail(value);setDetailLoading(false);}}
+      catch{if(active){setDetail(null);setDetailLoading(false);setDetailError(true);}}
+      finally{pending=false;}
+    };
+    void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},5000);
+    const resume=()=>{if(document.visibilityState==='visible')void refresh();};
+    window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);
+    return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};
+  },[payrollTargeted,isOpen,sourceBatch?.id,itemPage,groupPage,stateRevision,detailRetry]);
+  const batch=payrollTargeted?detail?.batch||sourceBatch:sourceBatch;
+  const workGroups=payrollTargeted?detail?.workGroups||[]:legacyWorkGroups;
 
   const [activeTab, setActiveTab] = useWorkspaceState<'workflow' | 'items' | 'audit'>(currentUser.id, 'payroll-batch-detail.tab', 'workflow');
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
@@ -147,7 +172,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
   if (!isOpen || !batch) return null;
 
-  const items = payrollItems.filter(i => i.batchId === batch.id);
+  const items = payrollTargeted?detail?.items||[]:legacyPayrollItems.filter(i => i.batchId === batch.id);
   const batchWorkGroups = workGroups.filter(w => w.batchId === batch.id);
   const progress = batch.progress;
   const initialCheckingItems = items.filter(item => (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
@@ -166,14 +191,14 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const phaseAllowsHold = (phaseNumber: number) => batch.workflowStages?.find(stage => stage.stageNumber === phaseNumber)?.allowHold === true;
 
   // Count items by classification
-  const jowCount = items.filter(i => (i.employmentClassification === 'JOW/COS' || i.employmentClassification === 'Job Order (JOW)') && i.status !== 'On_Hold').length;
-  const casualCount = items.filter(i => i.employmentClassification === 'Casual' && i.status !== 'On_Hold').length;
-  const regularCount = items.filter(i => i.employmentClassification === 'Regular' && i.status !== 'On_Hold').length;
-  const onHoldCount = items.filter(i => i.status === 'On_Hold').length;
+  const jowCount = payrollTargeted?detail?.itemCounts.jow??0:items.filter(i => (i.employmentClassification === 'JOW/COS' || i.employmentClassification === 'Job Order (JOW)') && i.status !== 'On_Hold').length;
+  const casualCount = payrollTargeted?detail?.itemCounts.casual??0:items.filter(i => i.employmentClassification === 'Casual' && i.status !== 'On_Hold').length;
+  const regularCount = payrollTargeted?detail?.itemCounts.regular??0:items.filter(i => i.employmentClassification === 'Regular' && i.status !== 'On_Hold').length;
+  const onHoldCount = payrollTargeted?detail?.itemCounts.held??0:items.filter(i => i.status === 'On_Hold').length;
   const readyItems = initialCheckingItems.filter(item => item.status !== 'On_Hold' && item.verificationStatus === 'Passed' && !!item.employmentClassification);
-  const unresolvedCount = initialCheckingItems.filter(item => item.status !== 'On_Hold' && (item.verificationStatus !== 'Passed' || !item.employmentClassification)).length;
-  const readyForReleaseCount = items.filter(item => item.status === 'Ready_For_Release').length;
-  const releasedCount = items.filter(item => item.status === 'Released').length;
+  const unresolvedCount = payrollTargeted?detail?.itemCounts.unresolved??0:initialCheckingItems.filter(item => item.status !== 'On_Hold' && (item.verificationStatus !== 'Passed' || !item.employmentClassification)).length;
+  const readyForReleaseCount = payrollTargeted?detail?.itemCounts.ready_release??0:items.filter(item => item.status === 'Ready_For_Release').length;
+  const releasedCount = payrollTargeted?detail?.itemCounts.released??0:items.filter(item => item.status === 'Released').length;
   const allItemsReleased = progress.derivedStatus === 'COMPLETED';
   const processingStage = batch.workflowStages?.find(stage => stage.stageNumber === 3);
   const usesEmploymentRouting = processingStage?.payrollAssignmentSource !== 'workflow';
@@ -328,7 +353,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
         <section aria-label="Batch progress" className="shrink-0 border-b border-slate-200 bg-slate-50/70 px-4 py-3 sm:px-6 sm:py-4">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px] sm:mb-3">
             <span className="font-semibold text-slate-700">Batch progress <span className="font-normal text-slate-500">&middot; {payrollCount(progress.totalItems)}</span></span>
-            {items.length < progress.totalItems && <span className="text-slate-500">{items.length} visible to you</span>}
+            {(payrollTargeted?(detail?.itemPagination.total??0):items.length) < progress.totalItems && <span className="text-slate-500">{payrollTargeted?detail?.itemPagination.total??0:items.length} visible to you</span>}
           </div>
           <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
             {phaseSummaries.map(phase => <li key={phase.number} className={`min-w-0 rounded-xl border px-3 py-2.5 ${phase.active ? 'border-blue-200 bg-blue-50/60' : 'border-slate-200 bg-white'}`}>
@@ -344,10 +369,20 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
         <nav aria-label="Batch details" className="flex shrink-0 gap-5 overflow-x-auto border-b border-slate-200 px-4 sm:px-6">
           {([
             { id: 'workflow', label: 'Processing', icon: Layers },
-            { id: 'items', label: `Payroll items (${items.length})`, icon: FileText },
+            { id: 'items', label: `Payroll items (${payrollTargeted?detail?.itemPagination.total??0:items.length})`, icon: FileText },
             { id: 'audit', label: 'Activity log', icon: History },
           ] as const).map(tab => <button key={tab.id} type="button" aria-current={activeTab === tab.id ? 'page' : undefined} onClick={() => setActiveTab(tab.id)} className={`flex shrink-0 items-center gap-2 border-b-2 py-3 text-xs font-semibold transition-colors ${activeTab === tab.id ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-900'}`}><tab.icon className="h-4 w-4" />{tab.label}</button>)}
         </nav>
+        {payrollTargeted&&detailLoading&&<div role="status" className="border-b border-blue-100 bg-blue-50 px-6 py-2 text-xs text-blue-800">Refreshing payroll workspace...</div>}
+        {payrollTargeted&&detailError&&<div role="alert" className="border-b border-amber-200 bg-amber-50 px-6 py-2 text-xs text-amber-900">Payroll workspace could not be loaded. <button type="button" onClick={()=>setDetailRetry(value=>value+1)} className="font-semibold underline">Retry</button></div>}
+        {payrollTargeted&&detail&&<div className="flex flex-wrap items-center gap-4 border-b border-slate-200 px-6 py-2 text-xs text-slate-600">
+          <span>Items: page {itemPage} of {Math.max(1,detail.itemPagination.totalPages)}</span>
+          <button type="button" disabled={itemPage<=1} onClick={()=>setItemPage(value=>value-1)} className="font-semibold text-blue-700 disabled:text-slate-400">Previous items</button>
+          <button type="button" disabled={itemPage>=detail.itemPagination.totalPages} onClick={()=>setItemPage(value=>value+1)} className="font-semibold text-blue-700 disabled:text-slate-400">Next items</button>
+          <span>Work Groups: page {groupPage} of {Math.max(1,detail.groupPagination.totalPages)}</span>
+          <button type="button" disabled={groupPage<=1} onClick={()=>setGroupPage(value=>value-1)} className="font-semibold text-blue-700 disabled:text-slate-400">Previous groups</button>
+          <button type="button" disabled={groupPage>=detail.groupPagination.totalPages} onClick={()=>setGroupPage(value=>value+1)} className="font-semibold text-blue-700 disabled:text-slate-400">Next groups</button>
+        </div>}
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain bg-slate-50/60 p-4 sm:p-6">
           {batch.attachments.length > 0 && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs" aria-label="Batch attachments">

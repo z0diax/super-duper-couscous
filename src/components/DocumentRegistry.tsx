@@ -1,9 +1,10 @@
 import { exportCsv } from '../services/csv';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { DocumentRecord } from '../types';
 import { useWorkspaceState } from '../services/workspace';
 import { documentSenderLabel } from '../services/documentDisplay';
+import { exportRegistryCsv, listRegistryDocuments, type RegistryCounts, type RegistryPage, type RegistryRow } from '../services/documentApi';
 import { 
   FileStack, 
   Filter, 
@@ -23,17 +24,42 @@ interface DocumentRegistryProps {
 }
 
 export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegisterModal }) => {
-  const { documents, setSelectedDocument, showToast, deleteDocument, can, currentUser } = useApp();
+  const { documents, setSelectedDocument, openTargetedDocument, showToast, deleteDocument, can, currentUser, stateRevision } = useApp();
+  const targeted = import.meta.env.VITE_DOCUMENT_REGISTRY_TARGETED_READS === '1';
+  const targetedDetail = import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS === '1';
 
   const [datasetFilter, setDatasetFilter] = useWorkspaceState<'all' | 'v2' | 'v1'>(currentUser.id, 'registry.dataset-filter', 'all');
   const [classificationFilter, setClassificationFilter] = useWorkspaceState<string>(currentUser.id, 'registry.classification-filter', 'all');
   const [statusFilter, setStatusFilter] = useWorkspaceState<string>(currentUser.id, 'registry.status-filter', 'all');
   const [priorityFilter, setPriorityFilter] = useWorkspaceState<string>(currentUser.id, 'registry.priority-filter', 'all');
   const [deleteConfirmDocumentId, setDeleteConfirmDocumentId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [targetPage, setTargetPage] = useState<RegistryPage | null>(null);
+  const [loading, setLoading] = useState(targeted);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const requestId = useRef(0);
   // Single payroll vouchers use the document workflow engine internally, but
   // they belong exclusively to Payroll Management in the user-facing UI.
-  const registryDocuments = documents.filter(doc => doc.classification !== 'Payroll');
+  const registryDocuments = targeted ? [] : documents.filter(doc => doc.classification !== 'Payroll');
   const effectiveClassificationFilter = classificationFilter === 'Payroll' ? 'all' : classificationFilter;
+  const filters = { dataset: datasetFilter, classification: effectiveClassificationFilter, status: statusFilter, priority: priorityFilter };
+  useEffect(() => {
+    if (!targeted) return;
+    const id = ++requestId.current;
+    setLoading(true); setError(false); setTargetPage(null);
+    listRegistryDocuments(filters, page, pageSize).then(result => {
+      if (id !== requestId.current) return;
+      if (page > 1 && result.pagination.totalPages > 0 && page > result.pagination.totalPages) { setPage(result.pagination.totalPages); return; }
+      setTargetPage(result); setLoading(false);
+    }).catch(() => { if (id === requestId.current) { setTargetPage(null); setLoading(false); setError(true); } });
+    return () => { requestId.current++; };
+  }, [targeted, currentUser.id, datasetFilter, effectiveClassificationFilter, statusFilter, priorityFilter, page, pageSize, stateRevision, retry]);
+  const updateDataset = (value: 'all' | 'v1' | 'v2') => { setPage(1); setDatasetFilter(value); };
+  const updateClassification = (value: string) => { setPage(1); setClassificationFilter(value); };
+  const updateStatus = (value: string) => { setPage(1); setStatusFilter(value); };
+  const updatePriority = (value: string) => { setPage(1); setPriorityFilter(value); };
 
   const handleDeleteDocument = async (documentId: string) => {
     if (!(await deleteDocument(documentId))) return;
@@ -56,8 +82,33 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
 
     return true;
   });
+  const rows: RegistryRow[] = targeted ? targetPage?.data || [] : filteredDocs.map(doc => ({
+    id: doc.id, trackingNumber: doc.trackingNumber, title: doc.title, subject: doc.subject,
+    sourceOffice: doc.sourceOffice, senderName: doc.senderName, classification: doc.classification,
+    documentType: doc.documentType, employmentClassification: doc.employmentClassification,
+    priority: doc.priority, status: doc.status, dateReceived: doc.dateReceived,
+    currentStepNumber: doc.currentStepNumber, totalSteps: doc.totalSteps, currentLocation: doc.currentLocation,
+    currentStepName: doc.workflowSteps.find(step => step.stepNumber === doc.currentStepNumber)?.name,
+    isLegacyV1: !!doc.isLegacyV1,
+  }));
+  const counts: RegistryCounts = targeted ? targetPage?.registryCounts || { all: 0, v1: 0, v2: 0, outside: 0 } : {
+    all: registryDocuments.length, v1: registryDocuments.filter(doc => doc.isLegacyV1).length,
+    v2: registryDocuments.filter(doc => !doc.isLegacyV1).length,
+    outside: registryDocuments.filter(doc => doc.status === 'Awaiting_External_Return').length,
+  };
+  const openDocument = (id: string) => {
+    if (targetedDetail) { openTargetedDocument(id); return; }
+    const fullDocument = documents.find(doc => doc.id === id);
+    if (fullDocument) setSelectedDocument(fullDocument);
+    else showToast('error', 'Document unavailable', 'Refresh the application and try opening this document again.');
+  };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
+    if (targeted) {
+      try { await exportRegistryCsv(filters); showToast('success', 'Export Generated', 'The filtered registry was exported.'); }
+      catch { showToast('error', 'Export unavailable', 'Could not export the registry. Please try again.'); }
+      return;
+    }
     const headers = ['Tracking Number', 'Title', 'Classification', 'Document Type', 'Source Office', 'Sender', 'Priority', 'Status', 'Date Received', 'Dataset'];
     const rows = filteredDocs.map(d => [d.trackingNumber, d.title, d.classification, d.documentType, d.sourceOffice, d.senderName, d.priority, d.status, d.dateReceived, d.isLegacyV1 ? 'Historical Archive' : 'Active Records']);
     exportCsv(`HRMDO_DTS_${new Date().toISOString().slice(0,10)}.csv`, [headers, ...rows]);
@@ -82,7 +133,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
           <div className="flex items-center gap-2">
             <button
               id="btn-registry-export-csv"
-              onClick={handleExportCSV}
+              onClick={() => { void handleExportCSV(); }}
               className="px-3 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5"
             >
               <Download className="w-3.5 h-3.5" />
@@ -103,45 +154,45 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100">
           <button
             id="tab-dataset-all"
-            onClick={() => setDatasetFilter('all')}
+            onClick={() => updateDataset('all')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
               datasetFilter === 'all'
                 ? 'bg-slate-900 text-white font-semibold'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
             }`}
           >
-            All Records ({registryDocuments.length})
+            All Records ({counts.all})
           </button>
           <button
             id="tab-dataset-v2"
-            onClick={() => setDatasetFilter('v2')}
+            onClick={() => updateDataset('v2')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
               datasetFilter === 'v2'
                 ? 'bg-blue-600 text-white font-semibold'
                 : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
             }`}
           >
-            Active Records ({registryDocuments.filter(d => !d.isLegacyV1).length})
+            Active Records ({counts.v2})
           </button>
           <button
             id="tab-dataset-v1"
-            onClick={() => setDatasetFilter('v1')}
+            onClick={() => updateDataset('v1')}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
               datasetFilter === 'v1'
                 ? 'bg-indigo-700 text-white font-semibold'
                 : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
             }`}
           >
-            Historical Archive ({registryDocuments.filter(d => d.isLegacyV1).length})
+            Historical Archive ({counts.v1})
           </button>
           <button
             id="tab-outside-hrmdo"
-            onClick={() => { setDatasetFilter('v2'); setStatusFilter('Awaiting_External_Return'); }}
+            onClick={() => { updateDataset('v2'); updateStatus('Awaiting_External_Return'); }}
             className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors cursor-pointer ${
               statusFilter === 'Awaiting_External_Return' ? 'bg-amber-600 text-white font-semibold' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
             }`}
           >
-            Outside HRMDO ({registryDocuments.filter(d => d.status === 'Awaiting_External_Return').length})
+            Outside HRMDO ({counts.outside})
           </button>
         </div>
       </div>
@@ -152,7 +203,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
           <select
             id="registry-filter-class"
             value={effectiveClassificationFilter}
-            onChange={e => setClassificationFilter(e.target.value)}
+            onChange={e => updateClassification(e.target.value)}
             className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">Classification (All)</option>
@@ -165,7 +216,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
           <select
             id="registry-filter-status"
             value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
+            onChange={e => updateStatus(e.target.value)}
             className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">Status (All)</option>
@@ -184,7 +235,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
           <select
             id="registry-filter-priority"
             value={priorityFilter}
-            onChange={e => setPriorityFilter(e.target.value)}
+            onChange={e => updatePriority(e.target.value)}
             className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">Priority (All)</option>
@@ -196,12 +247,19 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
 
       {/* Registry Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        {filteredDocs.length === 0 ? (
+        {targeted && loading ? (
+          <div role="status" className="p-10 text-center text-sm text-slate-600">Loading registry records...</div>
+        ) : targeted && error ? (
+          <div role="alert" className="p-10 text-center text-sm text-slate-700">
+            <p>Registry records could not be loaded.</p>
+            <button type="button" onClick={() => setRetry(value => value + 1)} className="mt-3 rounded-lg bg-blue-600 px-3 py-2 font-semibold text-white">Retry</button>
+          </div>
+        ) : rows.length === 0 ? (
           <div className="text-center py-12 p-4">
             <FileStack className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h3 className="text-sm font-semibold text-slate-700">No records found</h3>
+            <h3 className="text-sm font-semibold text-slate-700">{counts.all === 0 ? 'No documents yet' : 'No records match these filters'}</h3>
             <p className="text-xs text-slate-500 mt-1">
-              Try adjusting or clearing the registry filters.
+              {counts.all === 0 ? 'Registered documents will appear here.' : 'Try adjusting or clearing the registry filters.'}
             </p>
           </div>
         ) : (
@@ -218,12 +276,11 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredDocs.map(doc => {
-                  const currentStep = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
+                {rows.map(doc => {
                   return (
                     <tr
                       key={doc.id}
-                      onClick={() => setSelectedDocument(doc)}
+                      onClick={() => openDocument(doc.id)}
                       className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
                     >
                       {/* Tracking */}
@@ -292,10 +349,10 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                               {doc.status === 'Disapproved' ? 'Document was disapproved' : `Phase ${doc.currentStepNumber} of ${doc.totalSteps}`}
                             </div>
                             <div className={`text-[11px] truncate max-w-[180px] ${doc.status === 'Disapproved' ? 'font-semibold text-rose-600' : 'text-blue-600'}`}>
-                              {doc.status === 'Disapproved' ? 'Processing ended after external review' : currentStep?.name}
+                              {doc.status === 'Disapproved' ? 'Processing ended after external review' : doc.currentStepName}
                             </div>
                             {doc.status === 'Awaiting_External_Return' && (
-                              <div className="mt-1 text-[10px] font-semibold text-amber-700">Outside HRMDO: {doc.currentLocation || currentStep?.externalHandoff?.destinationOffice}</div>
+                              <div className="mt-1 text-[10px] font-semibold text-amber-700">Outside HRMDO: {doc.currentLocation}</div>
                             )}
                           </div>
                         )}
@@ -318,7 +375,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                             id={`btn-open-doc-reg-${doc.id}`}
                             onClick={e => {
                               e.stopPropagation();
-                              setSelectedDocument(doc);
+                              openDocument(doc.id);
                             }}
                             className="px-2.5 py-1 text-xs font-medium text-blue-600 hover:text-white hover:bg-blue-600 border border-blue-200 hover:border-blue-600 rounded transition-all inline-flex items-center gap-1 cursor-pointer"
                           >
@@ -335,6 +392,20 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
           </div>
         )}
       </div>
+      {targeted && !loading && !error && targetPage && (
+        <nav aria-label="Registry pages" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-700">
+          <span>{targetPage.pagination.total} matching records</span>
+          <div className="flex items-center gap-2">
+            <label htmlFor="registry-page-size">Rows per page</label>
+            <select id="registry-page-size" value={pageSize} onChange={event => { setPage(1); setPageSize(Number(event.target.value)); }} className="rounded border border-slate-200 px-2 py-1">
+              <option value={25}>25</option><option value={50}>50</option><option value={100}>100</option>
+            </select>
+            <button type="button" onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page <= 1} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Previous</button>
+            <span>Page {page} of {Math.max(1, targetPage.pagination.totalPages)}</span>
+            <button type="button" onClick={() => setPage(value => Math.min(targetPage.pagination.totalPages, value + 1))} disabled={page >= targetPage.pagination.totalPages} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Next</button>
+          </div>
+        </nav>
+      )}
     </div>
   );
 };

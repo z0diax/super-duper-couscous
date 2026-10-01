@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/bootstrap.php';
+require_once __DIR__.'/document_projection.php';
+require_once __DIR__.'/payroll_projection.php';
 const COLLECTIONS=['assigneeDesignations','systemRoles','documents','classifications','workflowTemplates','leaveApplications','ewpRecords','migrationSummaries','payrollBatches','payrollItems','workGroups','employmentRoutingRules'];
 function uid(string $prefix): string { return $prefix.'-'.bin2hex(random_bytes(12)); }
 function now(): string { return gmdate('Y-m-d\TH:i:s\Z'); }
@@ -26,17 +28,43 @@ function load_state(PDO $pdo): array {
     return $state;
 }
 function persist_state(PDO $pdo,array $before,array $after): void {
+    if (!$pdo->inTransaction()) throw new RuntimeException('State persistence requires an authoritative transaction.');
     $put=$pdo->prepare('INSERT INTO app_records (collection,id,record_json) VALUES (?,?,?) ON DUPLICATE KEY UPDATE record_json=VALUES(record_json)');
     $del=$pdo->prepare('DELETE FROM app_records WHERE collection=? AND id=?');
+    $source=['documents'=>[],'workflowTemplates'=>[]]; $deletedDocuments=[]; $deletedTemplates=[];
+    $payrollChanged=['payrollBatches'=>[],'payrollItems'=>[],'workGroups'=>[]];$payrollDeleted=['payrollBatches'=>[],'payrollItems'=>[],'workGroups'=>[]];
     foreach (COLLECTIONS as $key) {
         $old=[]; foreach ($before[$key]??[] as $item) $old[$item['id']??$item['datasetName']]=$item;
         foreach ($after[$key]??[] as $item) {
             $id=$item['id']??$item['datasetName'];
-            if (($old[$id]??null)!==$item) $put->execute([$key,$id,json_encode($item,JSON_THROW_ON_ERROR)]);
+            if (($old[$id]??null)!==$item) {
+                $raw=json_encode($item,JSON_THROW_ON_ERROR);
+                $put->execute([$key,$id,$raw]);
+                if ($key==='documents' || $key==='workflowTemplates') $source[$key][$id]=['value'=>$item,'raw'=>$raw];
+                if (isset($payrollChanged[$key])) $payrollChanged[$key][$id]=['value'=>$item,'raw'=>$raw];
+            }
             unset($old[$id]);
         }
-        foreach ($old as $id=>$unused) $del->execute([$key,$id]);
+        foreach ($old as $id=>$unused) {
+            $del->execute([$key,$id]);
+            if ($key==='documents') $deletedDocuments[]=$id;
+            if ($key==='workflowTemplates') $deletedTemplates[]=$id;
+            if (isset($payrollDeleted[$key])) $payrollDeleted[$key][]=$id;
+        }
     }
+    if ($source['documents'] || $source['workflowTemplates'] || $deletedDocuments || $deletedTemplates) {
+        $fileIds=[];
+        foreach ($source['documents'] as $entry) foreach (['attachments','complianceAttachments'] as $field) foreach ($entry['value'][$field]??[] as $file) if (is_array($file) && !empty($file['id'])) $fileIds[$file['id']]=true;
+        $existingFiles=[];
+        if ($fileIds) {
+            $placeholders=implode(',',array_fill(0,count($fileIds),'?'));
+            $files=$pdo->prepare("SELECT id FROM app_files WHERE id IN ($placeholders)");
+            $files->execute(array_keys($fileIds));
+            $existingFiles=array_fill_keys($files->fetchAll(PDO::FETCH_COLUMN),true);
+        }
+        p2_write_project($pdo,p2_project($source,$existingFiles),$deletedDocuments,$deletedTemplates);
+    }
+    payroll_write_projection($pdo,$payrollChanged,$payrollDeleted);
 }
 function audit(PDO $pdo,array $user,string $action,string $id,string $summary,string $details='',string $tracking=''): void {
     $event=['id'=>uid('audit'),'timestamp'=>now(),'actorId'=>$user['id'],'actorName'=>$user['name'],'actorRole'=>$user['roleTitle'],'actionType'=>$action,'documentId'=>$id,'trackingNumber'=>$tracking,'summary'=>$summary,'details'=>$details];

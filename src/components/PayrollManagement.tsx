@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
+  DocumentRecord,
   PayrollBatch, 
   PayrollBatchStage, 
   EmploymentClassification 
@@ -33,6 +34,7 @@ import {
 import { EmploymentRoutingRulesModal } from './EmploymentRoutingRulesModal';
 import { EditPayrollBatchModal } from './EditPayrollBatchModal';
 import { useWorkspaceState } from '../services/workspace';
+import { getPayrollBatchDetail,listPayrollBatches,listSinglePayroll,type PayrollBatchList,type PayrollBatchDetail,type PayrollPage } from '../services/payrollApi';
 
 interface Props {
   onOpenRegisterBatchModal: () => void;
@@ -43,17 +45,26 @@ const SINGLE_LIST_PAGE_SIZE = 10;
 
 export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal }) => {
   const { 
-    payrollBatches, 
-    payrollItems, 
-    workGroups, 
+    payrollBatches:legacyPayrollBatches, 
+    payrollItems:legacyPayrollItems, 
+    workGroups:legacyWorkGroups, 
     openBatchModal, 
     currentUser,
     documents,
-    setSelectedDocument,
+    setSelectedDocument,openTargetedDocument,
     deletePayrollBatch,
     deleteDocument,
-    can
+    can,stateRevision,showToast
   } = useApp();
+  const payrollTargeted=import.meta.env.VITE_PAYROLL_TARGETED_READS==='1';
+  const [batchList,setBatchList]=useState<PayrollBatchList|null>(null);
+  const [singleList,setSingleList]=useState<PayrollPage<DocumentRecord>|null>(null);
+  const [singleError,setSingleError]=useState(false);
+  const [singleRetry,setSingleRetry]=useState(0);
+  const [batchListLoading,setBatchListLoading]=useState(payrollTargeted);
+  const [batchListError,setBatchListError]=useState(false);
+  const [batchRetry,setBatchRetry]=useState(0);
+  const [editingDetail,setEditingDetail]=useState<PayrollBatchDetail|null>(null);
 
   const [stageFilter, setStageFilter] = useWorkspaceState<string>(currentUser.id, 'payroll.stage-filter', 'all');
   const [officeFilter, setOfficeFilter] = useWorkspaceState<string>(currentUser.id, 'payroll.office-filter', 'all');
@@ -67,18 +78,62 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   const [editingBatchId, setEditingBatchId] = useWorkspaceState<string | null>(currentUser.id, 'payroll.editing-batch', null);
   const [deleteConfirmBatchId, setDeleteConfirmBatchId] = useState<string | null>(null);
   const [deleteConfirmSingleDocumentId, setDeleteConfirmSingleDocumentId] = useState<string | null>(null);
+  useEffect(()=>{
+    if(!payrollTargeted)return;
+    let active=true,pending=false;
+    const refresh=async()=>{
+      if(pending)return;pending=true;setBatchListLoading(true);setBatchListError(false);
+      try{const result=await listPayrollBatches({owned:true,office:officeFilter==='all'?undefined:officeFilter,stage:stageFilter==='all'?undefined:stageFilter},batchListPage,BATCH_LIST_PAGE_SIZE);
+        if(active){if(batchListPage>Math.max(1,result.pagination.totalPages)){setBatchListPage(Math.max(1,result.pagination.totalPages));return;}setBatchList(result);setBatchListLoading(false);}}
+      catch{if(active){setBatchList(null);setBatchListLoading(false);setBatchListError(true);}}
+      finally{pending=false;}
+    };
+    void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},5000);
+    const resume=()=>{if(document.visibilityState==='visible')void refresh();};
+    window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);
+    return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};
+  },[payrollTargeted,currentUser.id,stateRevision,officeFilter,stageFilter,batchListPage,batchRetry,setBatchListPage]);
+  useEffect(()=>{
+    if(!payrollTargeted||!editingBatchId){setEditingDetail(null);return;}
+    let active=true;
+    (async()=>{try{
+      const first=await getPayrollBatchDetail(editingBatchId,1,1,100);
+      const items=[...first.items];
+      for(let page=2;page<=first.itemPagination.totalPages;page++){const next=await getPayrollBatchDetail(editingBatchId,page,1,100);items.push(...next.items);}
+      if(active)setEditingDetail({...first,items});
+    }catch{if(active)showToast('error','Payroll unavailable','The batch could not be loaded for editing.');}})();
+    return()=>{active=false;};
+  },[payrollTargeted,editingBatchId,stateRevision,showToast]);
+  useEffect(()=>{
+    if(!payrollTargeted||viewMode!=='single_entries')return;
+    let active=true,pending=false;
+    const refresh=async()=>{
+      if(pending)return;pending=true;setSingleError(false);
+      try{const value=await listSinglePayroll({office:officeFilter==='all'?undefined:officeFilter,stage:stageFilter==='all'?undefined:stageFilter},singleListPage,SINGLE_LIST_PAGE_SIZE);
+        if(active){if(singleListPage>Math.max(1,value.pagination.totalPages)){setSingleListPage(Math.max(1,value.pagination.totalPages));return;}setSingleList(value);}}
+      catch{if(active){setSingleList(null);setSingleError(true);}}
+      finally{pending=false;}
+    };
+    void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},5000);
+    const resume=()=>{if(document.visibilityState==='visible')void refresh();};window.addEventListener('focus',resume);
+    return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);};
+  },[payrollTargeted,viewMode,currentUser.id,stateRevision,officeFilter,stageFilter,singleListPage,singleRetry,setSingleListPage]);
+  const payrollBatches=payrollTargeted?batchList?.data||[]:legacyPayrollBatches;
+  const payrollItems=payrollTargeted?editingDetail?.items||[]:legacyPayrollItems;
+  const workGroups=payrollTargeted?[]:legacyWorkGroups;
   // Payroll Management is an entry register. Processors receive work through
   // My Tasks; they do not browse or edit entries registered by another employee.
   // The System Administrator keeps the administrative view for support and deletion.
   const ownsPayrollEntry = (entry: { encodedBy?: { userId?: string } }) => currentUser.role === 'admin' || entry.encodedBy?.userId === currentUser.id;
   const ownedPayrollBatches = payrollBatches.filter(ownsPayrollEntry);
-  const editingBatch = ownedPayrollBatches.find(batch => batch.id === editingBatchId) || null;
+  const editingBatch = payrollTargeted?editingDetail?.batch||null:ownedPayrollBatches.find(batch => batch.id === editingBatchId) || null;
 
   useEffect(() => {
     if (!['batches', 'single_entries'].includes(viewMode)) setViewMode('batches');
   }, [viewMode, setViewMode]);
 
   const canEditBatch = (batch: PayrollBatch) => {
+    if(payrollTargeted)return !!(batch as PayrollBatch & {_canEdit?:boolean})._canEdit;
     const batchItems = payrollItems.filter(item => item.batchId === batch.id);
     const hasStarted = batchItems.some(item => (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) !== 'initial_checking');
     const hasWorkGroups = workGroups.some(group => group.batchId === batch.id);
@@ -122,15 +177,17 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   // Filter batches
   const filteredBatches = ownedPayrollBatches
     .filter(batch => {
+      if(payrollTargeted)return true;
       const matchesStage = stageFilter === 'all' || matchesAggregateStage(batch, stageFilter);
       const matchesOffice = officeFilter === 'all' || batch.office === officeFilter;
 
       return matchesStage && matchesOffice;
     })
     .sort((a, b) => entryTimestamp(b) - entryTimestamp(a));
-  const batchListPageCount = Math.max(1, Math.ceil(filteredBatches.length / BATCH_LIST_PAGE_SIZE));
+  const filteredBatchTotal=payrollTargeted?batchList?.pagination.total??0:filteredBatches.length;
+  const batchListPageCount = payrollTargeted?Math.max(1,batchList?.pagination.totalPages??1):Math.max(1, Math.ceil(filteredBatches.length / BATCH_LIST_PAGE_SIZE));
   const currentBatchListPage = Math.min(Math.max(batchListPage, 1), batchListPageCount);
-  const paginatedBatches = filteredBatches.slice(
+  const paginatedBatches = payrollTargeted?filteredBatches:filteredBatches.slice(
     (currentBatchListPage - 1) * BATCH_LIST_PAGE_SIZE,
     currentBatchListPage * BATCH_LIST_PAGE_SIZE
   );
@@ -140,9 +197,10 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   }, [batchListPage, currentBatchListPage, setBatchListPage]);
 
   // Single payroll vouchers from documents
-  const singlePayrollDocs = documents.filter(d => d.classification === 'Payroll' && ownsPayrollEntry(d));
+  const singlePayrollDocs = payrollTargeted?singleList?.data||[]:documents.filter(d => d.classification === 'Payroll' && ownsPayrollEntry(d));
   const filteredSingleDocs = singlePayrollDocs
     .filter(doc => {
+      if(payrollTargeted)return true;
       const matchesOffice = officeFilter === 'all' || doc.sourceOffice === officeFilter;
       const completed = doc.status === 'Archived' || doc.status === 'Released';
       const readyForRelease = doc.status === 'Ready_For_Release';
@@ -154,9 +212,10 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
       return matchesOffice && matchesStage;
     })
     .sort((a, b) => entryTimestamp(b) - entryTimestamp(a));
-  const singleListPageCount = Math.max(1, Math.ceil(filteredSingleDocs.length / SINGLE_LIST_PAGE_SIZE));
+  const filteredSingleTotal=payrollTargeted?singleList?.pagination.total??0:filteredSingleDocs.length;
+  const singleListPageCount = payrollTargeted?Math.max(1,singleList?.pagination.totalPages??1):Math.max(1, Math.ceil(filteredSingleDocs.length / SINGLE_LIST_PAGE_SIZE));
   const currentSingleListPage = Math.min(Math.max(singleListPage, 1), singleListPageCount);
-  const paginatedSingleDocs = filteredSingleDocs.slice(
+  const paginatedSingleDocs = payrollTargeted?filteredSingleDocs:filteredSingleDocs.slice(
     (currentSingleListPage - 1) * SINGLE_LIST_PAGE_SIZE,
     currentSingleListPage * SINGLE_LIST_PAGE_SIZE
   );
@@ -166,16 +225,18 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   }, [currentSingleListPage, setSingleListPage, singleListPage]);
 
   // Calculate metrics
-  const totalActiveBatches = ownedPayrollBatches.filter(b => b.progress.derivedStatus !== 'COMPLETED').length;
-  const initialCheckingBatches = ownedPayrollBatches.filter(b => b.progress.initialChecking.active > 0).length;
-  const activeWorkGroupsCount = workGroups.filter(w => ownedPayrollBatches.some(batch => batch.id === w.batchId) && w.status === 'In_Progress').length;
-  const releasedBatchesCount = ownedPayrollBatches.filter(b => b.progress.derivedStatus === 'COMPLETED').length;
+  const totalActiveBatches = payrollTargeted?batchList?.metrics.active??0:ownedPayrollBatches.filter(b => b.progress.derivedStatus !== 'COMPLETED').length;
+  const initialCheckingBatches = payrollTargeted?batchList?.metrics.initial??0:ownedPayrollBatches.filter(b => b.progress.initialChecking.active > 0).length;
+  const activeWorkGroupsCount = payrollTargeted?batchList?.metrics.workGroups??0:workGroups.filter(w => ownedPayrollBatches.some(batch => batch.id === w.batchId) && w.status === 'In_Progress').length;
+  const releasedBatchesCount = payrollTargeted?batchList?.metrics.completed??0:ownedPayrollBatches.filter(b => b.progress.derivedStatus === 'COMPLETED').length;
 
   // Unique offices for filter
-  const offices = Array.from(new Set(ownedPayrollBatches.map(b => b.office)));
+  const offices = payrollTargeted?batchList?.offices||[]:Array.from(new Set(ownedPayrollBatches.map(b => b.office)));
 
   return (
     <div className="space-y-6">
+      {payrollTargeted&&batchListLoading&&<div role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Refreshing payroll batches...</div>}
+      {payrollTargeted&&batchListError&&<div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Payroll batches could not be loaded. <button type="button" className="font-semibold underline" onClick={()=>setBatchRetry(value=>value+1)}>Retry</button></div>}
       {/* Top Banner & Header */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -216,7 +277,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
 
           <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200/70">
             <p className="text-xs font-semibold text-blue-800">Single Vouchers</p>
-            <p className="text-2xl font-bold text-blue-900 mt-0.5">{singlePayrollDocs.length}</p>
+            <p className="text-2xl font-bold text-blue-900 mt-0.5">{filteredSingleTotal}</p>
           </div>
 
           <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/70">
@@ -254,7 +315,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Single Payroll Entry ({singlePayrollDocs.length})
+              Single Payroll Entry ({filteredSingleTotal})
             </button>
           </div>
 
@@ -353,8 +414,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
       {viewMode === 'batches' && (
         <>
         {batchDisplay === 'grid' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredBatches.map(batch => {
-            const batchItems = payrollItems.filter(i => i.batchId === batch.id);
+          {paginatedBatches.map(batch => {
             const bWorkGroups = workGroups.filter(w => w.batchId === batch.id);
             const progress = batch.progress;
 
@@ -408,7 +468,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                         <Barcode className="w-3.5 h-3.5" /> Total Items
                       </span>
                       <span className="font-bold text-slate-900">
-                        {batchItems.length} {batchItems.length === 1 ? 'item' : 'items'}
+                        {batch.totalItemsCount} {batch.totalItemsCount === 1 ? 'item' : 'items'}
                       </span>
                     </div>
 
@@ -468,6 +528,10 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
             );
           })}
         </div>}
+        {batchDisplay === 'grid' && filteredBatchTotal > 0 && <div className="flex items-center justify-between gap-3 px-1 text-xs text-slate-500">
+          <span>Showing {(currentBatchListPage - 1) * BATCH_LIST_PAGE_SIZE + 1}&ndash;{Math.min(currentBatchListPage * BATCH_LIST_PAGE_SIZE, filteredBatchTotal)} of {filteredBatchTotal} batch entries</span>
+          <div className="flex items-center gap-2"><button type="button" disabled={currentBatchListPage===1} onClick={()=>setBatchListPage(currentBatchListPage-1)}>Previous</button><span>Page {currentBatchListPage} of {batchListPageCount}</span><button type="button" disabled={currentBatchListPage===batchListPageCount} onClick={()=>setBatchListPage(currentBatchListPage+1)}>Next</button></div>
+        </div>}
         {batchDisplay === 'list' && (
           <>
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xs">
@@ -494,7 +558,6 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                     </button>
                   </div>
                 ) : paginatedBatches.map(batch => {
-                const batchItems = payrollItems.filter(item => item.batchId === batch.id);
                 const editable = canEditBatch(batch);
                 const progress = batch.progress;
                 return (
@@ -502,7 +565,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                     <div><p className="font-mono text-xs font-bold text-blue-700">{batch.batchNumber}</p><p className="mt-1 truncate text-xs font-medium text-slate-800">{batch.office}</p></div>
                     <p className="truncate text-xs text-slate-600">{batch.payrollType}</p>
                     <p className="truncate text-xs text-slate-600">{batch.payrollPeriod || 'Not specified'}</p>
-                    <p className="text-xs font-semibold text-slate-800">{batchItems.length} item{batchItems.length === 1 ? '' : 's'}</p>
+                    <p className="text-xs font-semibold text-slate-800">{batch.totalItemsCount} item{batch.totalItemsCount === 1 ? '' : 's'}</p>
                     <div className="space-y-1"><span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${batchStatusTone(batch)}`}>{progress.displayStatus}</span><p className="text-[10px] text-slate-500">{progress.release.ready} ready &bull; {progress.onHoldTotal} hold</p></div>
                     <div className="flex items-center justify-start gap-1 lg:justify-end">
                       {editable && <button type="button" aria-label={`Edit ${batch.batchNumber}`} onClick={() => setEditingBatchId(batch.id)} className="rounded-lg p-1.5 text-slate-500 hover:bg-blue-50 hover:text-blue-600"><Pencil className="h-4 w-4" /></button>}
@@ -517,7 +580,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
             {filteredBatches.length > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-3 px-1 text-xs text-slate-500">
                 <span>
-                  Showing {(currentBatchListPage - 1) * BATCH_LIST_PAGE_SIZE + 1}&ndash;{Math.min(currentBatchListPage * BATCH_LIST_PAGE_SIZE, filteredBatches.length)} of {filteredBatches.length} batch entries
+                  Showing {(currentBatchListPage - 1) * BATCH_LIST_PAGE_SIZE + 1}&ndash;{Math.min(currentBatchListPage * BATCH_LIST_PAGE_SIZE, filteredBatchTotal)} of {filteredBatchTotal} batch entries
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -548,6 +611,8 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
       {/* VIEW: SINGLE VOUCHERS OVERVIEW */}
       {viewMode === 'single_entries' && (
         <div className="space-y-4">
+          {payrollTargeted&&!singleList&&!singleError&&<div role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Loading single payroll vouchers...</div>}
+          {payrollTargeted&&singleError&&<div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Single payroll vouchers could not be loaded. <button type="button" className="font-semibold underline" onClick={()=>setSingleRetry(value=>value+1)}>Retry</button></div>}
           {filteredSingleDocs.length === 0 ? (
             <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-2xs space-y-3">
               <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
@@ -566,8 +631,8 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
               </button>
             </div>
           ) : singleDisplay === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredSingleDocs.map(doc => {
+            <><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {paginatedSingleDocs.map(doc => {
                 const currentStep = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
 
                 return (
@@ -667,7 +732,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                           </button>
                         ))}
                         <button
-                          onClick={() => setSelectedDocument(doc)}
+                          onClick={() => {if(payrollTargeted&&import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS==='1')openTargetedDocument(doc.id);else setSelectedDocument(doc);}}
                           className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                         >
                           <span>Inspect Voucher</span>
@@ -678,7 +743,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                   </div>
                 );
               })}
-            </div>
+            </div><div className="flex items-center justify-between gap-3 px-1 text-xs text-slate-500"><span>Showing {(currentSingleListPage-1)*SINGLE_LIST_PAGE_SIZE+1}&ndash;{Math.min(currentSingleListPage*SINGLE_LIST_PAGE_SIZE,filteredSingleTotal)} of {filteredSingleTotal} single entries</span><div className="flex items-center gap-2"><button type="button" disabled={currentSingleListPage===1} onClick={()=>setSingleListPage(currentSingleListPage-1)}>Previous</button><span>Page {currentSingleListPage} of {singleListPageCount}</span><button type="button" disabled={currentSingleListPage===singleListPageCount} onClick={()=>setSingleListPage(currentSingleListPage+1)}>Next</button></div></div></>
           ) : (
             <>
               <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xs">
@@ -697,7 +762,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                         <span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${singleStatusTone(doc.status)}`}>{singleStatusLabel(doc.status)}</span>
                         <div className="flex items-center justify-start gap-1 lg:justify-end">
                           {can('canAdmin') && (deleteConfirmSingleDocumentId === doc.id ? <><button type="button" onClick={() => handleDeleteSinglePayroll(doc.id)} className="rounded-lg bg-rose-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-rose-700">Confirm</button><button type="button" onClick={() => setDeleteConfirmSingleDocumentId(null)} className="rounded-lg px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-200">Cancel</button></> : <button type="button" aria-label={`Delete ${doc.trackingNumber}`} title="Delete single payroll voucher" onClick={() => setDeleteConfirmSingleDocumentId(doc.id)} className="rounded-lg p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700"><Trash2 className="h-4 w-4" /></button>)}
-                          <button type="button" onClick={() => setSelectedDocument(doc)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50">Inspect</button>
+                          <button type="button" onClick={() => {if(payrollTargeted&&import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS==='1')openTargetedDocument(doc.id);else setSelectedDocument(doc);}} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50">Inspect</button>
                         </div>
                       </div>
                     );
@@ -705,7 +770,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 px-1 text-xs text-slate-500">
-                <span>Showing {(currentSingleListPage - 1) * SINGLE_LIST_PAGE_SIZE + 1}&ndash;{Math.min(currentSingleListPage * SINGLE_LIST_PAGE_SIZE, filteredSingleDocs.length)} of {filteredSingleDocs.length} single entries</span>
+                <span>Showing {(currentSingleListPage - 1) * SINGLE_LIST_PAGE_SIZE + 1}&ndash;{Math.min(currentSingleListPage * SINGLE_LIST_PAGE_SIZE, filteredSingleTotal)} of {filteredSingleTotal} single entries</span>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => setSingleListPage(currentSingleListPage - 1)} disabled={currentSingleListPage === 1} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-45">Previous</button>
                   <span className="font-medium text-slate-600">Page {currentSingleListPage} of {singleListPageCount}</span>

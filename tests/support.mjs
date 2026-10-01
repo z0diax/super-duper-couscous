@@ -4,17 +4,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 export const testPassword = 'Integration-Password-2026!';
-export async function startFixture(port = 18765) {
+export async function startFixture(port = 18765, extraEnv = {}) {
   const name = `hrmdo_test_${Date.now()}_${Math.random().toString(16).slice(2,8)}`;
   const uploadDirectory = path.resolve('storage', name);
-  const env = { ...process.env, HRMDO_DATABASE: name, HRMDO_ADMIN_EMAIL: 'admin@example.test', HRMDO_ADMIN_PASSWORD: testPassword, HRMDO_UPLOAD_DIRECTORY: uploadDirectory };
+  const env = { ...process.env, HRMDO_DATABASE: name, HRMDO_ADMIN_EMAIL: 'admin@example.test', HRMDO_ADMIN_PASSWORD: testPassword, HRMDO_UPLOAD_DIRECTORY: uploadDirectory, ...extraEnv };
   const php = process.env.PHP_BINARY || 'php';
+  const phpOptions = extraEnv.PHASE7_PHP_MEMORY_LIMIT ? ['-d',`memory_limit=${extraEnv.PHASE7_PHP_MEMORY_LIMIT}`] : [];
   const run = (args, overrides = {}) => {
-    const r = spawnSync(php, args, { env: { ...env, ...overrides }, encoding: 'utf8', windowsHide: true });
+    const r = spawnSync(php, [...phpOptions,...args], { env: { ...env, ...overrides }, encoding: 'utf8', windowsHide: true });
     assert.equal(r.status, 0, r.stderr || r.stdout || r.error?.message); return r.stdout;
   };
   run(['scripts/install.php']);
-  const server = spawn(php, ['-S', `127.0.0.1:${port}`, 'tests/router.php'], { env, stdio: ['ignore','pipe','pipe'], windowsHide: true });
+  const server = spawn(php, [...phpOptions,'-S', `127.0.0.1:${port}`, 'tests/router.php'], { env, stdio: ['ignore','pipe','pipe'], windowsHide: true });
   let logs = ''; server.stderr.on('data', chunk => { logs += chunk; });
   const base = `http://127.0.0.1:${port}/hrmdorms`;
   for (let n=0;n<100;n++) { try { if ((await fetch(`${base}/api/auth.php`)).ok) break; } catch {} if(n===99) throw new Error(logs); await new Promise(r=>setTimeout(r,50)); }

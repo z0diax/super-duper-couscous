@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { DocumentRecord, PayrollBatch } from '../types';
 import { 
@@ -18,13 +18,80 @@ import {
 } from 'lucide-react';
 import { currentDocumentStep, isDocumentActionableForUser } from '../services/documentTaskAssignment';
 import { documentSenderLabel } from '../services/documentDisplay';
+import { listMyDocumentTasks, type DocumentTaskPage, type DocumentTaskQueue, type DocumentTaskRow } from '../services/documentApi';
+import { listPayrollTasks,listHeldPayrollItems,type PayrollTaskPage,type PayrollHeldPage,type PayrollTaskBatch } from '../services/payrollApi';
 
 export const MyTasksQueue: React.FC = () => {
-  const { documents, currentUser, users, setSelectedDocument, claimTask, payrollBatches, payrollItems, workGroups, employmentRoutingRules, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
+  const { documents, currentUser, users, setSelectedDocument, openTargetedDocument, showToast, stateRevision, claimTask, payrollBatches:legacyPayrollBatches, payrollItems:legacyPayrollItems, workGroups:legacyWorkGroups, employmentRoutingRules, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
+  const targeted=import.meta.env.VITE_DOCUMENT_TASKS_TARGETED_READS==='1';
+  const targetedDetail=import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS==='1';
+  const payrollTargeted=import.meta.env.VITE_PAYROLL_TARGETED_READS==='1';
 
-  const [activeQueue, setActiveQueue] = useState<'my_tasks' | 'team_queue' | 'returned' | 'waiting' | 'ready_for_release' | 'completed'>('my_tasks');
+  const [activeQueue, setActiveQueue] = useState<DocumentTaskQueue>('my_tasks');
   const [filterClass, setFilterClass] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [submittedSearch, setSubmittedSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [taskPage, setTaskPage] = useState<DocumentTaskPage | null>(null);
+  const [taskLoading, setTaskLoading] = useState(targeted);
+  const [taskError, setTaskError] = useState(false);
+  const [taskRetry, setTaskRetry] = useState(0);
+  const taskRequestId=useRef(0);
+  const [payrollPage,setPayrollPage]=useState(1);
+  const [heldPage,setHeldPage]=useState(1);
+  const [payrollTasks,setPayrollTasks]=useState<PayrollTaskPage|null>(null);
+  const [payrollHeld,setPayrollHeld]=useState<PayrollHeldPage|null>(null);
+  const [payrollError,setPayrollError]=useState(false);
+  const [payrollRetry,setPayrollRetry]=useState(0);
+  useEffect(()=>{
+    if(!payrollTargeted)return;
+    let active=true,pending=false;
+    const refresh=async()=>{
+      if(pending)return;pending=true;setPayrollError(false);
+      try{
+        const [tasks,held]=await Promise.all([listPayrollTasks(submittedSearch,payrollPage,25),listHeldPayrollItems(heldPage,25)]);
+        if(active){
+          if(payrollPage>Math.max(1,tasks.pagination.totalPages))setPayrollPage(Math.max(1,tasks.pagination.totalPages));
+          if(heldPage>Math.max(1,held.pagination.totalPages))setHeldPage(Math.max(1,held.pagination.totalPages));
+          setPayrollTasks(tasks);setPayrollHeld(held);
+        }
+      }catch{if(active){setPayrollTasks(null);setPayrollHeld(null);setPayrollError(true);}}
+      finally{pending=false;}
+    };
+    void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},5000);
+    const resume=()=>{if(document.visibilityState==='visible')void refresh();};
+    window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);
+    return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};
+  },[payrollTargeted,currentUser.id,stateRevision,submittedSearch,payrollPage,heldPage,payrollRetry]);
+  const payrollBatches=payrollTargeted?[...(payrollTasks?.data||[]),...(payrollHeld?.batches||[])]:legacyPayrollBatches;
+  const payrollItems=payrollTargeted?payrollHeld?.data||[]:legacyPayrollItems;
+  const workGroups=payrollTargeted?(payrollTasks?.data||[]).flatMap(batch=>batch._assignedGroup?[batch._assignedGroup]:[]):legacyWorkGroups;
+  useEffect(()=>{
+    if (!targeted && !payrollTargeted) return;
+    const timer=setTimeout(()=>setSubmittedSearch(searchQuery),250);
+    return ()=>clearTimeout(timer);
+  },[targeted,payrollTargeted,searchQuery]);
+  useEffect(()=>{if(payrollTargeted)setPayrollPage(1);},[payrollTargeted,submittedSearch]);
+  useEffect(()=>{
+    if (!targeted) return;
+    const request=++taskRequestId.current;
+    setTaskLoading(true); setTaskError(false); setTaskPage(null);
+    listMyDocumentTasks(activeQueue,{classification:filterClass==='all'?undefined:filterClass,search:submittedSearch},page,pageSize).then(result=>{
+      if (request!==taskRequestId.current) return;
+      if (page>1 && page>Math.max(1,result.pagination.totalPages)) { setPage(Math.max(1,result.pagination.totalPages)); return; }
+      setTaskPage(result); setTaskLoading(false);
+    }).catch(()=>{if(request===taskRequestId.current){setTaskPage(null);setTaskLoading(false);setTaskError(true);}});
+    return ()=>{taskRequestId.current++;};
+  },[targeted,currentUser.id,activeQueue,filterClass,submittedSearch,page,pageSize,stateRevision,taskRetry]);
+  const selectQueue=(queue:DocumentTaskQueue)=>{setPage(1);setActiveQueue(queue);};
+  const taskDocuments=targeted?[]:documents;
+  const openTask=(id:string,classification:string)=>{
+    if(targeted && targetedDetail && classification!=='Payroll'){openTargetedDocument(id);return;}
+    const doc=documents.find(item=>item.id===id);
+    if(doc)setSelectedDocument(doc);
+    else showToast('error','Document unavailable','Refresh the application and try opening this document again.');
+  };
   const [complianceRemarks, setComplianceRemarks] = useState<Record<string, string>>({});
   const [payrollRouteSelections, setPayrollRouteSelections] = useState<Record<string, string>>({});
   const displayStatus = (status: DocumentRecord['status']) => status === 'In_Progress' ? 'Processing' : status.replace(/_/g, ' ');
@@ -40,10 +107,10 @@ export const MyTasksQueue: React.FC = () => {
     const desk = batch.initialCheckingDesk || batch.assignedDesk;
     return isAssignedDesk(desk);
   };
-  const heldPayrollItems = payrollItems.filter(item => item.batchId !== 'SINGLE_ENTRY' && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking' && (['On_Hold', 'Ready_For_Recheck'].includes(item.status) || (item.status === 'Ready' && !!item.holdResolvedAt)) && isInitialCheckingAssignee(item.batchId));
+  const heldPayrollItems = payrollTargeted?payrollItems:payrollItems.filter(item => item.batchId !== 'SINGLE_ENTRY' && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking' && (['On_Hold', 'Ready_For_Recheck'].includes(item.status) || (item.status === 'Ready' && !!item.holdResolvedAt)) && isInitialCheckingAssignee(item.batchId));
 
   // Active payroll batches relevant to user desk
-  const myPayrollBatches = payrollBatches.filter(b => {
+  const myPayrollBatches = payrollTargeted?(payrollTasks?.data||[]):payrollBatches.filter(b => {
     if (b.progress.derivedStatus === 'COMPLETED') return false;
     const hasInitialItems = payrollItems.some(item => item.batchId === b.id && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
     const initialDesk = b.initialCheckingDesk || b.assignedDesk;
@@ -57,7 +124,7 @@ export const MyTasksQueue: React.FC = () => {
   });
 
   // 1. My Tasks (assigned to user specifically or role)
-  const myTasks = documents.filter(doc => {
+  const myTasks = taskDocuments.filter(doc => {
     if (doc.isLegacyV1 || ['Released', 'Archived', 'Disapproved'].includes(doc.status)) return false;
     const currentStep = currentDocumentStep(doc);
     if (!currentStep) return false;
@@ -65,7 +132,7 @@ export const MyTasksQueue: React.FC = () => {
   });
 
   // 2. Team Queue (assigned to user's division/team, can be claimed)
-  const teamTasks = documents.filter(doc => {
+  const teamTasks = taskDocuments.filter(doc => {
     if (doc.isLegacyV1 || ['Released', 'Archived', 'Disapproved'].includes(doc.status)) return false;
     const currentStep = currentDocumentStep(doc);
     if (!currentStep) return false;
@@ -77,10 +144,10 @@ export const MyTasksQueue: React.FC = () => {
   });
 
   // 3. Returned / Rework
-  const returnedTasks = documents.filter(doc => !doc.isLegacyV1 && doc.status === 'Returned');
+  const returnedTasks = taskDocuments.filter(doc => !doc.isLegacyV1 && doc.status === 'Returned');
 
   // 4. Waiting / In-progress (tracked by user who participated in previous steps)
-  const waitingTasks = documents.filter(doc => {
+  const waitingTasks = taskDocuments.filter(doc => {
     if (doc.isLegacyV1 || ['Released', 'Archived', 'Disapproved'].includes(doc.status)) return false;
     // Check if user was encoder or participated in earlier steps
     const isEncoder = doc.encodedBy.userId === currentUser.id;
@@ -91,10 +158,10 @@ export const MyTasksQueue: React.FC = () => {
   });
 
   // 5. Ready for Release
-  const readyForReleaseTasks = documents.filter(doc => !doc.isLegacyV1 && doc.status === 'Ready_For_Release');
+  const readyForReleaseTasks = taskDocuments.filter(doc => !doc.isLegacyV1 && doc.status === 'Ready_For_Release');
 
   // 6. Completed / Released
-  const completedTasks = documents.filter(doc => !doc.isLegacyV1 && ['Released', 'Disapproved'].includes(doc.status));
+  const completedTasks = taskDocuments.filter(doc => !doc.isLegacyV1 && ['Released', 'Disapproved'].includes(doc.status));
 
   // Select which set to show
   let currentList: DocumentRecord[] = [];
@@ -120,7 +187,7 @@ export const MyTasksQueue: React.FC = () => {
   }
 
   // Filter
-  const filteredList = currentList.filter(doc => {
+  const filteredLegacyList = currentList.filter(doc => {
     if (filterClass !== 'all' && doc.classification !== filterClass) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -133,11 +200,20 @@ export const MyTasksQueue: React.FC = () => {
     }
     return true;
   });
+  const filteredList: DocumentTaskRow[] = targeted ? taskPage?.data || [] : filteredLegacyList.map(doc=>({
+    id:doc.id,trackingNumber:doc.trackingNumber,title:doc.title,subject:doc.subject,sourceOffice:doc.sourceOffice,senderName:doc.senderName,
+    classification:doc.classification,documentType:doc.documentType,employmentClassification:doc.employmentClassification,
+    priority:doc.priority,status:doc.status,dateReceived:doc.dateReceived,currentStepNumber:doc.currentStepNumber,totalSteps:doc.totalSteps,
+    currentLocation:doc.currentLocation,currentStepName:currentDocumentStep(doc)?.name,assignedDisplayName:currentDocumentStep(doc)?.assignedTo.displayName,isLegacyV1:!!doc.isLegacyV1,
+  }));
+  const queueCounts=targeted?taskPage?.queueCounts:null;
+  const isQueueLoading=targeted&&(taskLoading||searchQuery!==submittedSearch);
 
   // Payroll batches are operational tasks too. Keep them in My Tasks rather than
   // requiring the assigned desk to discover work through Payroll Management.
   const filteredPayrollTasks: PayrollBatch[] = activeQueue === 'my_tasks' ? myPayrollBatches.filter(batch => {
     if (filterClass !== 'all' && filterClass !== 'Payroll') return false;
+    if(payrollTargeted)return true;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
     return batch.batchNumber.toLowerCase().includes(q) || batch.payrollType.toLowerCase().includes(q) || batch.office.toLowerCase().includes(q);
@@ -152,12 +228,12 @@ export const MyTasksQueue: React.FC = () => {
   }
 
   const queueTabs: QueueTabItem[] = [
-    { id: 'my_tasks', label: 'My Tasks', count: myTasks.length + myPayrollBatches.length, icon: Inbox },
-    { id: 'team_queue', label: 'Team Queue', count: teamTasks.length, icon: Users },
-    { id: 'returned', label: 'Returned / Rework', count: returnedTasks.length, icon: RotateCcw, isAlert: returnedTasks.length > 0 },
-    { id: 'waiting', label: 'Waiting / Tracked', count: waitingTasks.length, icon: Hourglass },
-    { id: 'ready_for_release', label: 'Ready for Release', count: readyForReleaseTasks.length, icon: FileCheck2 },
-    { id: 'completed', label: 'Released / Concluded', count: completedTasks.length, icon: CheckCircle2 },
+    { id: 'my_tasks', label: 'My Tasks', count: (queueCounts?.my_tasks ?? myTasks.length) + (payrollTargeted?payrollTasks?.allTaskCount??0:myPayrollBatches.length), icon: Inbox },
+    { id: 'team_queue', label: 'Team Queue', count: queueCounts?.team_queue ?? teamTasks.length, icon: Users },
+    { id: 'returned', label: 'Returned / Rework', count: queueCounts?.returned ?? returnedTasks.length, icon: RotateCcw, isAlert: (queueCounts?.returned ?? returnedTasks.length) > 0 },
+    { id: 'waiting', label: 'Waiting / Tracked', count: queueCounts?.waiting ?? waitingTasks.length, icon: Hourglass },
+    { id: 'ready_for_release', label: 'Ready for Release', count: queueCounts?.ready_for_release ?? readyForReleaseTasks.length, icon: FileCheck2 },
+    { id: 'completed', label: 'Released / Concluded', count: queueCounts?.completed ?? completedTasks.length, icon: CheckCircle2 },
   ];
 
   const getStatusBadge = (status: string) => {
@@ -192,7 +268,7 @@ export const MyTasksQueue: React.FC = () => {
                   Payroll Action Required
                 </span>
                 <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-blue-200 text-blue-800">
-                  {myPayrollBatches.length} {myPayrollBatches.length === 1 ? 'batch' : 'batches'}
+                  {payrollTargeted?payrollTasks?.allTaskCount??0:myPayrollBatches.length} {(payrollTargeted?payrollTasks?.allTaskCount??0:myPayrollBatches.length) === 1 ? 'batch' : 'batches'}
                 </span>
               </div>
               <p className="text-xs text-blue-700 mt-0.5">Open the assigned task below to process its active phase.</p>
@@ -205,7 +281,7 @@ export const MyTasksQueue: React.FC = () => {
         <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 shadow-2xs">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div><h2 className="text-sm font-bold text-amber-950">Held / For Compliance</h2><p className="text-xs text-amber-800">Resolve and recheck individual payroll items without reopening the batch.</p></div>
-            <span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-bold text-amber-900">{heldPayrollItems.length}</span>
+            <span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-bold text-amber-900">{payrollTargeted?payrollHeld?.pagination.total??0:heldPayrollItems.length}</span>
           </div>
           <div className="space-y-2">
             {heldPayrollItems.map(item => {
@@ -222,6 +298,7 @@ export const MyTasksQueue: React.FC = () => {
               </div>;
             })}
           </div>
+          {payrollTargeted && (payrollHeld?.pagination.totalPages||0)>1 && <div className="mt-3 flex items-center gap-2 text-xs"><button disabled={heldPage<=1} onClick={()=>setHeldPage(value=>value-1)}>Previous</button><span>Page {heldPage} of {payrollHeld?.pagination.totalPages}</span><button disabled={heldPage>=(payrollHeld?.pagination.totalPages||1)} onClick={()=>setHeldPage(value=>value+1)}>Next</button></div>}
         </div>
       )}
 
@@ -247,7 +324,7 @@ export const MyTasksQueue: React.FC = () => {
               <button
                 key={tab.id}
                 id={`queue-tab-${tab.id}`}
-                onClick={() => setActiveQueue(tab.id as any)}
+                onClick={() => selectQueue(tab.id)}
                 className={`flex flex-col items-start p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
                   isSelected
                     ? 'bg-blue-50/90 border-blue-300 ring-1 ring-blue-300'
@@ -285,8 +362,8 @@ export const MyTasksQueue: React.FC = () => {
             id="queue-search-input"
             type="text"
             value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Filter by tracking #, payroll batch, subject, sender, or office..."
+            onChange={e => {setPage(1);setSearchQuery(e.target.value);}}
+            placeholder="Filter by tracking #, payroll batch, title, sender, or office..."
             className="w-full text-xs sm:text-sm pl-9 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
@@ -300,7 +377,7 @@ export const MyTasksQueue: React.FC = () => {
           <select
             id="queue-filter-classification"
             value={filterClass}
-            onChange={e => setFilterClass(e.target.value)}
+            onChange={e => {setPage(1);setFilterClass(e.target.value);}}
             className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="all">All Classifications</option>
@@ -314,10 +391,13 @@ export const MyTasksQueue: React.FC = () => {
 
       {/* Tasks Table / Cards */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-        {filteredList.length === 0 && filteredPayrollTasks.length === 0 ? (
+        {payrollTargeted && payrollError && <div role="alert" className="border-b border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Payroll tasks could not be loaded. <button type="button" onClick={()=>setPayrollRetry(value=>value+1)} className="font-semibold underline">Retry</button></div>}
+        {isQueueLoading && filteredPayrollTasks.length>0 && <div role="status" className="border-b border-slate-200 p-3 text-sm text-slate-600">Loading document tasks...</div>}
+        {targeted && taskError && filteredPayrollTasks.length>0 && <div role="alert" className="border-b border-slate-200 p-3 text-sm text-slate-700">Document tasks could not be loaded. <button type="button" onClick={()=>setTaskRetry(value=>value+1)} className="font-semibold text-blue-700 underline">Retry</button></div>}
+        {isQueueLoading && filteredPayrollTasks.length===0 ? <div role="status" className="p-10 text-center text-sm text-slate-600">Loading document tasks...</div> : targeted && taskError && filteredPayrollTasks.length===0 ? <div role="alert" className="p-10 text-center text-sm text-slate-700"><p>Document tasks could not be loaded.</p><button type="button" onClick={()=>setTaskRetry(value=>value+1)} className="mt-3 rounded-lg bg-blue-600 px-3 py-2 font-semibold text-white">Retry</button></div> : filteredList.length === 0 && filteredPayrollTasks.length === 0 && !isQueueLoading && !taskError ? (
           <div className="text-center py-12 p-4">
             <Inbox className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h3 className="text-sm font-semibold text-slate-700">No tasks in this queue</h3>
+            <h3 className="text-sm font-semibold text-slate-700">{filterClass==='all'&&!searchQuery.trim()?'No tasks in this queue':'No tasks match these filters'}</h3>
             <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
               There are no document or payroll tasks matching your active queue and search filters.
             </p>
@@ -334,10 +414,10 @@ export const MyTasksQueue: React.FC = () => {
               <div className="space-y-2">
                 {filteredPayrollTasks.map(batch => {
                   const initialDesk = batch.initialCheckingDesk || batch.assignedDesk;
-                  const initialItems = payrollItems.filter(item => item.batchId === batch.id && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
-                  const assignedGroup = workGroups.find(group => group.batchId === batch.id && group.assignedProcessorId === currentUser.id && group.status === 'In_Progress');
+                   const initialItemCount = payrollTargeted?batch.progress.initialChecking.active:payrollItems.filter(item => item.batchId === batch.id && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking').length;
+                   const assignedGroup = payrollTargeted?(batch as PayrollTaskBatch)._assignedGroup:workGroups.find(group => group.batchId === batch.id && group.assignedProcessorId === currentUser.id && group.status === 'In_Progress');
                   const releaseDesk = batch.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
-                  const phaseLabel = initialItems.length > 0 && isInitialCheckingAssignee(batch.id)
+                  const phaseLabel = initialItemCount > 0 && isInitialCheckingAssignee(batch.id)
                     ? `Phase 2: ${batch.workflowStages?.find(stage => stage.stageNumber === 2)?.name || 'Initial Checking'}`
                     : assignedGroup ? `Phase 3: ${assignedGroup.classification} Work Group` : batch.progress.release.ready > 0 ? 'Phase 4: Release' : batch.progress.displayStatus;
                   const activeDesk = assignedGroup ? undefined : batch.progress.release.ready > 0 ? releaseDesk : initialDesk;
@@ -360,6 +440,7 @@ export const MyTasksQueue: React.FC = () => {
                   </div>;
                 })}
               </div>
+              {payrollTargeted && (payrollTasks?.pagination.totalPages||0)>1 && <div className="mt-3 flex items-center gap-2 text-xs"><button disabled={payrollPage<=1} onClick={()=>setPayrollPage(value=>value-1)}>Previous</button><span>Page {payrollPage} of {payrollTasks?.pagination.totalPages}</span><button disabled={payrollPage>=(payrollTasks?.pagination.totalPages||1)} onClick={()=>setPayrollPage(value=>value+1)}>Next</button></div>}
             </div>
           )}
           {filteredList.length > 0 && <div className="overflow-x-auto">
@@ -376,12 +457,11 @@ export const MyTasksQueue: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredList.map(doc => {
-                  const currentStep = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
                   return (
                     <tr
                       key={doc.id}
                       className="hover:bg-slate-50/80 transition-colors cursor-pointer"
-                      onClick={() => setSelectedDocument(doc)}
+                      onClick={() => openTask(doc.id,doc.classification)}
                     >
                       {/* Tracking Number */}
                       <td className="py-3 px-4 font-mono font-bold text-blue-700 whitespace-nowrap">
@@ -418,10 +498,10 @@ export const MyTasksQueue: React.FC = () => {
                       <td className="py-3 px-4">
                         <div className="font-semibold text-blue-700 flex items-center gap-1.5">
                           <span>Phase {doc.currentStepNumber}/{doc.totalSteps}:</span>
-                          <span className="truncate max-w-[160px]">{currentStep?.name}</span>
+                          <span className="truncate max-w-[160px]">{doc.currentStepName}</span>
                         </div>
                         <div className="text-xs text-slate-600 truncate max-w-[180px] mt-0.5">
-                          {currentStep?.assignedTo.displayName}
+                          {doc.assignedDisplayName}
                         </div>
                       </td>
 
@@ -444,7 +524,7 @@ export const MyTasksQueue: React.FC = () => {
                           )}
                           <button
                             id={`btn-open-task-${doc.id}`}
-                            onClick={() => setSelectedDocument(doc)}
+                            onClick={() => openTask(doc.id,doc.classification)}
                             className="px-3 py-1 text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors inline-flex items-center gap-1 cursor-pointer"
                           >
                             <span>Open & Process</span>
@@ -458,6 +538,20 @@ export const MyTasksQueue: React.FC = () => {
               </tbody>
             </table>
           </div>}
+          {targeted && taskPage && taskPage.pagination.total > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 p-4 text-xs text-slate-600">
+              <span>Showing {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, taskPage.pagination.total)} of {taskPage.pagination.total} document tasks</span>
+              <div className="flex items-center gap-2">
+                <label htmlFor="task-page-size">Rows per page</label>
+                <select id="task-page-size" value={pageSize} onChange={event => { setPage(1); setPageSize(Number(event.target.value)); }} className="rounded border border-slate-200 px-2 py-1">
+                  <option value={25}>25</option><option value={50}>50</option><option value={100}>100</option>
+                </select>
+                <button type="button" disabled={page <= 1} onClick={() => setPage(value => value - 1)} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Previous</button>
+                <span>Page {page} of {taskPage.pagination.totalPages}</span>
+                <button type="button" disabled={page >= taskPage.pagination.totalPages} onClick={() => setPage(value => value + 1)} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Next</button>
+              </div>
+            </div>
+          )}
           </>
         )}
       </div>

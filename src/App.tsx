@@ -20,6 +20,8 @@ import { PayrollBatchDetailModal } from './components/PayrollBatchDetailModal';
 import { LoginPortal } from './components/LoginPortal';
 import { useWorkspaceState } from './services/workspace';
 import { ThemeEffects } from './theme/ThemeEffects';
+import { useDocumentShellSummary } from './services/useDocumentShellSummary';
+import { usePayrollShellSummary } from './services/usePayrollShellSummary';
 
 const MainLayout: React.FC = () => {
   const { 
@@ -32,11 +34,14 @@ const MainLayout: React.FC = () => {
     isSaving, can, refreshState, workflowTemplates,
     users,
     currentUser,
+    stateRevision,
     selectedPayrollBatch, 
     isBatchModalOpen, 
     closeBatchModal, 
     selectedWorkGroupId 
   } = useApp();
+  const documentShell=useDocumentShellSummary(currentUser.id,stateRevision);
+  const payrollShell=usePayrollShellSummary(currentUser.id,stateRevision);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-document', false);
   const [isRegisterPayrollModalOpen, setIsRegisterPayrollModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-payroll', false);
@@ -92,6 +97,8 @@ const MainLayout: React.FC = () => {
 
       {/* Left Navigation Sidebar */}
       <Sidebar
+        documentShell={documentShell}
+        payrollShell={payrollShell}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         onOpenRegisterModal={() => { if (canRegisterDocument) setIsRegisterModalOpen(true); }}
@@ -103,6 +110,8 @@ const MainLayout: React.FC = () => {
         
         {/* Top Header */}
         <Header 
+          documentShell={documentShell}
+          payrollShell={payrollShell}
           onOpenSidebar={() => setIsSidebarOpen(true)}
           onOpenRegisterModal={() => { if (canRegisterDocument) setIsRegisterModalOpen(true); }}
           onOpenPayrollModal={() => { if (canRegisterPayroll) setIsRegisterPayrollModalOpen(true); }}

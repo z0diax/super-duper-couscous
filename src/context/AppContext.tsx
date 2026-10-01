@@ -9,7 +9,7 @@ import type { UserAccount, DocumentRecord, PayrollBatch, WorkflowTemplate, Assig
 const EMPTY_USER: UserAccount = { id: '', name: '', email: '', role: '', roleTitle: '', office: '', division: '', position: '', avatarInitials: '' };
 type Tab = 'dashboard' | 'queues' | 'payroll' | 'registry' | 'leave' | 'workflows' | 'catalogue' | 'migration' | 'audit' | 'users';
 type Toast = { id: string; type: 'success' | 'info' | 'warning' | 'error'; title: string; message: string };
-type WorkspaceLocation = { activeTab: Tab; documentId: string | null; batchId: string | null; workGroupId: string | null };
+type WorkspaceLocation = { activeTab: Tab; documentId: string | null; targetedDocumentId?: string | null; batchId: string | null; workGroupId: string | null };
 const TABS: Tab[] = ['dashboard','queues','payroll','registry','leave','workflows','catalogue','migration','audit','users'];
 
 function useApplication() {
@@ -17,13 +17,16 @@ function useApplication() {
   const [currentUser, setCurrentUser] = useState(EMPTY_USER);
   const [authReady, setAuthReady] = useState(false);
   const [databaseReady, setDatabaseReady] = useState(false);
+  const [stateRevision, setStateRevision] = useState(-1);
   const [databaseError, setDatabaseError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [quickSearchQuery, setQuickSearchQuery] = useState('');
   const [toast, setToast] = useState<Toast | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
+  const [targetedDocumentId, setTargetedDocumentId] = useState<string | null>(null);
   const [batchId, setBatchId] = useState<string | null>(null);
+  const [targetedPayrollBatch,setTargetedPayrollBatch]=useState<PayrollBatch|null>(null);
   const [selectedWorkGroupId, setSelectedWorkGroupId] = useState<string | null>(null);
   const [workspaceRestoredForUser, setWorkspaceRestoredForUser] = useState('');
   const revision = useRef(-1);
@@ -35,7 +38,7 @@ function useApplication() {
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 6500); return () => clearTimeout(timer); }, [toast]);
   const accept = useCallback((payload: StateResponse) => {
     if (!mounted.current || payload.revision < revision.current) return;
-    revision.current = payload.revision; setState(payload.state); setDatabaseError(null); setDatabaseReady(true);
+    revision.current = payload.revision; setStateRevision(payload.revision); setState(payload.state); setDatabaseError(null); setDatabaseReady(true);
     setCurrentUser(user => payload.state.users.find(u => u.id === user.id) || user);
   }, []);
   const refreshState = useCallback(async () => {
@@ -74,23 +77,23 @@ function useApplication() {
     if (workspaceRestoredForUser === currentUser.id) return;
     const saved = readWorkspaceValue<WorkspaceLocation>(currentUser.id, 'location', { activeTab: 'dashboard', documentId: null, batchId: null, workGroupId: null });
     setActiveTab(TABS.includes(saved.activeTab) ? saved.activeTab : 'dashboard');
-    setDocumentId(saved.documentId || null); setBatchId(saved.batchId || null); setSelectedWorkGroupId(saved.workGroupId || null);
+    setDocumentId(saved.documentId || null); setTargetedDocumentId(import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS === '1' ? saved.targetedDocumentId || null : null); setBatchId(saved.batchId || null); setSelectedWorkGroupId(saved.workGroupId || null);
     setWorkspaceRestoredForUser(currentUser.id);
   }, [currentUser.id, workspaceRestoredForUser]);
   useEffect(() => {
     if (!currentUser.id || workspaceRestoredForUser !== currentUser.id) return;
-    writeWorkspaceValue<WorkspaceLocation>(currentUser.id, 'location', { activeTab, documentId, batchId, workGroupId: selectedWorkGroupId });
-  }, [currentUser.id, workspaceRestoredForUser, activeTab, documentId, batchId, selectedWorkGroupId]);
+    writeWorkspaceValue<WorkspaceLocation>(currentUser.id, 'location', { activeTab, documentId, targetedDocumentId, batchId, workGroupId: selectedWorkGroupId });
+  }, [currentUser.id, workspaceRestoredForUser, activeTab, documentId, targetedDocumentId, batchId, selectedWorkGroupId]);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => { if (busy.current) { e.preventDefault(); e.returnValue = ''; } };
     window.addEventListener('beforeunload', warn); return () => window.removeEventListener('beforeunload', warn);
   }, []);
   const login = async (identifier: string, password: string) => {
-    const user = await authenticate(identifier, password); sessionGeneration.current++; revision.current = -1; setState(emptyState); setDatabaseReady(false); setDatabaseError(null); setCurrentUser(user); window.dispatchEvent(new CustomEvent('hrmdo:auth-changed',{detail:{userId:user.id}}));
+    const user = await authenticate(identifier, password); sessionGeneration.current++; revision.current = -1; setState(emptyState); setDocumentId(null); setTargetedDocumentId(null); setTargetedPayrollBatch(null); setDatabaseReady(false); setDatabaseError(null); setCurrentUser(user); window.dispatchEvent(new CustomEvent('hrmdo:auth-changed',{detail:{userId:user.id}}));
   };
   const logout = async () => {
     if (busy.current) return;
-    try { await endSession(); sessionGeneration.current++; setCurrentUser(EMPTY_USER); setState(emptyState); setDocumentId(null); setBatchId(null); setSelectedWorkGroupId(null); setActiveTab('dashboard'); setDatabaseReady(false); revision.current = -1; window.dispatchEvent(new CustomEvent('hrmdo:auth-changed',{detail:{userId:null}})); }
+    try { await endSession(); sessionGeneration.current++; setCurrentUser(EMPTY_USER); setState(emptyState); setDocumentId(null); setTargetedDocumentId(null); setTargetedPayrollBatch(null); setBatchId(null); setSelectedWorkGroupId(null); setActiveTab('dashboard'); setDatabaseReady(false); revision.current = -1; window.dispatchEvent(new CustomEvent('hrmdo:auth-changed',{detail:{userId:null}})); }
     catch (error) { showToast('error', 'Sign out failed', error.message); }
   };
   async function prepare(value: any): Promise<any> {
@@ -113,14 +116,16 @@ function useApplication() {
   };
   const can = (cap: string) => currentUser.role === 'admin' || !!state.systemRoles.find(r => r.id === currentUser.role)?.[cap] || !!state.systemRoles.find(r => r.id === currentUser.role)?.canAdmin;
   return {
-    ...state, currentUser, authReady, isAuthenticated, databaseReady, databaseError, isSaving, login, logout, refreshState, can,
+    ...state, currentUser, authReady, isAuthenticated, databaseReady, databaseError, stateRevision, isSaving, login, logout, refreshState, can,
     activeTab, setActiveTab, quickSearchQuery, setQuickSearchQuery, toast, showToast, clearToast: () => setToast(null),
     selectedDocument: state.documents.find(d => d.id === documentId) || null,
-    setSelectedDocument: (doc: DocumentRecord | null) => setDocumentId(doc?.id || null),
-    selectedPayrollBatch: state.payrollBatches.find(b => b.id === batchId) || null,
+    targetedDocumentId,
+    openTargetedDocument: (id: string) => { setDocumentId(id); setTargetedDocumentId(id); },
+    setSelectedDocument: (doc: DocumentRecord | null) => { setTargetedDocumentId(null); setDocumentId(doc?.id || null); },
+    selectedPayrollBatch: import.meta.env.VITE_PAYROLL_TARGETED_READS==='1' && targetedPayrollBatch?.id===batchId?targetedPayrollBatch:state.payrollBatches.find(b => b.id === batchId) || null,
     setSelectedPayrollBatch: (batch: PayrollBatch | null) => setBatchId(batch?.id || null),
     selectedWorkGroupId, setSelectedWorkGroupId, isBatchModalOpen: !!batchId,
-    openBatchModal: (batch: PayrollBatch, groupId?: string) => { setBatchId(batch.id); setSelectedWorkGroupId(groupId || null); },
+    openBatchModal: (batch: PayrollBatch, groupId?: string) => { setBatchId(batch.id);if(import.meta.env.VITE_PAYROLL_TARGETED_READS==='1')setTargetedPayrollBatch(batch); setSelectedWorkGroupId(groupId || null); },
     closeBatchModal: () => { setBatchId(null); setSelectedWorkGroupId(null); },
     registerDocument: operation<DocumentRecord>('registerDocument'), deleteDocument: operation('deleteDocument'), registerSinglePayroll: operation<DocumentRecord>('registerSinglePayroll'),
     registerPayrollBatch: operation<PayrollBatch>('registerPayrollBatch'), updatePayrollBatch: operation<PayrollBatch>('updatePayrollBatch'), deletePayrollBatch: operation('deletePayrollBatch'),

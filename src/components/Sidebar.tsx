@@ -20,8 +20,12 @@ import {
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { SidebarWeatherCard } from './SidebarWeatherCard';
+import type { DocumentShellSnapshot } from '../services/useDocumentShellSummary';
+import type { PayrollShellSnapshot } from '../services/usePayrollShellSummary';
 
 interface SidebarProps {
+  documentShell: DocumentShellSnapshot;
+  payrollShell: PayrollShellSnapshot;
   isOpen: boolean;
   onClose: () => void;
   onOpenRegisterModal: () => void;
@@ -36,7 +40,7 @@ interface NavItem {
   section?: string;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegisterModal, onOpenPayrollModal }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, isOpen, onClose, onOpenRegisterModal, onOpenPayrollModal }) => {
   const { activeTab, setActiveTab, documents, currentUser, payrollBatches, payrollItems, workGroups, can } = useApp();
   const showConfiguration = can('canAdmin');
   const showComplianceHistory = can('canAdmin') || can('canSupervise');
@@ -51,12 +55,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
 
   // A phase becomes a task for its configured person, role, or team as soon as
   // it is active. Payroll tasks follow this exact rule just like documents.
-  const documentTaskCount = documents.filter(doc => {
+  const legacyDocumentTaskCount = (import.meta.env.VITE_DOCUMENT_SHELL_TARGETED_READS==='1'?[]:documents).filter(doc => {
     if (doc.status === 'Released' || doc.status === 'Archived' || doc.status === 'Disapproved') return false;
     return (doc.status === 'On_Hold' && doc.encodedBy.userId === currentUser.id) || isDocumentActionableForUser(doc, currentUser, true);
   }).length;
+  const documentTaskCount=import.meta.env.VITE_DOCUMENT_SHELL_TARGETED_READS==='1'?(documentShell.summary?.sidebarDocumentTaskCount ?? 0):legacyDocumentTaskCount;
 
-  const payrollTaskCount = payrollBatches.filter(b => {
+  const legacyPayrollTaskCount = (import.meta.env.VITE_PAYROLL_TARGETED_READS==='1'?[]:payrollBatches).filter(b => {
     if (b.progress.derivedStatus === 'COMPLETED') return false;
     const hasInitialItems = payrollItems.some(item => item.batchId === b.id && (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
     const initialDesk = b.initialCheckingDesk || b.assignedDesk;
@@ -68,6 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
     if (payrollItems.some(item => item.batchId === b.id && item.currentStage === 'release' && ['Ready_For_Release','On_Hold','Ready_For_Recheck'].includes(item.status)) && releaseDesk && isAssignedDesk(releaseDesk)) return true;
     return false;
   }).length;
+  const payrollTaskCount=import.meta.env.VITE_PAYROLL_TARGETED_READS==='1'?(payrollShell.summary?.sidebarPayrollTaskCount??0):legacyPayrollTaskCount;
 
   const navItems: NavItem[] = ([
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Operations' },
@@ -211,6 +217,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, onOpenRegiste
                           {item.badge}
                         </span>
                       )}
+                      {item.id==='queues' && (documentShell.error||payrollShell.error) && <span title="Task count unavailable" aria-label="Task count unavailable" className="rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-slate-950">!</span>}
                     </button>
                   );
                 })}

@@ -54,7 +54,6 @@
 }
 html, body { background: var(--app-bg); color: var(--app-text); }
 body { min-width: 320px; overflow-x: hidden; transition: background-color .18s ease, color .18s ease; }
-button, input, select, textarea { font: inherit; }
 button { touch-action: manipulation; }
 
 /* Shared viewport-safe behavior for overlays that use the application's fixed modal pattern. */

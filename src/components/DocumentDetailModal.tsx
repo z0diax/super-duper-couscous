@@ -1,20 +1,47 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, CheckCircle2, Download, FileText, Paperclip, Printer, RotateCcw, Send, Upload, UserCheck, X } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { OFFICE_OPTIONS } from '../data/offices';
 import { assignmentMatchesUser } from '../services/documentTaskAssignment';
 import { documentSenderLabel } from '../services/documentDisplay';
+import { getDocumentDetailById, type DocumentDetailPayload } from '../services/documentApi';
+import { ApiError } from '../services/http';
 
 type Tab = 'workflow' | 'details' | 'attachments' | 'audit' | 'slip';
 type Dialog = 'claim' | 'complete' | 'hold' | 'compliance' | 'recheck' | 'return' | 'approve' | 'release' | 'reassign' | 'remark' | 'upload' | 'handoff' | 'external-return' | null;
 
 export const DocumentDetailModal: React.FC = () => {
   const {
-    selectedDocument: doc, setSelectedDocument, currentUser, users, payrollItems, employmentRoutingRules, auditLogs, can,
+    selectedDocument: legacyDoc, targetedDocumentId, stateRevision, setSelectedDocument, refreshState, currentUser, users, payrollItems, employmentRoutingRules, auditLogs, can,
     claimTask, completeStep, returnStep, reassignTask, approveDocument, releaseDocument, placeDocumentHold, submitDocumentCompliance, recheckDocumentHold,
     addDocumentRemark, uploadSupportingFile, updatePayrollItemClassification,
     recordExternalHandoff, recordExternalReturn,
   } = useApp();
+  const targeted = import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS === '1' && !!targetedDocumentId;
+  const [detailState, setDetailState] = useState<{ id: string; revision: number; payload: DocumentDetailPayload } | null>(null);
+  const [detailError, setDetailError] = useState<{ id: string; revision: number; message: string } | null>(null);
+  const [detailRetry, setDetailRetry] = useState(0);
+  const detailRequest = useRef(0);
+  useEffect(() => {
+    if (!targeted || !targetedDocumentId) return;
+    const request = ++detailRequest.current;
+    setDetailState(null); setDetailError(null);
+    getDocumentDetailById(targetedDocumentId).then(payload => {
+      if (request === detailRequest.current) setDetailState({ id: targetedDocumentId, revision: stateRevision, payload });
+    }).catch(error => {
+      if (request === detailRequest.current) {
+        if (error instanceof ApiError && error.status === 401) void refreshState();
+        const message=error instanceof ApiError && error.status===404 ? 'This document was not found or is no longer available to you.'
+          : error instanceof ApiError && error.status===401 ? 'Your session could not be verified. Please sign in again.'
+          : 'Document details could not be loaded. Please try again.';
+        setDetailError({ id: targetedDocumentId, revision: stateRevision, message });
+      }
+    });
+    return () => { detailRequest.current++; };
+  }, [targeted, targetedDocumentId, stateRevision, detailRetry, refreshState]);
+  const targetedPayload = targeted && detailState?.id === targetedDocumentId && detailState.revision === stateRevision ? detailState.payload : null;
+  const targetedError = targeted && detailError?.id === targetedDocumentId && detailError.revision === stateRevision ? detailError.message : null;
+  const doc = targeted ? targetedPayload?.data || null : legacyDoc;
   const [tab, setTab] = useState<Tab>('workflow');
   const [dialog, setDialog] = useState<Dialog>(null);
   const [remarks, setRemarks] = useState('');
@@ -57,7 +84,7 @@ export const DocumentDetailModal: React.FC = () => {
   );
   const isTerminal = !!doc && ['Released', 'Archived', 'Disapproved'].includes(doc.status);
   const canSeeControls = !isTerminal && (canProcess || canClaim || canManage || canExternal);
-  const audit = useMemo(() => doc ? auditLogs.filter(event => event.documentId === doc.id) : [], [auditLogs, doc]);
+  const audit = useMemo(() => targeted ? targetedPayload?.auditEvents || [] : doc ? auditLogs.filter(event => event.documentId === doc.id) : [], [targeted, targetedPayload, auditLogs, doc]);
   const normalizedAuditQuery = auditQuery.trim().toLowerCase();
   const filteredAudit = [...audit].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).filter(event => {
     const action = event.actionType.toLowerCase();
@@ -71,10 +98,17 @@ export const DocumentDetailModal: React.FC = () => {
   const auditPageCount = Math.max(1, Math.ceil(filteredAudit.length / 10));
   const visibleAudit = filteredAudit.slice((Math.min(auditPage, auditPageCount) - 1) * 10, Math.min(auditPage, auditPageCount) * 10);
   const payrollItem = doc ? payrollItems.find(item => item.documentId === doc.id) : undefined;
+  const close = () => { setDialog(null); setDetailState(null); setDetailError(null); setSelectedDocument(null); };
 
+  if (targeted && !doc) return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3" role="dialog" aria-label="Document details">
+    <section className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl">
+      <h2 className="text-base font-bold text-slate-900">Document details</h2>
+      {targetedError ? <><p role="alert" className="mt-3 text-sm text-slate-600">{targetedError}</p><button type="button" onClick={() => setDetailRetry(value => value + 1)} className="mt-4 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Retry</button></> : <p role="status" className="mt-3 text-sm text-slate-600">Loading document details...</p>}
+      <button type="button" onClick={close} className="mt-4 ml-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">Close</button>
+    </section>
+  </div>;
   if (!doc || !current) return null;
 
-  const close = () => { setDialog(null); setSelectedDocument(null); };
   const resetDialog = () => { setDialog(null); setRemarks(''); setActionTaken(''); setReturnReason(''); setReleasedTo(''); setReleaseMode('HRMDO Liaison'); setOtherReleaseMode(''); setReassignUserId(''); setReassignReason(''); setReturnedBy(''); setExternalResult(''); setAttachmentFile(null); setHandoffFile(null); setReturnFile(null); setEmploymentClassification(''); setSinglePayrollProcessorId(''); setNextPhaseAssigneeId(''); setHoldReason(''); setHoldFile(null); };
   const saved = async (operation: () => Promise<unknown>) => { const result = await operation(); if (result) resetDialog(); };
   const phaseLabel = `Phase ${doc.currentStepNumber}`;
@@ -205,6 +239,7 @@ export const DocumentDetailModal: React.FC = () => {
           </div>}
 
           {tab === 'details' && <section className="space-y-4"><div className="flex flex-col gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4 sm:flex-row sm:items-center sm:justify-between"><div><span className="font-mono text-xs font-bold text-blue-700">{doc.trackingNumber}</span><h3 className="mt-1 text-base font-bold text-slate-900">{doc.subject}</h3><p className="mt-1 text-xs text-slate-500">{doc.classification} · {doc.documentType}</p></div><div className="self-start rounded-full bg-white px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-200">{doc.status.replaceAll('_', ' ')}</div></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[['Source office',doc.sourceOffice],['Sender',documentSenderLabel(doc)],['Received',new Date(doc.dateReceived).toLocaleString()],['Current location',doc.currentLocation || 'HRMDO'],['Current phase',`${phaseLabel} · ${current.name}`],['Encoded by',doc.encodedBy.userName]].map(([label,value]) => <div key={label} className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{label}</p><p className="mt-1 text-sm font-semibold text-slate-800">{value}</p></div>)}</div>{doc.description && <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Description</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">{doc.description}</p></div>}</section>}
+          {tab === 'details' && !!doc.custodyHistory?.length && <section className="mt-4 rounded-xl border border-slate-200 bg-white p-4"><h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">Custody history</h3><ol className="mt-3 space-y-2">{doc.custodyHistory.map(move => <li key={move.id} className="rounded-lg bg-slate-50 p-3 text-xs text-slate-700"><strong>{move.movementType.replaceAll('_', ' ')}</strong><span className="ml-2">{move.fromLocation} → {move.toLocation}</span><span className="mt-1 block text-slate-500">{new Date(move.timestamp).toLocaleString()}{move.actorName ? ` · ${move.actorName}` : ''}{move.representative ? ` · ${move.representative}` : ''}</span></li>)}</ol></section>}
           {tab === 'attachments' && <section className="space-y-3"><div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 p-3"><div><h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">Document files</h3><p className="mt-0.5 text-[11px] text-slate-500">{doc.attachments.length} attachment{doc.attachments.length === 1 ? '' : 's'} across the workflow</p></div>{canProcess && <button type="button" onClick={() => setDialog('upload')} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white"><Upload className="h-4 w-4" />Add file</button>}</div>{doc.attachments.length ? <div className="grid gap-2 sm:grid-cols-2">{doc.attachments.map(file => { const content = <><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700"><FileText className="h-5 w-5" /></span><span className="min-w-0 flex-1"><strong className="block truncate text-sm text-slate-800">{file.name}</strong><span className="mt-0.5 block text-[11px] text-slate-500">{formatFileSize(file.sizeBytes)} · {file.uploadedBy} · {new Date(file.uploadedAt).toLocaleDateString()}{file.stepNumber ? ` · Phase ${file.stepNumber}` : ''}</span></span>{file.url && <Download className="h-4 w-4 shrink-0 text-slate-400" />}</>; return file.url ? <a key={file.id} href={file.url} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 hover:border-blue-300 hover:shadow-sm">{content}</a> : <div key={file.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">{content}</div>; })}</div> : <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center"><Paperclip className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-2 text-sm font-semibold text-slate-700">No attachments yet</p><p className="mt-1 text-xs text-slate-500">Files added during processing will appear here.</p></div>}</section>}
           {tab === 'audit' && <section className="space-y-3">
             <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
