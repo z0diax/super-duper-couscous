@@ -196,6 +196,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const regularCount = payrollTargeted?detail?.itemCounts.regular??0:items.filter(i => i.employmentClassification === 'Regular' && i.status !== 'On_Hold').length;
   const onHoldCount = payrollTargeted?detail?.itemCounts.held??0:items.filter(i => i.status === 'On_Hold').length;
   const readyItems = initialCheckingItems.filter(item => item.status !== 'On_Hold' && item.verificationStatus === 'Passed' && !!item.employmentClassification);
+  const readyItemCount = payrollTargeted?detail?.itemCounts.ready??0:readyItems.length;
   const unresolvedCount = payrollTargeted?detail?.itemCounts.unresolved??0:initialCheckingItems.filter(item => item.status !== 'On_Hold' && (item.verificationStatus !== 'Passed' || !item.employmentClassification)).length;
   const readyForReleaseCount = payrollTargeted?detail?.itemCounts.ready_release??0:items.filter(item => item.status === 'Ready_For_Release').length;
   const releasedCount = payrollTargeted?detail?.itemCounts.released??0:items.filter(item => item.status === 'Released').length;
@@ -271,7 +272,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   };
 
   const handleRouteInitialItems = async () => {
-    if (unresolvedCount > 0 || readyItems.length === 0) return;
+    if (unresolvedCount > 0 || readyItemCount === 0) return;
     if (unresolvedPoolItems.length > 0) return;
     if (!(await completeInitialCheckingAndRoute(batch.id, routeSelections))) return;
     // The routed records no longer belong to the Initial Checking selection.
@@ -629,7 +630,8 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                           </span>
                         ) : (
                           <span>
-                            {payrollCount(readyItems.length)} ready to route. {initialCheckingItems.filter(item => item.status === 'On_Hold').length > 0 && `${payrollCount(initialCheckingItems.filter(item => item.status === 'On_Hold').length)} on hold will stay here.`}
+                            {payrollCount(readyItemCount)} ready to route. {onHoldCount > 0 && `${payrollCount(onHoldCount)} on hold will stay here.`}
+                            {payrollTargeted && (detail?.itemPagination.totalPages??0)>1 && ' Assign any pool processors across all item pages before routing.'}
                           </span>
                         )}
                       </p>
@@ -648,11 +650,11 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                       onClick={async () => {
                         await handleRouteInitialItems();
                       }}
-                      disabled={unresolvedCount > 0 || readyItems.length === 0 || unresolvedPoolItems.length > 0}
+                      disabled={unresolvedCount > 0 || readyItemCount === 0 || unresolvedPoolItems.length > 0}
                       title={unresolvedPoolItems.length > 0 ? `Choose a processor for ${unresolvedPoolItems.length} payroll item(s)` : unresolvedCount > 0 ? `${unresolvedCount} payroll item(s) still need verification and classification` : 'Route only the verified payroll items'}
                       className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:pointer-events-none shadow-sm flex items-center justify-center gap-2 shrink-0 transition-all"
                     >
-                      <span>Complete &amp; Route {readyItems.length} Payroll{readyItems.length === 1 ? '' : 's'}</span>
+                      <span>Complete &amp; Route {readyItemCount} Payroll{readyItemCount === 1 ? '' : 's'}</span>
                       <ArrowRight className="w-4 h-4" />
                     </button>
                     </div>

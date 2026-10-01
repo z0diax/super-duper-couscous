@@ -97,7 +97,7 @@ export const DocumentDetailModal: React.FC = () => {
   });
   const auditPageCount = Math.max(1, Math.ceil(filteredAudit.length / 10));
   const visibleAudit = filteredAudit.slice((Math.min(auditPage, auditPageCount) - 1) * 10, Math.min(auditPage, auditPageCount) * 10);
-  const payrollItem = doc ? payrollItems.find(item => item.documentId === doc.id) : undefined;
+  const payrollItem = doc ? (targeted ? targetedPayload?.payrollItem : payrollItems.find(item => item.documentId === doc.id)) : undefined;
   const close = () => { setDialog(null); setDetailState(null); setDetailError(null); setSelectedDocument(null); };
 
   if (targeted && !doc) return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-3" role="dialog" aria-label="Document details">

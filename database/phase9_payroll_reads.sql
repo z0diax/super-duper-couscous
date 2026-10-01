@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS payroll_read_batches (
  management_active INT NOT NULL DEFAULT 0, management_on_hold INT NOT NULL DEFAULT 0, release_ready INT NOT NULL DEFAULT 0,
  initial_user_id VARCHAR(64) NULL, initial_role VARCHAR(64) NULL, initial_team VARCHAR(190) NULL,
  release_user_id VARCHAR(64) NULL, release_role VARCHAR(64) NULL, release_team VARCHAR(190) NULL,
- source_sha256 CHAR(64) NOT NULL,
+ progress_json LONGTEXT NULL, source_sha256 CHAR(64) NOT NULL,
  INDEX idx_prb_number (batch_number), INDEX idx_prb_barcode (batch_barcode),
  INDEX idx_prb_owner_date (encoded_by_user_id,date_encoded), INDEX idx_prb_date (date_encoded), INDEX idx_prb_updated (updated_at),
  INDEX idx_prb_initial_user (initial_user_id), INDEX idx_prb_initial_role (initial_role),

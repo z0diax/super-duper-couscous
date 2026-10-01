@@ -10,6 +10,8 @@ foreach (explode(';',file_get_contents(dirname(__DIR__).'/database/phase2_docume
 foreach (explode(';',file_get_contents(dirname(__DIR__).'/database/phase9_payroll_reads.sql')) as $sql) if (trim($sql)!=='') $pdo->exec($sql);
 $payrollUpdated=$pdo->query("SHOW COLUMNS FROM payroll_read_batches LIKE 'updated_at'")->fetchAll();
 if (!$payrollUpdated) $pdo->exec('ALTER TABLE payroll_read_batches ADD COLUMN updated_at VARCHAR(40) NULL AFTER date_encoded, ADD INDEX idx_prb_updated (updated_at)');
+$payrollProgress=$pdo->query("SHOW COLUMNS FROM payroll_read_batches LIKE 'progress_json'")->fetchAll();
+if (!$payrollProgress) $pdo->exec('ALTER TABLE payroll_read_batches ADD COLUMN progress_json LONGTEXT NULL AFTER release_team');
 $payrollItemNumber=$pdo->query("SHOW COLUMNS FROM payroll_read_items LIKE 'item_number'")->fetchAll();
 if (!$payrollItemNumber) $pdo->exec('ALTER TABLE payroll_read_items ADD COLUMN item_number INT NULL AFTER document_id, ADD INDEX idx_pri_batch_number (batch_id,item_number)');
 $payrollManagement=$pdo->query("SHOW COLUMNS FROM payroll_read_batches LIKE 'management_active'")->fetchAll();

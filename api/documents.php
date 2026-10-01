@@ -16,7 +16,13 @@ try {
         fail_unless($found!==null,'Record not found.',404);
         $detail=document_repository_detail($pdo,$user,$found['id']);
         fail_unless($detail!==null,'Record not found.',404);
-        respond(['data'=>$detail,'auditEvents'=>document_repository_audit($pdo,$detail['id'])]);
+        $singlePayrollItem=null;
+        if (($detail['classification']??'')==='Payroll') {
+            $linked=$pdo->prepare("SELECT r.record_json FROM payroll_read_items i JOIN app_records r ON r.collection='payrollItems' AND r.id=i.id WHERE i.document_id=? AND i.batch_id='SINGLE_ENTRY' LIMIT 1");
+            $linked->execute([$detail['id']]);$rawItem=$linked->fetchColumn();
+            if ($rawItem!==false)$singlePayrollItem=json_decode($rawItem,true,64,JSON_THROW_ON_ERROR);
+        }
+        respond(['data'=>$detail,'auditEvents'=>document_repository_audit($pdo,$detail['id']),'payrollItem'=>$singlePayrollItem]);
     }
     $page=document_read_number($params,'page',1);
     $limit=document_read_number($params,'limit',25);

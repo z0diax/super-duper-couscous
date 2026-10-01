@@ -9,7 +9,8 @@ function payroll_project_batch(array $value,string $raw): array {
         (int)($value['progress']['initialChecking']['active']??0),(int)($value['progress']['management']['active']??0),
         (int)($value['progress']['management']['onHold']??0),(int)($value['progress']['release']['ready']??0),
         $initial['userId']??null,($initial['assignmentType']??null)==='Role'?($initial['roleId']??null):null,($initial['assignmentType']??null)==='Team'?($initial['team']??null):null,
-        $release['userId']??null,($release['assignmentType']??null)==='Role'?($release['roleId']??null):null,($release['assignmentType']??null)==='Team'?($release['team']??null):null,hash('sha256',$raw)];
+        $release['userId']??null,($release['assignmentType']??null)==='Role'?($release['roleId']??null):null,($release['assignmentType']??null)==='Team'?($release['team']??null):null,
+        json_encode($value['progress']??null,JSON_THROW_ON_ERROR),hash('sha256',$raw)];
 }
 function payroll_project_item(array $value,string $raw): array {
     return [$value['id'],$value['batchId']??'',$value['documentId']??null,$value['itemNumber']??null,$value['barcode']??null,$value['title']??null,$value['office']??null,
@@ -22,7 +23,7 @@ function payroll_project_group(array $value,string $raw): array {
 }
 function payroll_write_projection(PDO $pdo,array $changed,array $deleted): void {
     if (!$pdo->inTransaction()) throw new RuntimeException('Payroll projection requires the authoritative transaction.');
-    $tables=['payrollBatches'=>['payroll_read_batches','batch_number,batch_barcode,payroll_type,office,encoded_by_user_id,date_encoded,updated_at,derived_status,initial_active,management_active,management_on_hold,release_ready,initial_user_id,initial_role,initial_team,release_user_id,release_role,release_team,source_sha256','payroll_project_batch'],
+    $tables=['payrollBatches'=>['payroll_read_batches','batch_number,batch_barcode,payroll_type,office,encoded_by_user_id,date_encoded,updated_at,derived_status,initial_active,management_active,management_on_hold,release_ready,initial_user_id,initial_role,initial_team,release_user_id,release_role,release_team,progress_json,source_sha256','payroll_project_batch'],
         'payrollItems'=>['payroll_read_items','batch_id,document_id,item_number,barcode,title,office,classification_type,employment_classification,current_stage,status,verification_status,hold_resolved_at,assigned_user_id,work_group_id,source_sha256','payroll_project_item'],
         'workGroups'=>['payroll_read_groups','batch_id,processor_id,assigned_team,status,source_sha256','payroll_project_group']];
     foreach($tables as $collection=>[$table,$columns,$project]) {

@@ -2,7 +2,9 @@
 declare(strict_types=1);
 require_once __DIR__.'/domain.php';
 
-$pdo=database(); $user=authenticated_user($pdo); $state=load_state($pdo);
+$pdo=database(); $user=authenticated_user($pdo);
+$role=$pdo->prepare("SELECT record_json FROM app_records WHERE collection='systemRoles' AND id=?");$role->execute([$user['role']]);$roleJson=$role->fetchColumn();
+$state=['systemRoles'=>$roleJson===false?[]:[json_decode($roleJson,true,64,JSON_THROW_ON_ERROR)]];
 fail_unless($_SERVER['REQUEST_METHOD']==='GET','Use GET to query Leave Applications.',405);
 $modules=$user['sidebarModules']??null;
 $canViewLeave=$user['role']==='admin' || has_cap($state,$user,'canAdmin') || $modules===null || in_array('leave',$modules,true);

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { isDocumentActionableForUser } from '../services/documentTaskAssignment';
+import { getDashboardSummary, type DashboardSummary } from '../services/dashboardApi';
 import { 
   FileText, 
   Clock, 
@@ -28,15 +29,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
     documents, 
     currentUser, 
     setActiveTab, 
-    setSelectedDocument, 
+    setSelectedDocument, openTargetedDocument, stateRevision,
     auditLogs, showToast
   } = useApp();
+  const targeted=import.meta.env.VITE_DASHBOARD_TARGETED_READS==='1';
+  const [summary,setSummary]=useState<DashboardSummary|null>(null);
+  const [summaryError,setSummaryError]=useState(false);
+  const [retry,setRetry]=useState(0);
+  useEffect(()=>{
+    if(!targeted)return;
+    let active=true,pending=false;
+    const refresh=async()=>{if(pending)return;pending=true;try{const value=await getDashboardSummary();if(active){setSummary(value);setSummaryError(false);}}catch{if(active){setSummary(null);setSummaryError(true);}}finally{pending=false;}};
+    void refresh();const focus=()=>{if(document.visibilityState==='visible')void refresh();};
+    const timer=window.setInterval(focus,30000);
+    window.addEventListener('focus',focus);document.addEventListener('visibilitychange',focus);
+    return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);};
+  },[targeted,currentUser.id,stateRevision,retry]);
+  const openDashboardDocument=(id:string)=>{
+    if(targeted&&import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS==='1'){openTargetedDocument(id);return;}
+    const record=documents.find(item=>item.id===id);if(record)setSelectedDocument(record);
+  };
   const openRestricted = (allowed: boolean, tab: 'registry' | 'leave' | 'audit', label: string) => {
     if (allowed) setActiveTab(tab);
     else showToast('warning', 'Access restricted', `You are not authorized to access ${label}. Ask an administrator to enable this section for your account.`);
   };
 
-  const activeV2Docs = documents.filter(d => !d.isLegacyV1);
+  const activeV2Docs = targeted?[]:documents.filter(d => !d.isLegacyV1);
   const pendingApprovalDocs = activeV2Docs.filter(d => d.status === 'Pending_Approval');
   const concludedDocs = activeV2Docs.filter(d => ['Released', 'Disapproved'].includes(d.status));
   const inFlightDocs = activeV2Docs.filter(d => !['Released', 'Archived', 'Disapproved'].includes(d.status));
@@ -47,9 +65,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
     if (doc.status === 'Released' || doc.status === 'Archived' || doc.status === 'Disapproved') return false;
     return isDocumentActionableForUser(doc, currentUser, true);
   });
+  const actionableCount=targeted?summary?.metrics.actionable??0:myActionableTasks.length;
+  const inFlightCount=targeted?summary?.metrics.in_flight??0:inFlightDocs.length;
+  const pendingCount=targeted?summary?.metrics.pending??0:pendingApprovalDocs.length;
+  const concludedCount=targeted?summary?.metrics.concluded??0:concludedDocs.length;
+  const outsideCount=targeted?summary?.metrics.outside??0:outsideHrmdoDocs.length;
+  const taskRows=targeted?summary?.tasks??[]:myActionableTasks.map(doc=>({id:doc.id,tracking_number:doc.trackingNumber,title:doc.title,document_type:doc.documentType,source_office:doc.sourceOffice,status:doc.status,current_step_number:doc.currentStepNumber,total_steps:doc.totalSteps,current_step_name:doc.workflowSteps.find(step=>step.stepNumber===doc.currentStepNumber)?.name??null}));
+  const outsideRows=targeted?summary?.outside??[]:outsideHrmdoDocs.slice(0,5).map(doc=>({id:doc.id,trackingNumber:doc.trackingNumber,documentType:doc.documentType,currentLocation:doc.currentLocation,destinationOffice:doc.workflowSteps.find(step=>step.stepNumber===doc.currentStepNumber)?.externalHandoff?.destinationOffice??null}));
+  const activityRows=targeted?summary?.activity??[]:auditLogs.slice(0,4);
 
   return (
     <div className="space-y-6 pb-12">
+      {targeted&&!summary&&!summaryError&&<div role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Loading Dashboard summary...</div>}
+      {targeted&&summaryError&&<div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Dashboard summary could not be loaded. <button type="button" className="underline" onClick={()=>setRetry(value=>value+1)}>Retry</button></div>}
       
       {/* 1. Clean Operational Header */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs sm:p-6">
@@ -73,9 +101,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
             >
               <Inbox className="w-4 h-4 text-slate-500" />
               <span>My Tasks</span>
-              {myActionableTasks.length > 0 && (
+              {actionableCount > 0 && (
                 <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-blue-600 text-white">
-                  {myActionableTasks.length}
+                  {actionableCount}
                 </span>
               )}
             </button>
@@ -106,7 +134,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
             <Inbox className="w-4 h-4 text-blue-600 group-hover:scale-110 transition-transform" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-slate-900">
-            {myActionableTasks.length}
+            {actionableCount}
           </div>
           <div className="text-[11px] text-blue-600 font-medium mt-1 flex items-center gap-1">
             <span>Awaiting your processing</span>
@@ -126,7 +154,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
             <FileText className="w-4 h-4 text-slate-600 group-hover:scale-110 transition-transform" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-slate-900">
-            {inFlightDocs.length}
+            {inFlightCount}
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
             Documents in routing
@@ -145,7 +173,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
             <Clock className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-amber-600">
-            {pendingApprovalDocs.length}
+            {pendingCount}
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
             Awaiting executive review
@@ -164,7 +192,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
             <Send className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
           </div>
           <div className="text-2xl sm:text-3xl font-bold text-emerald-600">
-            {concludedDocs.length}
+            {concludedCount}
           </div>
           <div className="text-[11px] text-slate-500 mt-1">
             Officially completed
@@ -173,10 +201,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
 
       </div>
 
-      {outsideHrmdoDocs.length > 0 && (
+      {outsideCount > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-5 shadow-xs">
-          <div className="mb-3 flex items-center justify-between"><div><h2 className="text-sm font-bold text-amber-950">Outside HRMDO</h2><p className="text-xs text-amber-800">Documents in external custody and awaiting their return.</p></div><span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-bold text-amber-900">{outsideHrmdoDocs.length} Documents</span></div>
-          <div className="divide-y divide-amber-200/70">{outsideHrmdoDocs.slice(0,5).map(doc => { const step=doc.workflowSteps.find(item=>item.stepNumber===doc.currentStepNumber); return <button key={doc.id} type="button" onClick={() => setSelectedDocument(doc)} className="flex w-full items-center justify-between gap-3 py-2 text-left hover:bg-amber-100/60"><div className="min-w-0"><p className="font-mono text-xs font-bold text-amber-900">{doc.trackingNumber}</p><p className="truncate text-xs text-slate-700">{doc.documentType} • {step?.externalHandoff?.destinationOffice || doc.currentLocation}</p></div><span className="text-[11px] font-semibold text-amber-800">View</span></button>; })}</div>
+          <div className="mb-3 flex items-center justify-between"><div><h2 className="text-sm font-bold text-amber-950">Outside HRMDO</h2><p className="text-xs text-amber-800">Documents in external custody and awaiting their return.</p></div><span className="rounded-full bg-amber-200 px-2 py-0.5 text-xs font-bold text-amber-900">{outsideCount} Documents</span></div>
+          <div className="divide-y divide-amber-200/70">{outsideRows.map(doc => <button key={doc.id} type="button" onClick={() => openDashboardDocument(doc.id)} className="flex w-full items-center justify-between gap-3 py-2 text-left hover:bg-amber-100/60"><div className="min-w-0"><p className="font-mono text-xs font-bold text-amber-900">{doc.trackingNumber}</p><p className="truncate text-xs text-slate-700">{doc.documentType} • {doc.destinationOffice || doc.currentLocation}</p></div><span className="text-[11px] font-semibold text-amber-800">View</span></button>)}</div>
         </div>
       )}
 
@@ -206,7 +234,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
               </button>
             </div>
 
-            {myActionableTasks.length === 0 ? (
+            {actionableCount === 0 ? (
               <div className="text-center py-12 px-4 border border-dashed border-slate-200 rounded-xl bg-slate-50/50">
                 <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
                 <h3 className="text-sm font-semibold text-slate-800">Your desk is clear</h3>
@@ -230,24 +258,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
-                {myActionableTasks.map(doc => {
-                  const currentStep = doc.workflowSteps.find(s => s.stepNumber === doc.currentStepNumber);
+                {taskRows.map(doc => {
                   return (
                     <div
                       key={doc.id}
-                      onClick={() => setSelectedDocument(doc)}
+                      onClick={() => openDashboardDocument(doc.id)}
                       className="py-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/80 -mx-2 px-2 rounded-lg cursor-pointer transition-colors"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
                           <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                            {doc.trackingNumber}
+                            {doc.tracking_number}
                           </span>
                           <span className="text-xs font-semibold text-slate-700">
-                            {doc.documentType}
+                            {doc.document_type}
                           </span>
                           <span className="text-[11px] text-slate-400">
-                            from {doc.sourceOffice}
+                            from {doc.source_office}
                           </span>
                         </div>
 
@@ -257,7 +284,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
 
                         <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500">
                           <span className="font-medium text-blue-600">
-                            Phase {doc.currentStepNumber} of {doc.totalSteps}: {currentStep?.name}
+                            Phase {doc.current_step_number} of {doc.total_steps}: {doc.current_step_name}
                           </span>
                         </div>
                       </div>
@@ -344,7 +371,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
             </div>
 
             <div className="space-y-3">
-              {auditLogs.slice(0, 4).map(log => (
+              {activityRows.map(log => (
                 <div key={log.id} className="text-xs space-y-0.5 border-l-2 border-blue-500 pl-2.5 py-0.5">
                   <div className="font-semibold text-slate-900 line-clamp-1">
                     {log.summary}

@@ -1,7 +1,7 @@
 import { apiEndpoint, request, ApiError } from './http';
-import type { AuditEvent, DocumentClassification, DocumentRecord, DocumentStatus, PriorityLevel } from '../types';
+import type { AuditEvent, DocumentClassification, DocumentRecord, DocumentStatus, PriorityLevel, PayrollItem } from '../types';
 
-export interface DocumentDetailPayload { data: DocumentRecord; auditEvents: AuditEvent[] }
+export interface DocumentDetailPayload { data: DocumentRecord; auditEvents: AuditEvent[]; payrollItem?: PayrollItem | null }
 export interface ShellDocumentRow {
   id: string; trackingNumber: string; title: string; classification: DocumentClassification;
   documentType: string; sourceOffice: string; status: DocumentStatus; currentLocation?: string;

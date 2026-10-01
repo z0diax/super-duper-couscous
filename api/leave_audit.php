@@ -1,0 +1,22 @@
+<?php
+declare(strict_types=1);
+require_once __DIR__.'/domain.php';
+fail_unless(($_SERVER['REQUEST_METHOD']??'')==='GET','Method not allowed.',405);
+$pdo=database();$user=authenticated_user($pdo);
+fail_unless(getenv('HRMDO_LEAVE_EWP_TARGETED_READS_ENABLED')==='1','Targeted Leave/EWP reads are disabled.',503);
+foreach($_GET as $key=>$value)fail_unless(in_array($key,['id','page','limit'],true)&&is_string($value)&&$value!=='','Invalid query parameter.',400);
+fail_unless(isset($_GET['id'])&&preg_match('/^[A-Za-z0-9_-]{1,190}$/',$_GET['id']),'Invalid Leave ID.',400);
+$page=filter_var($_GET['page']??1,FILTER_VALIDATE_INT);$limit=filter_var($_GET['limit']??10,FILTER_VALIDATE_INT);
+fail_unless($page!==false&&$page>=1&&$limit!==false&&$limit>=1&&$limit<=50&&($page-1)*$limit<=2147483647,'Invalid page or limit.',400);
+$role=$pdo->prepare("SELECT record_json FROM app_records WHERE collection='systemRoles' AND id=?");$role->execute([$user['role']]);$rawRole=$role->fetchColumn();
+$roleState=['systemRoles'=>$rawRole===false?[]:[json_decode($rawRole,true,64,JSON_THROW_ON_ERROR)]];
+fail_unless(can_view_leave_application($roleState,$user,[]),'Leave record unavailable.',403);
+$record=$pdo->prepare("SELECT record_json FROM app_records WHERE collection='leaveApplications' AND id=?");$record->execute([$_GET['id']]);$raw=$record->fetchColumn();
+fail_unless($raw!==false,'Leave record was not found.',404);
+$leave=json_decode($raw,true,64,JSON_THROW_ON_ERROR);fail_unless(empty($leave['isLegacyV1']),'Leave record was not found.',404);
+$where="JSON_UNQUOTE(JSON_EXTRACT(record_json,'$.documentId'))=?";
+$count=$pdo->prepare("SELECT COUNT(*) FROM app_audit WHERE $where");$count->execute([$_GET['id']]);$total=(int)$count->fetchColumn();
+$query=$pdo->prepare("SELECT record_json FROM app_audit WHERE $where ORDER BY sequence DESC LIMIT ? OFFSET ?");
+$query->bindValue(1,$_GET['id']);$query->bindValue(2,$limit,PDO::PARAM_INT);$query->bindValue(3,($page-1)*$limit,PDO::PARAM_INT);$query->execute();
+$events=array_map(fn($row)=>json_decode($row['record_json'],true,64,JSON_THROW_ON_ERROR),$query->fetchAll());
+respond(['data'=>$events,'pagination'=>['page'=>$page,'limit'=>$limit,'total'=>$total,'totalPages'=>(int)ceil($total/$limit)]]);

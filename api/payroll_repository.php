@@ -45,6 +45,16 @@ function payroll_json_rows(PDO $pdo,string $collection,array $ids): array {
     $q=$pdo->prepare('SELECT id,record_json FROM app_records WHERE collection=? AND id IN ('.implode(',',array_fill(0,count($ids),'?')).')');
     payroll_bind($q,[$collection,...$ids]);$q->execute();
     $map=[];foreach($q as $row)$map[$row['id']]=json_decode($row['record_json'],true,64,JSON_THROW_ON_ERROR);
+    if($collection==='payrollBatches'){
+        $progress=$pdo->prepare('SELECT id,progress_json FROM payroll_read_batches WHERE id IN ('.implode(',',array_fill(0,count($ids),'?')).')');
+        payroll_bind($progress,$ids);$progress->execute();
+        foreach($progress as $row)if(isset($map[$row['id']])&&$row['progress_json']){
+            $summary=json_decode($row['progress_json'],true,64,JSON_THROW_ON_ERROR);
+            $map[$row['id']]['progress']=$summary;
+            $map[$row['id']]['status']=$summary['derivedStatus'];
+            $map[$row['id']]['currentStageName']=$summary['displayStatus'];
+        }
+    }
     return array_values(array_filter(array_map(fn($id)=>$map[$id]??null,$ids)));
 }
 function payroll_batch_list(PDO $pdo,array $user,array $filters,int $page=1,int $limit=10): array {

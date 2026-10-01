@@ -25,6 +25,11 @@ foreach(['payrollBatches'=>'payroll_read_batches','payrollItems'=>'payroll_read_
     foreach($sources[$collection] as $id=>$entry) if(($hashes[$id]??null)!==hash('sha256',$entry['raw'])) $issues[]="$collection:$id";
     foreach($hashes as $id=>$hash) if(!isset($sources[$collection][$id]))$issues[]="$collection:orphan:$id";
 }
+$progressRows=$pdo->query('SELECT id,progress_json,derived_status FROM payroll_read_batches')->fetchAll(PDO::FETCH_ASSOC);
+foreach($progressRows as $row){
+    $expected=$sources['payrollBatches'][$row['id']]['value']['progress']??null;
+    if($expected!==null && (json_decode($row['progress_json']??'null',true)!==$expected || $row['derived_status']!==$expected['derivedStatus']))$issues[]='payrollBatches:progress:'.$row['id'];
+}
 $memberCount=(int)$pdo->query('SELECT COUNT(*) FROM payroll_read_group_items')->fetchColumn();
 $sourceMembers=array_sum(array_map(fn($entry)=>count(array_unique($entry['value']['itemIds']??[])),$sources['workGroups']));
 $checks['groupItems']=['source'=>$sourceMembers,'projected'=>$memberCount];

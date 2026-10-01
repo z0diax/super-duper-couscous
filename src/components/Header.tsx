@@ -245,7 +245,7 @@ export const Header: React.FC<HeaderProps> = ({ documentShell, payrollShell, onO
         total:0,
       };
       if(request!==searchRequestId.current) return;
-      if(found.exact){if(searchTargeted)openShellDocument(found.exact.id,found.exact.trackingNumber,found.exact.status,found.exact.currentLocation);else openDocument(found.exact as DocumentRecord);return;}
+      if(found.exact){setSearchLoading(false);if(searchTargeted)openShellDocument(found.exact.id,found.exact.trackingNumber,found.exact.status,found.exact.currentLocation);else openDocument(found.exact as DocumentRecord);return;}
       if(payrollTargeted){
         const payroll=await searchPayroll(query);if(request!==searchRequestId.current)return;
         setSearchLoading(false);

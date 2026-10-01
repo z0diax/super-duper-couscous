@@ -64,7 +64,19 @@ function persist_state(PDO $pdo,array $before,array $after): void {
         }
         p2_write_project($pdo,p2_project($source,$existingFiles),$deletedDocuments,$deletedTemplates);
     }
-    payroll_write_projection($pdo,$payrollChanged,$payrollDeleted);
+    if ($payrollChanged['payrollBatches'] || $payrollChanged['payrollItems'] || $payrollChanged['workGroups'] || $payrollDeleted['payrollBatches'] || $payrollDeleted['payrollItems'] || $payrollDeleted['workGroups']) {
+        $affected=array_fill_keys(array_keys($payrollChanged['payrollBatches']),true);
+        foreach($payrollChanged['payrollItems'] as $entry)if(($entry['value']['batchId']??'')!=='SINGLE_ENTRY')$affected[$entry['value']['batchId']]=true;
+        if($payrollChanged['payrollItems'])foreach($before['payrollItems']??[] as $item)if(isset($payrollChanged['payrollItems'][$item['id']]) && ($item['batchId']??'')!=='SINGLE_ENTRY')$affected[$item['batchId']]=true;
+        foreach($payrollDeleted['payrollItems'] as $id)foreach($before['payrollItems']??[] as $item)if($item['id']===$id && ($item['batchId']??'')!=='SINGLE_ENTRY')$affected[$item['batchId']]=true;
+        foreach($after['payrollBatches']??[] as $batch)if(isset($affected[$batch['id']])){
+            $raw=$payrollChanged['payrollBatches'][$batch['id']]['raw']??json_encode($batch,JSON_THROW_ON_ERROR);
+            $items=array_values(array_filter($after['payrollItems']??[],fn($item)=>($item['batchId']??'')===$batch['id']));
+            $batch['progress']=calculate_payroll_batch_progress($batch,$items);
+            $payrollChanged['payrollBatches'][$batch['id']]=['value'=>$batch,'raw'=>$raw];
+        }
+        payroll_write_projection($pdo,$payrollChanged,$payrollDeleted);
+    }
 }
 function audit(PDO $pdo,array $user,string $action,string $id,string $summary,string $details='',string $tracking=''): void {
     $event=['id'=>uid('audit'),'timestamp'=>now(),'actorId'=>$user['id'],'actorName'=>$user['name'],'actorRole'=>$user['roleTitle'],'actionType'=>$action,'documentId'=>$id,'trackingNumber'=>$tracking,'summary'=>$summary,'details'=>$details];
