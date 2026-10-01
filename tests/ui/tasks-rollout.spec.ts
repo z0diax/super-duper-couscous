@@ -6,7 +6,7 @@ let documentId='';
 const targeted=process.env.VITE_DOCUMENT_TASKS_TARGETED_READS==='1';
 const targetedDetail=process.env.VITE_DOCUMENT_DETAIL_TARGETED_READS==='1';
 test.beforeAll(async()=>{
-  fixture=await startFixture(18780,{HRMDO_DOCUMENT_TARGETED_READS_ENABLED:'1'});
+  fixture=await startFixture(18780,{HRMDO_DOCUMENT_TARGETED_READS_ENABLED:'1',HRMDO_PAYROLL_TARGETED_READS_ENABLED:'1',HRMDO_DASHBOARD_TARGETED_READS_ENABLED:'1',HRMDO_LEAVE_EWP_TARGETED_READS_ENABLED:'1'});
   const admin=await new Client(fixture.base).login();
   await admin.action('addUser',[{name:'Task Worker',email:'task-worker@example.test',password:testPassword,role:'processor',roleTitle:'Processor',office:'HRMDO',division:'Operations',position:'Officer'}]);
   await admin.action('createWorkflowTemplate',[{title:'Task rollout',description:'Browser task',classification:'Communication',documentType:'Office Order',isActive:true,steps:[{stepNumber:1,name:'Initial review',description:'Review',assigneeType:'Role',assigneeRole:'processor',assigneeName:'Processor',slaHours:24,requiredAction:'Verify & Process',allowReturn:false,allowHold:true,requiresAttachment:false}]}]);

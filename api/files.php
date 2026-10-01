@@ -16,6 +16,15 @@ if ($method==='GET') {
     header("Content-Disposition: attachment; filename=\"download\"; filename*=UTF-8''".rawurlencode($file['original_name']));
     session_write_close(); readfile($path); exit;
 }
+if ($method==='DELETE') {
+    csrf_check();$id=$_GET['id']??'';
+    fail_unless(is_string($id)&&(bool)preg_match('/^file-[a-f0-9]{24}$/',$id),'File not found.',404);
+    $q=$pdo->prepare('SELECT owner_id,uploaded_by FROM app_files WHERE id=?');$q->execute([$id]);$file=$q->fetch();
+    fail_unless((bool)$file&&$file['uploaded_by']===$u['id']&&$file['owner_id']===null,'File not found.',404);
+    $pdo->prepare('DELETE FROM app_files WHERE id=? AND owner_id IS NULL AND uploaded_by=?')->execute([$id,$u['id']]);
+    $path=app_config()['upload_directory'].'/'.$id;if(is_file($path))unlink($path);
+    respond(['ok'=>true]);
+}
 fail_unless($method==='POST','Method not allowed.',405); csrf_check();
 $f=$_FILES['file']??null; fail_unless(is_array($f) && $f['error']===UPLOAD_ERR_OK,'Upload failed. Check the file size and PHP upload limits.');
 fail_unless($f['size']>0 && $f['size']<=app_config()['upload_max_bytes'],'Files must be between 1 byte and 10 MB.',413);

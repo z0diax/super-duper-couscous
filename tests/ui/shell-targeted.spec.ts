@@ -7,7 +7,7 @@ const targetedSearch=process.env.VITE_DOCUMENT_SEARCH_TARGETED_READS==='1';
 const targetedShell=process.env.VITE_DOCUMENT_SHELL_TARGETED_READS==='1';
 const targetedDetail=process.env.VITE_DOCUMENT_DETAIL_TARGETED_READS==='1';
 test.beforeAll(async()=>{
-  fixture=await startFixture(18782,{HRMDO_DOCUMENT_TARGETED_READS_ENABLED:'1'});
+  fixture=await startFixture(18782,{HRMDO_DOCUMENT_TARGETED_READS_ENABLED:'1',HRMDO_PAYROLL_TARGETED_READS_ENABLED:'1',HRMDO_DASHBOARD_TARGETED_READS_ENABLED:'1',HRMDO_LEAVE_EWP_TARGETED_READS_ENABLED:'1'});
   const admin=await new Client(fixture.base).login();
   const user=admin.state.users.find((item:any)=>item.role==='admin');
   await admin.action('createWorkflowTemplate',[{title:'Shell workflow',description:'Shell test',classification:'Communication',documentType:'Office Order',isActive:true,steps:[{stepNumber:1,name:'Shell review',description:'Review',assigneeType:'Person',assigneeUserId:user.id,assigneeName:user.name,slaHours:24,requiredAction:'Verify & Process',allowReturn:true,requiresAttachment:false}]}]);

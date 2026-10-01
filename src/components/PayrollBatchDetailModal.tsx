@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { useWorkspaceState } from '../services/workspace';
 import { PayrollBatch, EmploymentClassification } from '../types';
 import { getPayrollBatchDetail,type PayrollBatchDetail } from '../services/payrollApi';
+import { useResourceInvalidation } from '../services/resourceInvalidation';
 import { 
   X, 
   Layers, 
@@ -71,6 +72,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     can,stateRevision
   } = useApp();
   const payrollTargeted=import.meta.env.VITE_PAYROLL_TARGETED_READS==='1';
+  const invalidation=useResourceInvalidation('payroll');
   const [detail,setDetail]=useState<PayrollBatchDetail|null>(null);
   const [detailLoading,setDetailLoading]=useState(payrollTargeted);
   const [detailError,setDetailError]=useState(false);
@@ -91,7 +93,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     const resume=()=>{if(document.visibilityState==='visible')void refresh();};
     window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};
-  },[payrollTargeted,isOpen,sourceBatch?.id,itemPage,groupPage,stateRevision,detailRetry]);
+  },[payrollTargeted,isOpen,sourceBatch?.id,itemPage,groupPage,stateRevision,detailRetry,invalidation]);
   const batch=payrollTargeted?detail?.batch||sourceBatch:sourceBatch;
   const workGroups=payrollTargeted?detail?.workGroups||[]:legacyWorkGroups;
 

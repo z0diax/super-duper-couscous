@@ -35,6 +35,7 @@ import { EmploymentRoutingRulesModal } from './EmploymentRoutingRulesModal';
 import { EditPayrollBatchModal } from './EditPayrollBatchModal';
 import { useWorkspaceState } from '../services/workspace';
 import { getPayrollBatchDetail,listPayrollBatches,listSinglePayroll,type PayrollBatchList,type PayrollBatchDetail,type PayrollPage } from '../services/payrollApi';
+import { useResourceInvalidation } from '../services/resourceInvalidation';
 
 interface Props {
   onOpenRegisterBatchModal: () => void;
@@ -57,6 +58,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     can,stateRevision,showToast
   } = useApp();
   const payrollTargeted=import.meta.env.VITE_PAYROLL_TARGETED_READS==='1';
+  const invalidation=useResourceInvalidation('payroll');
   const [batchList,setBatchList]=useState<PayrollBatchList|null>(null);
   const [singleList,setSingleList]=useState<PayrollPage<DocumentRecord>|null>(null);
   const [singleError,setSingleError]=useState(false);
@@ -92,7 +94,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     const resume=()=>{if(document.visibilityState==='visible')void refresh();};
     window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};
-  },[payrollTargeted,currentUser.id,stateRevision,officeFilter,stageFilter,batchListPage,batchRetry,setBatchListPage]);
+  },[payrollTargeted,currentUser.id,stateRevision,officeFilter,stageFilter,batchListPage,batchRetry,setBatchListPage,invalidation]);
   useEffect(()=>{
     if(!payrollTargeted||!editingBatchId){setEditingDetail(null);return;}
     let active=true;
@@ -103,7 +105,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
       if(active)setEditingDetail({...first,items});
     }catch{if(active)showToast('error','Payroll unavailable','The batch could not be loaded for editing.');}})();
     return()=>{active=false;};
-  },[payrollTargeted,editingBatchId,stateRevision,showToast]);
+  },[payrollTargeted,editingBatchId,stateRevision,showToast,invalidation]);
   useEffect(()=>{
     if(!payrollTargeted||viewMode!=='single_entries')return;
     let active=true,pending=false;
@@ -117,7 +119,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},5000);
     const resume=()=>{if(document.visibilityState==='visible')void refresh();};window.addEventListener('focus',resume);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);};
-  },[payrollTargeted,viewMode,currentUser.id,stateRevision,officeFilter,stageFilter,singleListPage,singleRetry,setSingleListPage]);
+  },[payrollTargeted,viewMode,currentUser.id,stateRevision,officeFilter,stageFilter,singleListPage,singleRetry,setSingleListPage,invalidation]);
   const payrollBatches=payrollTargeted?batchList?.data||[]:legacyPayrollBatches;
   const payrollItems=payrollTargeted?editingDetail?.items||[]:legacyPayrollItems;
   const workGroups=payrollTargeted?[]:legacyWorkGroups;

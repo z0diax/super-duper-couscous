@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { EwpRecord, LeaveApplicationRecord, LeaveDateRange, LeaveType } from '../types';
 import { CalendarClock, Eye, FileCheck2, HeartHandshake, Pencil, Plus, RefreshCcw, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { queryLeaveRegistry, queryEwp, getLeaveDetail, getLeaveAudit, type EwpPage, type LeaveAuditPage } from '../services/leaveApi';
+import { useResourceInvalidation } from '../services/resourceInvalidation';
 import { readWorkspaceValue, writeWorkspaceValue } from '../services/workspace';
 import { OFFICE_OPTIONS } from '../data/offices';
 import { LeaveDateRangePicker } from './LeaveDateRangePicker';
@@ -109,6 +110,8 @@ const parseDateValue = (value: string) => {
 export const LeaveContinuity: React.FC = () => {
   const { auditLogs, ewpRecords, currentUser, stateRevision, fileLeaveApplication, registerEwpRecord, updateEwpRecord, deleteEwpRecord: deleteEwp, updateLeaveApplication, deleteLeaveApplication, changeLeaveApplicationStatus, can } = useApp();
   const targetedEwp=import.meta.env.VITE_LEAVE_EWP_TARGETED_READS==='1';
+  const leaveInvalidation=useResourceInvalidation('leave');
+  const ewpInvalidation=useResourceInvalidation('ewp');
   const [ewpPage,setEwpPage]=useState(1);
   const [ewpResult,setEwpResult]=useState<EwpPage|null>(null);
   const [ewpError,setEwpError]=useState(false);
@@ -152,18 +155,18 @@ export const LeaveContinuity: React.FC = () => {
   const canViewLeave = currentUser.role === 'admin' || currentUser.sidebarModules === undefined || currentUser.sidebarModules.includes('leave');
   const loadRegistry=useCallback(async()=>{ setIsQuerying(true); setQueryError(''); try { const result=await queryLeaveRegistry({q:searchQuery,status:filterStatus==='all'?'':filterStatus,leaveType:filterType==='all'?'':filterType,office:filterOffice,filedFrom,filedTo,leaveDate,page,pageSize,sort}); setRecords(result.items); setSummary(result.summary); setPagination(result.pagination); setOffices(result.offices); if(result.pagination.page!==page)setPage(result.pagination.page); } catch(error){setQueryError(error instanceof Error?error.message:'Leave records could not be loaded.');} finally {setIsQuerying(false);}},[filedFrom,filedTo,filterOffice,filterStatus,filterType,leaveDate,page,pageSize,searchQuery,sort]);
   useEffect(()=>{if(!canViewLeave||targetedEwp)return;const timer=setTimeout(()=>void loadRegistry(),300);return()=>clearTimeout(timer);},[canViewLeave,targetedEwp,loadRegistry]);
-  useEffect(()=>{if(!targetedEwp||!canViewLeave||registryMode!=='leave')return;void loadRegistry();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void loadRegistry();},15000);const focus=()=>{if(document.visibilityState==='visible')void loadRegistry();};window.addEventListener('focus',focus);return()=>{window.clearInterval(timer);window.removeEventListener('focus',focus);};},[targetedEwp,canViewLeave,registryMode,stateRevision,loadRegistry]);
+  useEffect(()=>{if(!targetedEwp||!canViewLeave||registryMode!=='leave')return;void loadRegistry();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void loadRegistry();},15000);const focus=()=>{if(document.visibilityState==='visible')void loadRegistry();};window.addEventListener('focus',focus);return()=>{window.clearInterval(timer);window.removeEventListener('focus',focus);};},[targetedEwp,canViewLeave,registryMode,stateRevision,loadRegistry,leaveInvalidation]);
   useEffect(()=>{
     if(!targetedEwp||!canViewLeave||registryMode!=='ewp')return;
     let active=true,pending=false;
     const refresh=async()=>{if(pending)return;pending=true;try{const value=await queryEwp(ewpSearch,ewpPage);if(active){setEwpResult(value);setEwpError(false);if(ewpPage>Math.max(1,value.pagination.totalPages))setEwpPage(Math.max(1,value.pagination.totalPages));}}catch{if(active){setEwpResult(null);setEwpError(true);}}finally{pending=false;}};
     void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},15000);const focus=()=>{if(document.visibilityState==='visible')void refresh();};window.addEventListener('focus',focus);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',focus);};
-  },[targetedEwp,canViewLeave,registryMode,currentUser.id,stateRevision,ewpSearch,ewpPage,ewpRetry]);
+  },[targetedEwp,canViewLeave,registryMode,currentUser.id,stateRevision,ewpSearch,ewpPage,ewpRetry,ewpInvalidation]);
   useEffect(()=>{if(targetedEwp)setEwpPage(1);},[targetedEwp,ewpSearch]);
-  useEffect(()=>{if(!targetedEwp||!selectedRecord)return;let active=true;getLeaveDetail(selectedRecord.id).then(({record})=>{if(active)setSelectedRecord(record);}).catch(()=>{if(active)setSelectedRecord(null);});return()=>{active=false;};},[targetedEwp,selectedRecord?.id,stateRevision]);
+  useEffect(()=>{if(!targetedEwp||!selectedRecord)return;let active=true;getLeaveDetail(selectedRecord.id).then(({record})=>{if(active)setSelectedRecord(record);}).catch(()=>{if(active)setSelectedRecord(null);});return()=>{active=false;};},[targetedEwp,selectedRecord?.id,stateRevision,leaveInvalidation]);
   useEffect(()=>{setLeaveAuditPage(1);setLeaveAudit(null);},[selectedRecord?.id]);
-  useEffect(()=>{if(!targetedEwp||!selectedRecord)return;let active=true;getLeaveAudit(selectedRecord.id,leaveAuditPage).then(result=>{if(active)setLeaveAudit(result);}).catch(()=>{if(active)setLeaveAudit(null);});return()=>{active=false;};},[targetedEwp,selectedRecord?.id,leaveAuditPage,stateRevision]);
+  useEffect(()=>{if(!targetedEwp||!selectedRecord)return;let active=true;getLeaveAudit(selectedRecord.id,leaveAuditPage).then(result=>{if(active)setLeaveAudit(result);}).catch(()=>{if(active)setLeaveAudit(null);});return()=>{active=false;};},[targetedEwp,selectedRecord?.id,leaveAuditPage,stateRevision,leaveInvalidation]);
   const canRegister = can('canIntake') && canViewLeave;
   const canChangeStatus = canViewLeave && (can('canProcess') || can('canApprove') || can('canRelease') || can('canSupervise'));
   const canModifyRecord = (record: LeaveApplicationRecord) => !record.isLegacyV1 && record.status==='For_Computation' && canRegister && (record.createdByUserId===currentUser.id || can('canSupervise') || can('canAdmin'));

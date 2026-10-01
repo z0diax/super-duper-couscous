@@ -9,7 +9,8 @@ if ($method==='POST') { csrf_check(); $body=request_json(); }
 $pdo->beginTransaction();
 try {
     // One revision lock serializes related entity changes and prevents stale UI actions.
-    $revision=(int)$pdo->query('SELECT revision FROM app_meta WHERE id=1 FOR UPDATE')->fetchColumn();
+    $meta=$pdo->query('SELECT revision,config_revision FROM app_meta WHERE id=1 FOR UPDATE')->fetch();
+    $revision=(int)$meta['revision'];$configRevision=(int)$meta['config_revision'];
     $user=authenticated_user($pdo);
     $state=load_state($pdo); payroll_attach_batch_progress($state); $result=null;
     if ($method==='POST') {
@@ -99,6 +100,8 @@ try {
             $password=required($d,'newPassword',72); fail_unless(mb_strlen($password)>=3 && strlen($password)<=72,'Use a password with at least 3 characters and at most 72 bytes.');
             $hash=password_hash($password,PASSWORD_DEFAULT); $pdo->prepare('UPDATE app_users SET password_hash=? WHERE id=?')->execute([$hash,$user['id']]); $_SESSION['credential']=hash('sha256',$hash); $result=true;
         } else $result=management_action($pdo,$state,$user,$action,$args);
+        $configChanged=in_array($action,['addUser','updateUser','deleteUser','changePassword'],true);
+        foreach (['users','systemRoles','assigneeDesignations','classifications','workflowTemplates','employmentRoutingRules'] as $key) if (($before[$key]??[])!==($state[$key]??[])) { $configChanged=true; break; }
         persist_state($pdo,$before,$state);
         $id=is_array($result)?($result['id']??'system'):(is_string($args[0]??null)?$args[0]:'system');
         $details='';
@@ -143,12 +146,12 @@ try {
             $auditSummary='External review disapproved document';
         }
         audit($pdo,$user,$auditAction,$id,$auditSummary,$details,is_array($result)?($result['trackingNumber']??$result['batchNumber']??$result['barcode']??''):'');
-        $pdo->exec('UPDATE app_meta SET revision=revision+1 WHERE id=1'); $revision++;
+        $pdo->exec('UPDATE app_meta SET revision=revision+1'.($configChanged?',config_revision=config_revision+1':'').' WHERE id=1'); $revision++;if($configChanged)$configRevision++;
         $state=load_state($pdo); payroll_attach_batch_progress($state);
     }
     // Build the response from the authenticated user's record-level scope.  Actions
     // above always use the full state, so permission checks and routing rules are
     // evaluated against complete operational data before any records are hidden.
     $state=filter_state_for_view($state,$user);
-    $pdo->commit(); respond(['state'=>$state,'revision'=>$revision,'result'=>$result]);
+    $pdo->commit(); respond(['state'=>$state,'revision'=>$revision,'configRevision'=>$configRevision,'result'=>$result]);
 } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }

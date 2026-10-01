@@ -1,6 +1,7 @@
 import { exportCsv } from '../services/csv';
 import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useResourceInvalidation } from '../services/resourceInvalidation';
 import { DocumentRecord } from '../types';
 import { useWorkspaceState } from '../services/workspace';
 import { documentSenderLabel } from '../services/documentDisplay';
@@ -25,6 +26,7 @@ interface DocumentRegistryProps {
 
 export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegisterModal }) => {
   const { documents, setSelectedDocument, openTargetedDocument, showToast, deleteDocument, can, currentUser, stateRevision } = useApp();
+  const invalidation=useResourceInvalidation('document');
   const targeted = import.meta.env.VITE_DOCUMENT_REGISTRY_TARGETED_READS === '1';
   const targetedDetail = import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS === '1';
 
@@ -40,6 +42,15 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
   const requestId = useRef(0);
+  const lastQuery=useRef('');
+  useEffect(()=>{
+    if(!targeted)return;
+    const refresh=()=>{if(document.visibilityState==='visible')setRetry(value=>value+1);};
+    const timer=window.setInterval(refresh,15000);
+    window.addEventListener('focus',refresh);
+    document.addEventListener('visibilitychange',refresh);
+    return()=>{window.clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+  },[targeted]);
   // Single payroll vouchers use the document workflow engine internally, but
   // they belong exclusively to Payroll Management in the user-facing UI.
   const registryDocuments = targeted ? [] : documents.filter(doc => doc.classification !== 'Payroll');
@@ -48,14 +59,16 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
   useEffect(() => {
     if (!targeted) return;
     const id = ++requestId.current;
-    setLoading(true); setError(false); setTargetPage(null);
+    const query=JSON.stringify([currentUser.id,datasetFilter,effectiveClassificationFilter,statusFilter,priorityFilter,page,pageSize]);
+    if(lastQuery.current!==query||!targetPage){setLoading(true);setTargetPage(null);}
+    lastQuery.current=query;setError(false);
     listRegistryDocuments(filters, page, pageSize).then(result => {
       if (id !== requestId.current) return;
       if (page > 1 && result.pagination.totalPages > 0 && page > result.pagination.totalPages) { setPage(result.pagination.totalPages); return; }
       setTargetPage(result); setLoading(false);
     }).catch(() => { if (id === requestId.current) { setTargetPage(null); setLoading(false); setError(true); } });
     return () => { requestId.current++; };
-  }, [targeted, currentUser.id, datasetFilter, effectiveClassificationFilter, statusFilter, priorityFilter, page, pageSize, stateRevision, retry]);
+  }, [targeted, currentUser.id, datasetFilter, effectiveClassificationFilter, statusFilter, priorityFilter, page, pageSize, stateRevision, retry,invalidation]);
   const updateDataset = (value: 'all' | 'v1' | 'v2') => { setPage(1); setDatasetFilter(value); };
   const updateClassification = (value: string) => { setPage(1); setClassificationFilter(value); };
   const updateStatus = (value: string) => { setPage(1); setStatusFilter(value); };

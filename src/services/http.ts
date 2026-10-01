@@ -26,4 +26,5 @@ export async function uploadFiles(files: File[]): Promise<UploadedFile[]> {
   }
   return uploaded;
 }
+export const deleteUnattachedUpload=(id:string):Promise<{ok:boolean}>=>request(`files.php?id=${encodeURIComponent(id)}`,{method:'DELETE'});
 export const downloadUrl = (id: string) => `${apiEndpoint('files.php')}?id=${encodeURIComponent(id)}`;

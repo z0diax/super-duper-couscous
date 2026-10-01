@@ -1,9 +1,11 @@
 import { useEffect,useState } from 'react';
 import { getPayrollShellSummary,type PayrollShellSummary } from './payrollApi';
+import { useResourceInvalidation } from './resourceInvalidation';
 
 export interface PayrollShellSnapshot {summary:PayrollShellSummary|null;loading:boolean;error:boolean;retry:()=>void}
 export function usePayrollShellSummary(userId:string,revision:number):PayrollShellSnapshot {
   const enabled=import.meta.env.VITE_PAYROLL_TARGETED_READS==='1';
+  const invalidation=useResourceInvalidation('payroll');
   const [summary,setSummary]=useState<PayrollShellSummary|null>(null);
   const [summaryUser,setSummaryUser]=useState('');
   const [loading,setLoading]=useState(enabled);const [error,setError]=useState(false);const [retry,setRetry]=useState(0);
@@ -21,6 +23,6 @@ export function usePayrollShellSummary(userId:string,revision:number):PayrollShe
     const resume=()=>{if(document.visibilityState==='visible')void refresh();};
     window.addEventListener('focus',resume);window.addEventListener('online',resume);document.addEventListener('visibilitychange',resume);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);window.removeEventListener('online',resume);document.removeEventListener('visibilitychange',resume);};
-  },[enabled,userId,revision,retry]);
+  },[enabled,userId,revision,retry,invalidation]);
   return {summary:enabled&&summaryUser===userId?summary:null,loading:enabled&&loading,error:enabled&&error,retry:()=>setRetry(value=>value+1)};
 }

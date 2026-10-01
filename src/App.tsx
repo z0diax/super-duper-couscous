@@ -30,7 +30,7 @@ const MainLayout: React.FC = () => {
     authReady,
     isAuthenticated,
     databaseReady,
-    databaseError,
+    databaseError,syncError,retrySync,
     isSaving, can, refreshState, workflowTemplates,
     users,
     currentUser,
@@ -119,6 +119,7 @@ const MainLayout: React.FC = () => {
 
         {/* Dynamic Main Body Content */}
         <main className="flex-1 max-w-7xl w-full mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+          {syncError&&<div role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{syncError} <button type="button" className="font-semibold underline" onClick={()=>void retrySync().catch(()=>{})}>Retry sync</button></div>}
           {can('canAdmin') && !workflowTemplates.some(w => w.isActive) && <div className="mb-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">Before registering documents, configure your users, review the classification catalogue, and create active workflows. Payroll batches also require employment routing rules.</div>}
           {activeTab === 'dashboard' && (
             <Dashboard onOpenRegisterModal={() => { if (canRegisterDocument) setIsRegisterModalOpen(true); }} canRegisterDocument={canRegisterDocument} canViewRegistry={canViewRegistry} canViewLeave={canViewLeaveTab} canViewAudit={canViewAudit} />

@@ -7,6 +7,11 @@ export interface AppState {
   payrollBatches: PayrollBatch[]; payrollItems: PayrollItem[]; workGroups: WorkGroup[]; employmentRoutingRules: EmploymentRoutingRule[];
 }
 export const emptyState: AppState = { users: [], assigneeDesignations: [], systemRoles: [], documents: [], classifications: [], workflowTemplates: [], leaveApplications: [], ewpRecords: [], migrationSummaries: [], auditLogs: [], payrollBatches: [], payrollItems: [], workGroups: [], employmentRoutingRules: [] };
-export interface StateResponse { state: AppState; revision: number; result?: unknown }
+export interface StateResponse { state: AppState; revision: number; configRevision: number; result?: unknown }
 export const loadAppState = (): Promise<StateResponse> => request('state.php');
 export const performAction = (action: string, args: unknown[], revision: number): Promise<StateResponse> => request('state.php', { method: 'POST', body: JSON.stringify({ action, args, revision }) });
+export interface RevisionResponse { revision: number; configRevision: number; user: UserAccount }
+export const getRevision = (): Promise<RevisionResponse> => request('revision.php');
+export type ReferenceData = Pick<AppState,'users'|'assigneeDesignations'|'systemRoles'|'classifications'|'workflowTemplates'|'employmentRoutingRules'>;
+export interface ReferenceResponse { configRevision: number; data: ReferenceData; user: UserAccount }
+export const getReferenceData = (): Promise<ReferenceResponse> => request('reference.php');

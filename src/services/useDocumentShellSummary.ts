@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getDocumentShellSummary, type DocumentShellSummary } from './documentApi';
+import { useResourceInvalidation } from './resourceInvalidation';
 
 export interface DocumentShellSnapshot {
   summary: DocumentShellSummary | null;
@@ -10,6 +11,7 @@ export interface DocumentShellSnapshot {
 
 export function useDocumentShellSummary(userId: string, revision: number): DocumentShellSnapshot {
   const enabled=import.meta.env.VITE_DOCUMENT_SHELL_TARGETED_READS==='1';
+  const invalidation=useResourceInvalidation('document');
   const [summary,setSummary]=useState<DocumentShellSummary | null>(null);
   const [summaryUserId,setSummaryUserId]=useState('');
   const [loading,setLoading]=useState(enabled);
@@ -33,6 +35,6 @@ export function useDocumentShellSummary(userId: string, revision: number): Docum
     window.addEventListener('online',onResume);
     document.addEventListener('visibilitychange',onResume);
     return ()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',onResume);window.removeEventListener('online',onResume);document.removeEventListener('visibilitychange',onResume);};
-  },[enabled,userId,revision,retryCount]);
+  },[enabled,userId,revision,retryCount,invalidation]);
   return {summary:enabled&&summaryUserId===userId?summary:null,loading:enabled&&loading,error:enabled&&error,retry:()=>setRetryCount(value=>value+1)};
 }

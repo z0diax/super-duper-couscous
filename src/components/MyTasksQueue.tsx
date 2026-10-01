@@ -20,12 +20,15 @@ import { currentDocumentStep, isDocumentActionableForUser } from '../services/do
 import { documentSenderLabel } from '../services/documentDisplay';
 import { listMyDocumentTasks, type DocumentTaskPage, type DocumentTaskQueue, type DocumentTaskRow } from '../services/documentApi';
 import { listPayrollTasks,listHeldPayrollItems,type PayrollTaskPage,type PayrollHeldPage,type PayrollTaskBatch } from '../services/payrollApi';
+import { useResourceInvalidation } from '../services/resourceInvalidation';
 
 export const MyTasksQueue: React.FC = () => {
   const { documents, currentUser, users, setSelectedDocument, openTargetedDocument, showToast, stateRevision, claimTask, payrollBatches:legacyPayrollBatches, payrollItems:legacyPayrollItems, workGroups:legacyWorkGroups, employmentRoutingRules, openBatchModal, recordPayrollItemCompliance, recheckPayrollItem, completePayrollItemInitialCheckingAndRoute } = useApp();
   const targeted=import.meta.env.VITE_DOCUMENT_TASKS_TARGETED_READS==='1';
   const targetedDetail=import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS==='1';
   const payrollTargeted=import.meta.env.VITE_PAYROLL_TARGETED_READS==='1';
+  const documentInvalidation=useResourceInvalidation('document');
+  const payrollInvalidation=useResourceInvalidation('payroll');
 
   const [activeQueue, setActiveQueue] = useState<DocumentTaskQueue>('my_tasks');
   const [filterClass, setFilterClass] = useState<string>('all');
@@ -38,6 +41,15 @@ export const MyTasksQueue: React.FC = () => {
   const [taskError, setTaskError] = useState(false);
   const [taskRetry, setTaskRetry] = useState(0);
   const taskRequestId=useRef(0);
+  const lastTaskQuery=useRef('');
+  useEffect(()=>{
+    if(!targeted)return;
+    const refresh=()=>{if(document.visibilityState==='visible')setTaskRetry(value=>value+1);};
+    const timer=window.setInterval(refresh,5000);
+    window.addEventListener('focus',refresh);
+    document.addEventListener('visibilitychange',refresh);
+    return()=>{window.clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+  },[targeted]);
   const [payrollPage,setPayrollPage]=useState(1);
   const [heldPage,setHeldPage]=useState(1);
   const [payrollTasks,setPayrollTasks]=useState<PayrollTaskPage|null>(null);
@@ -63,7 +75,7 @@ export const MyTasksQueue: React.FC = () => {
     const resume=()=>{if(document.visibilityState==='visible')void refresh();};
     window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};
-  },[payrollTargeted,currentUser.id,stateRevision,submittedSearch,payrollPage,heldPage,payrollRetry]);
+  },[payrollTargeted,currentUser.id,stateRevision,submittedSearch,payrollPage,heldPage,payrollRetry,payrollInvalidation]);
   const payrollBatches=payrollTargeted?[...(payrollTasks?.data||[]),...(payrollHeld?.batches||[])]:legacyPayrollBatches;
   const payrollItems=payrollTargeted?payrollHeld?.data||[]:legacyPayrollItems;
   const workGroups=payrollTargeted?(payrollTasks?.data||[]).flatMap(batch=>batch._assignedGroup?[batch._assignedGroup]:[]):legacyWorkGroups;
@@ -76,14 +88,16 @@ export const MyTasksQueue: React.FC = () => {
   useEffect(()=>{
     if (!targeted) return;
     const request=++taskRequestId.current;
-    setTaskLoading(true); setTaskError(false); setTaskPage(null);
+    const query=JSON.stringify([currentUser.id,activeQueue,filterClass,submittedSearch,page,pageSize]);
+    if(lastTaskQuery.current!==query||!taskPage){setTaskLoading(true);setTaskPage(null);}
+    lastTaskQuery.current=query;setTaskError(false);
     listMyDocumentTasks(activeQueue,{classification:filterClass==='all'?undefined:filterClass,search:submittedSearch},page,pageSize).then(result=>{
       if (request!==taskRequestId.current) return;
       if (page>1 && page>Math.max(1,result.pagination.totalPages)) { setPage(Math.max(1,result.pagination.totalPages)); return; }
       setTaskPage(result); setTaskLoading(false);
     }).catch(()=>{if(request===taskRequestId.current){setTaskPage(null);setTaskLoading(false);setTaskError(true);}});
     return ()=>{taskRequestId.current++;};
-  },[targeted,currentUser.id,activeQueue,filterClass,submittedSearch,page,pageSize,stateRevision,taskRetry]);
+  },[targeted,currentUser.id,activeQueue,filterClass,submittedSearch,page,pageSize,stateRevision,taskRetry,documentInvalidation]);
   const selectQueue=(queue:DocumentTaskQueue)=>{setPage(1);setActiveQueue(queue);};
   const taskDocuments=targeted?[]:documents;
   const openTask=(id:string,classification:string)=>{

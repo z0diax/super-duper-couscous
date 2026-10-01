@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { isDocumentActionableForUser } from '../services/documentTaskAssignment';
 import { getDashboardSummary, type DashboardSummary } from '../services/dashboardApi';
+import { useResourceInvalidation } from '../services/resourceInvalidation';
 import { 
   FileText, 
   Clock, 
@@ -33,6 +34,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
     auditLogs, showToast
   } = useApp();
   const targeted=import.meta.env.VITE_DASHBOARD_TARGETED_READS==='1';
+  const invalidation=useResourceInvalidation('dashboard');
   const [summary,setSummary]=useState<DashboardSummary|null>(null);
   const [summaryError,setSummaryError]=useState(false);
   const [retry,setRetry]=useState(0);
@@ -44,7 +46,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onOpenRegisterModal, canRe
     const timer=window.setInterval(focus,30000);
     window.addEventListener('focus',focus);document.addEventListener('visibilitychange',focus);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',focus);document.removeEventListener('visibilitychange',focus);};
-  },[targeted,currentUser.id,stateRevision,retry]);
+  },[targeted,currentUser.id,stateRevision,retry,invalidation]);
   const openDashboardDocument=(id:string)=>{
     if(targeted&&import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS==='1'){openTargetedDocument(id);return;}
     const record=documents.find(item=>item.id===id);if(record)setSelectedDocument(record);

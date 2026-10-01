@@ -6,6 +6,7 @@ import { assignmentMatchesUser } from '../services/documentTaskAssignment';
 import { documentSenderLabel } from '../services/documentDisplay';
 import { getDocumentDetailById, type DocumentDetailPayload } from '../services/documentApi';
 import { ApiError } from '../services/http';
+import { useResourceInvalidation } from '../services/resourceInvalidation';
 
 type Tab = 'workflow' | 'details' | 'attachments' | 'audit' | 'slip';
 type Dialog = 'claim' | 'complete' | 'hold' | 'compliance' | 'recheck' | 'return' | 'approve' | 'release' | 'reassign' | 'remark' | 'upload' | 'handoff' | 'external-return' | null;
@@ -18,18 +19,29 @@ export const DocumentDetailModal: React.FC = () => {
     recordExternalHandoff, recordExternalReturn,
   } = useApp();
   const targeted = import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS === '1' && !!targetedDocumentId;
+  const invalidation=useResourceInvalidation('document');
   const [detailState, setDetailState] = useState<{ id: string; revision: number; payload: DocumentDetailPayload } | null>(null);
   const [detailError, setDetailError] = useState<{ id: string; revision: number; message: string } | null>(null);
   const [detailRetry, setDetailRetry] = useState(0);
   const detailRequest = useRef(0);
+  useEffect(()=>{
+    if(!targeted)return;
+    const refresh=()=>{if(document.visibilityState==='visible')setDetailRetry(value=>value+1);};
+    const timer=window.setInterval(refresh,15000);
+    window.addEventListener('focus',refresh);
+    document.addEventListener('visibilitychange',refresh);
+    return()=>{window.clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+  },[targeted]);
   useEffect(() => {
     if (!targeted || !targetedDocumentId) return;
     const request = ++detailRequest.current;
-    setDetailState(null); setDetailError(null);
+    if(detailState?.id!==targetedDocumentId||detailState.revision!==stateRevision)setDetailState(null);
+    setDetailError(null);
     getDocumentDetailById(targetedDocumentId).then(payload => {
       if (request === detailRequest.current) setDetailState({ id: targetedDocumentId, revision: stateRevision, payload });
     }).catch(error => {
       if (request === detailRequest.current) {
+        setDetailState(null);
         if (error instanceof ApiError && error.status === 401) void refreshState();
         const message=error instanceof ApiError && error.status===404 ? 'This document was not found or is no longer available to you.'
           : error instanceof ApiError && error.status===401 ? 'Your session could not be verified. Please sign in again.'
@@ -38,7 +50,7 @@ export const DocumentDetailModal: React.FC = () => {
       }
     });
     return () => { detailRequest.current++; };
-  }, [targeted, targetedDocumentId, stateRevision, detailRetry, refreshState]);
+  }, [targeted, targetedDocumentId, stateRevision, detailRetry, refreshState,invalidation]);
   const targetedPayload = targeted && detailState?.id === targetedDocumentId && detailState.revision === stateRevision ? detailState.payload : null;
   const targetedError = targeted && detailError?.id === targetedDocumentId && detailError.revision === stateRevision ? detailError.message : null;
   const doc = targeted ? targetedPayload?.data || null : legacyDoc;
