@@ -9,6 +9,16 @@
   color: var(--app-text);
 }
 
+.app-loader-exiting {
+  opacity: 0;
+  transform: translateY(-6px) scale(.985);
+  transition: opacity 360ms ease, transform 360ms ease;
+}
+
+.app-startup-reveal {
+  animation: app-startup-reveal 320ms ease-out both;
+}
+
 .app-loader {
   width: min(100%, 25rem);
   text-align: center;
@@ -17,7 +27,7 @@
 .app-loader-scene {
   position: relative;
   width: 160px;
-  height: 160px;
+  height: 150px;
   margin: 0 auto;
   isolation: isolate;
 }
@@ -25,26 +35,26 @@
 .app-loader-document {
   position: absolute;
   z-index: 2;
-  top: 8px;
-  left: 63px;
-  width: 34px;
-  height: 43px;
-  padding: 11px 6px 5px;
-  border: 1px solid var(--app-border-strong);
-  border-radius: 4px;
-  background: var(--app-surface-elevated);
-  box-shadow: 0 3px 8px rgb(15 23 42 / .12);
+  top: 18px;
+  left: 60px;
+  width: 40px;
+  height: 50px;
+  padding: 13px 7px 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #f8fafc;
+  box-shadow: 0 4px 10px rgb(15 23 42 / .14);
   opacity: 0;
-  transform: translateY(-8px) scale(.94);
-  animation: app-loader-file 3s ease-in infinite;
+  transform: translateY(-4px);
+  animation: app-loader-file 3s ease-in-out infinite;
 }
 
 .app-loader-document-line {
   display: block;
   height: 2px;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
   border-radius: 2px;
-  background: var(--app-border-strong);
+  background: #cbd5e1;
 }
 
 .app-loader-document-line:nth-child(2) { width: 75%; }
@@ -53,67 +63,80 @@
 .app-loader-folder-back {
   position: absolute;
   z-index: 1;
-  top: 87px;
-  left: 17px;
-  width: 126px;
-  height: 59px;
-  border: 1px solid var(--app-primary-hover);
-  border-radius: 7px 8px 8px 8px;
-  background: var(--app-primary);
-  box-shadow: 0 10px 19px rgb(15 23 42 / .13);
-  animation: app-loader-float 3s ease-in-out infinite;
+  top: 78px;
+  left: 25px;
+  width: 110px;
+  height: 64px;
+  border: 1px solid color-mix(in srgb, var(--app-primary) 80%, white);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--app-primary) 77%, white);
+  box-shadow: 0 12px 22px rgb(15 23 42 / .18);
+  animation: app-loader-float 2.2s ease-in-out infinite;
 }
 
 .app-loader-folder-back::before {
   position: absolute;
   top: -9px;
   left: -1px;
-  width: 47px;
-  height: 13px;
-  border-radius: 5px 6px 0 0;
-  background: var(--app-primary);
+  width: 48px;
+  height: 14px;
+  border: 1px solid rgb(255 255 255 / .26);
+  border-bottom: 0;
+  border-radius: 6px 7px 0 0;
+  background: color-mix(in srgb, var(--app-primary) 77%, white);
   content: '';
 }
 
 .app-loader-folder-front {
   position: absolute;
   z-index: 3;
-  top: 105px;
-  left: 13px;
-  width: 134px;
-  height: 45px;
+  top: 99px;
+  left: 22px;
+  width: 116px;
+  height: 46px;
   border: 1px solid var(--app-primary-hover);
-  border-radius: 6px 6px 9px 9px;
+  border-radius: 7px 7px 10px 10px;
   background: linear-gradient(160deg, var(--app-primary), var(--app-primary-hover));
-  box-shadow: 0 8px 16px rgb(15 23 42 / .12), inset 0 1px rgb(255 255 255 / .2);
-  animation: app-loader-float 3s ease-in-out infinite;
+  box-shadow: 0 13px 20px rgb(15 23 42 / .16), inset 0 1px rgb(255 255 255 / .3);
+  animation: app-loader-float 2.2s ease-in-out infinite;
 }
 
 .app-loader-folder-mark {
-  display: block;
-  width: 24px;
-  height: 3px;
-  margin: 20px auto 0;
-  border-radius: 3px;
-  background: rgb(255 255 255 / .7);
+  display: inline-flex;
+  width: 29px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 12px;
+  border: 1px solid rgb(255 255 255 / .38);
+  border-radius: 5px;
+  background: rgb(255 255 255 / .16);
+  color: white;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .07em;
 }
 
 .app-loader-route {
-  width: 126px;
-  height: 2px;
-  margin: 5px auto 27px;
+  position: relative;
+  width: 146px;
+  height: 3px;
+  margin: 7px auto 22px;
   overflow: hidden;
-  border-radius: 2px;
-  background: var(--app-border);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--app-primary) 28%, transparent);
 }
 
 .app-loader-route span {
+  position: absolute;
+  top: 0;
+  left: -50%;
   display: block;
-  width: 34px;
+  width: 46%;
   height: 100%;
   border-radius: inherit;
   background: var(--app-primary);
-  animation: app-loader-route 2s ease-in-out infinite;
+  animation: app-loader-route 1.3s linear infinite;
 }
 
 .app-loader-eyebrow {
@@ -139,10 +162,11 @@
 }
 
 @keyframes app-loader-file {
-  0%, 8% { opacity: 0; transform: translateY(-8px) scale(.94); }
-  14%, 33% { opacity: 1; transform: translateY(0) scale(1); }
-  53% { opacity: 1; transform: translateY(68px) scale(.82); }
-  59%, 100% { opacity: 0; transform: translateY(78px) scale(.76); }
+  0%, 5% { opacity: 0; transform: translateY(-4px) scale(1); }
+  12%, 19% { opacity: 1; transform: translateY(0) scale(1); }
+  33% { opacity: 1; transform: translateY(34px) scale(.92); }
+  43% { opacity: 1; transform: translateY(60px) scale(.78); }
+  50%, 100% { opacity: 0; transform: translateY(72px) scale(.7); }
 }
 
 @keyframes app-loader-float {
@@ -151,14 +175,21 @@
 }
 
 @keyframes app-loader-route {
-  from { transform: translateX(-34px); }
-  to { transform: translateX(126px); }
+  from { left: -50%; }
+  to { left: 110%; }
+}
+
+@keyframes app-startup-reveal {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .app-loader-exiting { transition: none; }
+  .app-startup-reveal { animation: none; }
   .app-loader-document { display: none; }
   .app-loader-folder-back,
   .app-loader-folder-front,
   .app-loader-route span { animation: none; }
-  .app-loader-route span { transform: translateX(46px); }
+  .app-loader-route span { left: 27%; }
 }

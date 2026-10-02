@@ -49,6 +49,8 @@ const MainLayout: React.FC = () => {
     try { return sessionStorage.getItem(INITIAL_LOADER_KEY) === '1'; }
     catch { return false; }
   });
+  const [initialDelayElapsed, setInitialDelayElapsed] = useState(false);
+  const [initialDisplayExiting, setInitialDisplayExiting] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-document', false);
   const [isRegisterPayrollModalOpen, setIsRegisterPayrollModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-payroll', false);
@@ -63,9 +65,26 @@ const MainLayout: React.FC = () => {
     if (initialDisplayComplete) return;
     try { sessionStorage.setItem(INITIAL_LOADER_KEY, '1'); }
     catch { /* The loader still works when storage is unavailable. */ }
-    const timer = window.setTimeout(() => setInitialDisplayComplete(true), 5000);
+    const timer = window.setTimeout(() => setInitialDelayElapsed(true), 5000);
     return () => window.clearTimeout(timer);
   }, [initialDisplayComplete]);
+
+  React.useEffect(() => {
+    if (initialDisplayComplete || !initialDelayElapsed || !authReady || (isAuthenticated && !databaseReady)) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setInitialDisplayComplete(true);
+      return;
+    }
+    setInitialDisplayExiting(true);
+    const timer = window.setTimeout(() => setInitialDisplayComplete(true), 360);
+    return () => window.clearTimeout(timer);
+  }, [initialDisplayComplete, initialDelayElapsed, authReady, isAuthenticated, databaseReady]);
+
+  React.useEffect(() => {
+    if (!initialDisplayComplete || !initialDisplayExiting) return;
+    const timer = window.setTimeout(() => setInitialDisplayExiting(false), 320);
+    return () => window.clearTimeout(timer);
+  }, [initialDisplayComplete, initialDisplayExiting]);
 
   React.useEffect(() => {
     if (!canRegisterDocument) setIsRegisterModalOpen(false);
@@ -78,16 +97,16 @@ const MainLayout: React.FC = () => {
     if (!privilegedTab && !complianceTab && !operationTabs.includes(activeTab)) setActiveTab((operationTabs[0] || 'leave') as typeof activeTab);
   }, [activeTab, currentUser.id, currentUser.sidebarModules, can, setActiveTab]);
 
+  if (!initialDisplayComplete && !(authReady && isAuthenticated && databaseReady && (databaseError || users.length === 0))) {
+    return <AppLoader exiting={initialDisplayExiting} message={!authReady ? 'Checking your login session...' : isAuthenticated && !databaseReady ? 'Connecting to the application database...' : 'Opening Records Management System...'} />;
+  }
+
   if (!authReady) {
     return <AppLoader message="Checking your login session..." />;
   }
 
-  if (!initialDisplayComplete && !(isAuthenticated && databaseReady && (databaseError || users.length === 0))) {
-    return <AppLoader message={isAuthenticated && !databaseReady ? 'Connecting to the application database...' : 'Opening Records Management System...'} />;
-  }
-
   if (!isAuthenticated) {
-    return <LoginPortal />;
+    return <div className={initialDisplayExiting ? 'app-startup-reveal' : undefined}><LoginPortal /></div>;
   }
 
   if (!databaseReady) {
@@ -108,7 +127,7 @@ const MainLayout: React.FC = () => {
   }
 
   return (
-    <div className="relative isolate min-h-screen bg-slate-100 text-slate-900 flex font-sans selection:bg-blue-600 selection:text-white">
+    <div className={`relative isolate min-h-screen bg-slate-100 text-slate-900 flex font-sans selection:bg-blue-600 selection:text-white${initialDisplayExiting ? ' app-startup-reveal' : ''}`}>
       <ThemeEffects />
       {/* Toast Notification Container */}
       <Toast />

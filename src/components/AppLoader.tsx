@@ -3,10 +3,11 @@ import './AppLoader.css';
 
 type AppLoaderProps = {
   message: string;
+  exiting?: boolean;
 };
 
-export const AppLoader: React.FC<AppLoaderProps> = ({ message }) => (
-  <main className="app-loader-screen">
+export const AppLoader: React.FC<AppLoaderProps> = ({ message, exiting = false }) => (
+  <main className={`app-loader-screen${exiting ? ' app-loader-exiting' : ''}`}>
     <section className="app-loader" role="status" aria-live="polite" aria-label={message}>
       <div className="app-loader-scene" aria-hidden="true">
         <div className="app-loader-folder-back" />
@@ -17,7 +18,7 @@ export const AppLoader: React.FC<AppLoaderProps> = ({ message }) => (
             <span className="app-loader-document-line" />
           </div>
         ))}
-        <div className="app-loader-folder-front"><span className="app-loader-folder-mark" /></div>
+        <div className="app-loader-folder-front"><span className="app-loader-folder-mark">HR</span></div>
       </div>
       <div className="app-loader-route" aria-hidden="true"><span /></div>
       <p className="app-loader-eyebrow">HRMDO</p>
