@@ -5,7 +5,7 @@
     var dark=mode==='dark'||(mode!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);
     root.dataset.appearance=dark?'dark':'light';
     var cached=JSON.parse(localStorage.getItem('hrmdo-dts.theme-state.v1')||'null');
-    var themes=['classic','valentine','womens-month','amihan-bloom','winter','chinese-new-year','hallo-christmas','government','festive','rainy-season','weather-sync'];
+    var themes=['classic','valentine','womens-month','breast-cancer-awareness','amihan-bloom','winter','chinese-new-year','hallo-christmas','government','festive','rainy-season','weather-sync'];
     var weather=['sunny','cloudy','windy','rainy','thunderstorm','winter'];
     var theme=cached&&themes.indexOf(cached.theme)>=0?cached.theme:'classic';
     root.dataset.systemTheme=theme;

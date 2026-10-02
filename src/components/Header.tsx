@@ -90,25 +90,42 @@ export const Header: React.FC<HeaderProps> = ({ documentShell, payrollShell, onO
   const [weatherError, setWeatherError] = useState('');
   const [isWeatherBusy, setIsWeatherBusy] = useState(false);
   const [isThemeSaving, setIsThemeSaving] = useState(false);
+  const [pendingThemeChange, setPendingThemeChange] = useState<{ kind: 'theme'; theme: SystemThemeId } | { kind: 'weather'; locationName: string; locationQuery: string } | null>(null);
+  const [themeConfirmationError, setThemeConfirmationError] = useState('');
+  const themeConfirmationRef = useRef<HTMLDivElement>(null);
+  const themeConfirmationCancelRef = useRef<HTMLButtonElement>(null);
   const themeMutationInFlight = useRef(false);
+  useEffect(() => {
+    if (!pendingThemeChange) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    const dialog = themeConfirmationRef.current;
+    themeConfirmationCancelRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !themeMutationInFlight.current) {
+        event.preventDefault(); setPendingThemeChange(null); setThemeConfirmationError('');
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const buttons = Array.from(dialog.querySelectorAll<HTMLButtonElement>('button:not([disabled])'));
+      const first = buttons[0]; const last = buttons[buttons.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    };
+    dialog?.addEventListener('keydown', handleKeyDown);
+    return () => { dialog?.removeEventListener('keydown', handleKeyDown); previousFocus?.focus(); };
+  }, [pendingThemeChange]);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => readWorkspaceValue(currentUser.id, 'notifications.read', []));
   useEffect(()=>setReadNotificationIds(readWorkspaceValue(currentUser.id,'notifications.read',[])),[currentUser.id]);
   const allOperationModules: SidebarModule[] = ['dashboard', 'queues', 'payroll', 'registry', 'leave'];
   const visibleOperationModules = currentUser.role === 'admin'
     ? allOperationModules
     : currentUser.sidebarModules || allOperationModules;
-  const applySystemTheme = async (next: SystemThemeId) => {
+  const applySystemTheme = (next: SystemThemeId) => {
     if (themeMutationInFlight.current) return;
     if (next === 'weather-sync') {
       setWeatherLocation(systemThemeSetting?.location?.query || ''); setWeatherPreview(null); setWeatherError(''); setIsWeatherConfigOpen(true); return;
     }
     if (next === systemTheme) return;
-    const definition = SYSTEM_THEMES[next];
-    if (!window.confirm(`Change System Theme?\n\n${definition.name} will be applied to all users of the HRMDO Records Management System.`)) return;
-    themeMutationInFlight.current = true; setIsThemeSaving(true);
-    try { await updateSystemTheme(next); showToast('success', 'System theme updated', `${definition.name} now applies to all users.`); setIsThemeCatalogueOpen(false); }
-    catch (error) { showToast('error', 'System theme was not changed', error instanceof Error ? error.message : 'Please try again.'); }
-    finally { themeMutationInFlight.current = false; setIsThemeSaving(false); }
+    setThemeConfirmationError(''); setPendingThemeChange({ kind: 'theme', theme: next });
   };
   const checkWeatherLocation = async () => {
     setIsWeatherBusy(true); setWeatherError(''); setWeatherPreview(null);
@@ -116,13 +133,32 @@ export const Header: React.FC<HeaderProps> = ({ documentShell, payrollShell, onO
     catch (error) { setWeatherError(error instanceof Error ? error.message : 'Unable to check this location.'); }
     finally { setIsWeatherBusy(false); }
   };
-  const applyWeatherSync = async () => {
-    if (themeMutationInFlight.current || !weatherPreview || !window.confirm(`Apply Weather Sync?\n\n${weatherPreview.location.name} will determine the visual atmosphere for all users.`)) return;
+  const applyWeatherSync = () => {
+    if (themeMutationInFlight.current || !weatherPreview) return;
+    setThemeConfirmationError('');
+    setPendingThemeChange({ kind: 'weather', locationName: weatherPreview.location.name, locationQuery: weatherLocation });
+  };
+  const confirmThemeChange = async () => {
+    const pending = pendingThemeChange;
+    if (!pending || themeMutationInFlight.current) return;
     themeMutationInFlight.current = true;
-    setIsWeatherBusy(true); setWeatherError('');
-    try { const setting=await activateWeatherSync(weatherLocation); showToast('success','Weather Sync activated',`${setting.location?.name || weatherPreview.location.name} now controls the global weather theme.`); setIsWeatherConfigOpen(false); setIsThemeCatalogueOpen(false); }
-    catch (error) { setWeatherError(error instanceof Error ? error.message : 'Weather Sync could not be activated.'); }
-    finally { themeMutationInFlight.current = false; setIsWeatherBusy(false); }
+    setThemeConfirmationError('');
+    if (pending.kind === 'theme') setIsThemeSaving(true); else setIsWeatherBusy(true);
+    try {
+      if (pending.kind === 'theme') {
+        await updateSystemTheme(pending.theme);
+        showToast('success', 'System theme updated', `${SYSTEM_THEMES[pending.theme].name} now applies to all users.`);
+      } else {
+        const setting = await activateWeatherSync(pending.locationQuery);
+        showToast('success', 'Weather Sync activated', `${setting.location?.name || pending.locationName} now controls the global weather theme.`);
+        setIsWeatherConfigOpen(false);
+      }
+      setPendingThemeChange(null); setIsThemeCatalogueOpen(false);
+    } catch (error) {
+      setThemeConfirmationError(error instanceof Error ? error.message : 'The system theme could not be changed. Please try again.');
+    } finally {
+      themeMutationInFlight.current = false; setIsThemeSaving(false); setIsWeatherBusy(false);
+    }
   };
   const forceWeatherRefresh = async () => {
     if (themeMutationInFlight.current) return;
@@ -585,7 +621,7 @@ export const Header: React.FC<HeaderProps> = ({ documentShell, payrollShell, onO
             )}
           </div>
 
-          {isThemeCatalogueOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-xs sm:p-6" role="dialog" aria-modal="true" aria-labelledby="system-theme-title">
+          {isThemeCatalogueOpen && <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-xs sm:p-6" role="dialog" aria-modal="true" aria-labelledby="system-theme-title" aria-hidden={!!pendingThemeChange} inert={!!pendingThemeChange}>
             <section className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
               <header className="app-header flex shrink-0 items-start justify-between gap-4 border-b border-slate-800 px-5 py-4 text-white sm:px-6">
                 <div className="flex gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600"><Palette className="h-5 w-5" /></span><div><h2 id="system-theme-title" className="font-bold">System Theme</h2><p className="mt-1 text-xs text-slate-300">Choose the visual identity applied to every user. Personal Light and Dark preferences remain independent.</p></div></div>
@@ -611,6 +647,28 @@ export const Header: React.FC<HeaderProps> = ({ documentShell, payrollShell, onO
                 </button>; })}
               </div>}
               <footer className="flex shrink-0 items-center justify-between border-t border-slate-200 bg-slate-50 px-5 py-3.5"><p className="text-[11px] text-slate-500">Changes require confirmation and are recorded in the audit trail.</p><button type="button" onClick={() => { setIsThemeCatalogueOpen(false); setIsWeatherConfigOpen(false); }} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100">Close</button></footer>
+            </section>
+          </div>}
+
+          {pendingThemeChange && <div ref={themeConfirmationRef} className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="theme-confirmation-title" aria-describedby="theme-confirmation-description">
+            <section className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-2xl">
+              <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-5">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Palette className="h-5 w-5" /></span>
+                <div><h2 id="theme-confirmation-title" className="text-base font-bold">{pendingThemeChange.kind === 'theme' ? 'Change System Theme?' : 'Activate Weather Sync?'}</h2><p id="theme-confirmation-description" className="mt-1 text-xs leading-5 text-slate-600">This change will apply to everyone using the HRMDO Records Management System.</p></div>
+              </div>
+              <div className="space-y-3 px-5 py-4 text-sm">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Current theme</p>
+                  <p className="mt-1 font-semibold text-slate-800">{SYSTEM_THEMES[systemTheme].name}</p>
+                  <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">New theme</p>
+                  <p className="mt-1 font-semibold text-slate-900">{pendingThemeChange.kind === 'theme' ? SYSTEM_THEMES[pendingThemeChange.theme].name : `Weather Sync · ${pendingThemeChange.locationName}`}</p>
+                </div>
+                {themeConfirmationError && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{themeConfirmationError}</p>}
+              </div>
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end">
+                <button ref={themeConfirmationCancelRef} type="button" disabled={isThemeSaving || isWeatherBusy} onClick={() => { setPendingThemeChange(null); setThemeConfirmationError(''); }} className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
+                <button type="button" disabled={isThemeSaving || isWeatherBusy} onClick={() => void confirmThemeChange()} className="rounded-lg bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{isThemeSaving || isWeatherBusy ? 'Applying…' : pendingThemeChange.kind === 'theme' ? 'Apply Theme' : 'Activate Weather Sync'}</button>
+              </div>
             </section>
           </div>}
 

@@ -24,6 +24,223 @@
   contain: strict;
 }
 
+.theme-nav-effect-field--womens-month {
+  background:
+    radial-gradient(ellipse 180px 66px at 4% 50%, rgb(168 85 247 / .14), transparent 80%),
+    radial-gradient(ellipse 180px 66px at 96% 50%, rgb(217 70 239 / .12), transparent 80%);
+}
+
+.theme-nav-effect-field--womens-month::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgb(196 181 253 / .7) 22%, rgb(244 114 182 / .65) 50%, rgb(196 181 253 / .7) 78%, transparent);
+}
+
+.womens-month-nav-motif {
+  position: absolute;
+  bottom: 0;
+  width: 120px;
+  height: 64px;
+  opacity: .78;
+}
+
+.womens-month-nav-motif--left { left: -28px; }
+.womens-month-nav-motif--right { right: -28px; transform: scaleX(-1); }
+
+.theme-nav-effect-field--breast-cancer-awareness {
+  background:
+    radial-gradient(ellipse 180px 64px at 3% 50%, rgb(244 114 182 / .15), transparent 80%),
+    radial-gradient(ellipse 180px 64px at 97% 50%, rgb(251 207 232 / .11), transparent 80%);
+}
+
+.theme-nav-effect-field--breast-cancer-awareness::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgb(249 168 212 / .8) 22%, rgb(251 207 232 / .65) 50%, rgb(249 168 212 / .8) 78%, transparent);
+}
+
+.breast-cancer-awareness-nav-motif {
+  position: absolute;
+  bottom: 0;
+  width: 120px;
+  height: 64px;
+  opacity: .86;
+}
+
+.breast-cancer-awareness-nav-motif--left { left: -23px; }
+.breast-cancer-awareness-nav-motif--right { right: -23px; transform: scaleX(-1); }
+
+.theme-nav-effect-field--amihan-bloom {
+  background:
+    radial-gradient(ellipse 180px 64px at 3% 65%, rgb(45 212 191 / .15), transparent 80%),
+    radial-gradient(ellipse 180px 64px at 97% 65%, rgb(20 184 166 / .12), transparent 80%);
+}
+
+.theme-nav-effect-field--amihan-bloom::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgb(94 234 212 / .72) 22%, rgb(251 113 133 / .55) 50%, rgb(94 234 212 / .72) 78%, transparent);
+}
+
+.amihan-bloom-nav-motif {
+  position: absolute;
+  bottom: 0;
+  width: 120px;
+  height: 64px;
+  opacity: .78;
+}
+
+.amihan-bloom-nav-motif--left { left: -26px; }
+.amihan-bloom-nav-motif--right { right: -26px; transform: scaleX(-1); }
+
+.theme-nav-effect-field--winter {
+  background:
+    radial-gradient(ellipse 190px 65px at 2% 50%, rgb(125 211 252 / .15), transparent 80%),
+    radial-gradient(ellipse 190px 65px at 98% 50%, rgb(186 230 253 / .12), transparent 80%);
+}
+
+.theme-nav-effect-field--winter::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgb(186 230 253 / .75) 20%, rgb(125 211 252 / .55) 50%, rgb(186 230 253 / .75) 80%, transparent);
+}
+
+.winter-nav-motif {
+  position: absolute;
+  bottom: 0;
+  width: 120px;
+  height: 64px;
+  opacity: .75;
+  filter: drop-shadow(0 0 5px rgb(125 211 252 / .38));
+}
+
+.winter-nav-motif--left { left: -7px; }
+.winter-nav-motif--right { right: -7px; transform: scaleX(-1); }
+
+.theme-nav-effect-field--chinese-new-year {
+  background:
+    radial-gradient(ellipse 180px 64px at 2% 50%, rgb(220 38 38 / .15), transparent 80%),
+    radial-gradient(ellipse 180px 64px at 98% 50%, rgb(212 167 44 / .11), transparent 80%);
+}
+
+.theme-nav-effect-field--chinese-new-year::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgb(212 167 44 / .8) 20%, rgb(251 191 36 / .55) 50%, rgb(212 167 44 / .8) 80%, transparent);
+}
+
+.chinese-new-year-nav-motif {
+  position: absolute;
+  bottom: 0;
+  width: 120px;
+  height: 64px;
+  opacity: .84;
+}
+
+.chinese-new-year-nav-motif--left { left: -10px; }
+.chinese-new-year-nav-motif--right { right: -10px; transform: scaleX(-1); }
+
+.theme-nav-effect-field--hallo-christmas {
+  background:
+    radial-gradient(ellipse 180px 64px at 3% 50%, rgb(249 115 22 / .13), transparent 80%),
+    radial-gradient(ellipse 180px 64px at 97% 50%, rgb(185 28 28 / .13), transparent 80%);
+}
+
+.theme-nav-effect-field--hallo-christmas::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgb(251 146 60 / .75) 22%, rgb(251 191 36 / .65) 50%, rgb(248 113 113 / .7) 78%, transparent);
+}
+
+.hallo-christmas-nav-motif {
+  position: absolute;
+  bottom: 0;
+  width: 120px;
+  height: 64px;
+  opacity: .82;
+}
+
+.hallo-christmas-nav-motif--left { left: -12px; }
+.hallo-christmas-nav-motif--right { right: -12px; transform: scaleX(-1); }
+
+.theme-nav-effect-field--festive {
+  background:
+    radial-gradient(ellipse 190px 64px at 3% 50%, rgb(232 121 249 / .13), transparent 80%),
+    radial-gradient(ellipse 190px 64px at 97% 50%, rgb(251 191 36 / .11), transparent 80%);
+}
+
+.theme-nav-effect-field--festive::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgb(232 121 249 / .8) 20%, rgb(251 191 36 / .68) 45%, rgb(103 232 249 / .7) 70%, transparent);
+}
+
+.festive-nav-motif {
+  position: absolute;
+  bottom: 0;
+  width: 120px;
+  height: 64px;
+  opacity: .85;
+}
+
+.festive-nav-motif--left { left: -12px; }
+.festive-nav-motif--right { right: -12px; transform: scaleX(-1); }
+
+.theme-nav-effect-field--rainy-season {
+  background:
+    radial-gradient(ellipse 190px 64px at 3% 50%, rgb(56 189 248 / .13), transparent 80%),
+    radial-gradient(ellipse 190px 64px at 97% 50%, rgb(34 211 238 / .1), transparent 80%);
+}
+
+.theme-nav-effect-field--rainy-season::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgb(56 189 248 / .65) 22%, rgb(103 232 249 / .78) 50%, rgb(56 189 248 / .65) 78%, transparent);
+}
+
+.rainy-season-nav-motif {
+  position: absolute;
+  bottom: 0;
+  width: 120px;
+  height: 64px;
+  opacity: .82;
+}
+
+.rainy-season-nav-motif--left { left: -12px; }
+.rainy-season-nav-motif--right { right: -12px; transform: scaleX(-1); }
+
 .theme-effect-particle {
   position: absolute;
   top: 0;
@@ -103,6 +320,10 @@
 .theme-effect-particle--sparkle[data-tone="1"] { background: #c026d3; }
 .theme-effect-particle--sparkle[data-tone="2"] { border-radius: 50%; background: #a78bfa; }
 
+.theme-nav-effect-field--breast-cancer-awareness .theme-effect-particle--sparkle { background: #f9a8d4; }
+.theme-nav-effect-field--breast-cancer-awareness .theme-effect-particle--sparkle[data-tone="1"] { background: #fbcfe8; }
+.theme-nav-effect-field--breast-cancer-awareness .theme-effect-particle--sparkle[data-tone="2"] { background: #f472b6; }
+
 .theme-effect-particle--leaf {
   border-radius: 90% 10% 80% 20%;
   background: #0d9488;
@@ -119,6 +340,12 @@
 .theme-effect-particle--snow[data-tone="1"] { background: #bae6fd; }
 .theme-effect-particle--snow[data-tone="2"] { background: #cbd5e1; }
 
+.theme-nav-effect-field--winter .theme-effect-particle--snow {
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff 0%, #f0f9ff 45%, #bae6fd 75%, transparent 100%);
+  box-shadow: 0 0 5px rgb(224 242 254 / .55);
+}
+
 .theme-effect-particle--fleck {
   border-radius: 999px;
   background: #d4a72c;
@@ -130,7 +357,7 @@
   border-radius: 50%;
   background: #f59e0b;
 }
-.theme-effect-particle--star[data-tone="1"] { background: #86efac; }
+.theme-effect-particle--star[data-tone="1"] { background: #fbbf24; }
 .theme-effect-particle--star[data-tone="2"] { border-radius: 2px; background: #fca5a5; transform: rotate(45deg); }
 
 .theme-effect-particle--confetti {
@@ -148,6 +375,19 @@
 .theme-effect-particle--rain[data-tone="1"] { background: #38bdf8; }
 .theme-effect-particle--rain[data-tone="2"] { background: #64748b; }
 
+.theme-nav-effect-field--rainy-season .theme-effect-particle--rain {
+  animation-name: theme-nav-rain-fall;
+  border-radius: 0;
+  background-color: transparent;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  box-shadow: none;
+  filter: drop-shadow(0 0 1px rgb(125 211 252 / .25));
+}
+.theme-nav-effect-field--rainy-season .theme-effect-particle--rain[data-tone="1"],
+.theme-nav-effect-field--rainy-season .theme-effect-particle--rain[data-tone="2"] { background-color: transparent; }
+
 .theme-effect-particle--mote { border-radius:50%; background:#fbbf24; box-shadow:0 0 4px rgb(251 191 36 / .22); }
 .theme-effect-particle--mote[data-tone="1"] { background:#7dd3fc; }
 .theme-effect-particle--mote[data-tone="2"] { background:#fde68a; }
@@ -162,10 +402,11 @@
 
 .theme-effect-layer--valentine::before { background: radial-gradient(circle at 4% 8%, rgb(244 63 94 / .08), transparent 25%), radial-gradient(circle at 96% 85%, rgb(190 24 93 / .06), transparent 24%); }
 .theme-effect-layer--womens-month::before { background: radial-gradient(circle at 96% 8%, rgb(124 58 237 / .07), transparent 25%); }
+.theme-effect-layer--breast-cancer-awareness::before { background: radial-gradient(circle at 96% 8%, rgb(244 114 182 / .07), transparent 25%); }
 .theme-effect-layer--amihan-bloom::before { background: radial-gradient(circle at 4% 90%, rgb(13 148 136 / .07), transparent 26%); }
 .theme-effect-layer--winter::before { background: linear-gradient(180deg, rgb(125 211 252 / .055), transparent 25%); }
 .theme-effect-layer--chinese-new-year::before { background: radial-gradient(circle at 97% 8%, rgb(212 167 44 / .065), transparent 22%); }
-.theme-effect-layer--hallo-christmas::before { background: radial-gradient(circle at 4% 8%, rgb(21 128 61 / .06), transparent 24%); }
+.theme-effect-layer--hallo-christmas::before { background: radial-gradient(circle at 4% 8%, rgb(249 115 22 / .06), transparent 24%), radial-gradient(circle at 96% 90%, rgb(185 28 28 / .05), transparent 24%); }
 .theme-effect-layer--festive::before { background: radial-gradient(circle at 96% 10%, rgb(147 51 234 / .06), transparent 25%); }
 .theme-effect-layer--rainy-season::before { background: linear-gradient(180deg, rgb(14 116 144 / .075), transparent 28%); }
 .theme-effect-layer--weather-sunny::before { background:radial-gradient(circle at 96% 4%,rgb(251 191 36 / .1),transparent 23%); }
@@ -199,6 +440,11 @@
   to { transform: translate3d(var(--effect-drift), 86px, 0) rotate(180deg); }
 }
 
+@keyframes theme-nav-rain-fall {
+  from { transform: translate3d(0, -12px, 0); }
+  to { transform: translate3d(var(--effect-drift), 80px, 0); }
+}
+
 @keyframes theme-nav-effect-float {
   from { transform: translate3d(0, 84px, 0) rotate(0deg); }
   to { transform: translate3d(var(--effect-drift), -24px, 0) rotate(140deg); }
@@ -211,6 +457,22 @@
 
 @media (max-width: 639px) {
   .theme-effect-particle--desktop { display: none; }
+  .womens-month-nav-motif--left { display: none; }
+  .womens-month-nav-motif--right { right: -24px; opacity: .35; }
+  .breast-cancer-awareness-nav-motif--left { display: none; }
+  .breast-cancer-awareness-nav-motif--right { right: -24px; opacity: .45; }
+  .amihan-bloom-nav-motif--left { display: none; }
+  .amihan-bloom-nav-motif--right { right: -24px; opacity: .38; }
+  .winter-nav-motif--left { display: none; }
+  .winter-nav-motif--right { right: -24px; opacity: .4; }
+  .chinese-new-year-nav-motif--left { display: none; }
+  .chinese-new-year-nav-motif--right { right: -24px; opacity: .45; }
+  .hallo-christmas-nav-motif--left { display: none; }
+  .hallo-christmas-nav-motif--right { right: -24px; opacity: .48; }
+  .festive-nav-motif--left { display: none; }
+  .festive-nav-motif--right { right: -24px; opacity: .45; }
+  .rainy-season-nav-motif--left { display: none; }
+  .rainy-season-nav-motif--right { right: -24px; opacity: .42; }
   .theme-effect-layer::before { opacity: .22; }
   .valentine-decor-art { opacity:.22;object-fit:cover; }
   .valentine-decor-icon { width:34px;height:34px;border-radius:11px; }
@@ -220,7 +482,15 @@
 
 @media (prefers-reduced-motion: reduce) {
   .theme-effect-layer,
-  .theme-nav-effect-field { display: none; }
+  .theme-nav-effect-field:not(.theme-nav-effect-field--womens-month):not(.theme-nav-effect-field--breast-cancer-awareness):not(.theme-nav-effect-field--amihan-bloom):not(.theme-nav-effect-field--winter):not(.theme-nav-effect-field--chinese-new-year):not(.theme-nav-effect-field--hallo-christmas):not(.theme-nav-effect-field--festive):not(.theme-nav-effect-field--rainy-season) { display: none; }
+  .theme-nav-effect-field--womens-month .theme-effect-particle,
+  .theme-nav-effect-field--breast-cancer-awareness .theme-effect-particle,
+  .theme-nav-effect-field--amihan-bloom .theme-effect-particle,
+  .theme-nav-effect-field--winter .theme-effect-particle,
+  .theme-nav-effect-field--chinese-new-year .theme-effect-particle,
+  .theme-nav-effect-field--hallo-christmas .theme-effect-particle,
+  .theme-nav-effect-field--festive .theme-effect-particle,
+  .theme-nav-effect-field--rainy-season .theme-effect-particle { display: none; }
 }
 
 @media print {

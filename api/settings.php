@@ -4,7 +4,7 @@ require_once __DIR__.'/domain.php';
 require_once __DIR__.'/weather_service.php';
 
 // Keep synchronized with src/theme/themeRegistry.ts. Disabled themes are omitted.
-const ALLOWED_SYSTEM_THEMES=['classic','valentine','womens-month','amihan-bloom','winter','chinese-new-year','hallo-christmas','government','festive','rainy-season','weather-sync'];
+const ALLOWED_SYSTEM_THEMES=['classic','valentine','womens-month','breast-cancer-awareness','amihan-bloom','winter','chinese-new-year','hallo-christmas','government','festive','rainy-season','weather-sync'];
 
 function system_theme_setting(PDO $pdo): array {
     return weather_theme_response($pdo,ALLOWED_SYSTEM_THEMES);

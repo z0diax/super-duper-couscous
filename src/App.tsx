@@ -18,10 +18,13 @@ import { PayrollManagement } from './components/PayrollManagement';
 import { RegisterPayrollModal } from './components/RegisterPayrollModal';
 import { PayrollBatchDetailModal } from './components/PayrollBatchDetailModal';
 import { LoginPortal } from './components/LoginPortal';
+import { AppLoader } from './components/AppLoader';
 import { useWorkspaceState } from './services/workspace';
 import { ThemeEffects } from './theme/ThemeEffects';
 import { useDocumentShellSummary } from './services/useDocumentShellSummary';
 import { usePayrollShellSummary } from './services/usePayrollShellSummary';
+
+const INITIAL_LOADER_KEY = 'hrmdo.initial-loader-shown';
 
 const MainLayout: React.FC = () => {
   const { 
@@ -42,6 +45,10 @@ const MainLayout: React.FC = () => {
   } = useApp();
   const documentShell=useDocumentShellSummary(currentUser.id,stateRevision);
   const payrollShell=usePayrollShellSummary(currentUser.id,stateRevision);
+  const [initialDisplayComplete, setInitialDisplayComplete] = useState(() => {
+    try { return sessionStorage.getItem(INITIAL_LOADER_KEY) === '1'; }
+    catch { return false; }
+  });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-document', false);
   const [isRegisterPayrollModalOpen, setIsRegisterPayrollModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-payroll', false);
@@ -51,6 +58,14 @@ const MainLayout: React.FC = () => {
   const canRegisterPayroll = currentUser.role === 'admin' || operationTabs.includes('payroll');
   const canViewRegistry = currentUser.role === 'admin' || operationTabs.includes('registry');
   const canViewAudit = currentUser.role === 'admin' || can('canSupervise');
+
+  React.useEffect(() => {
+    if (initialDisplayComplete) return;
+    try { sessionStorage.setItem(INITIAL_LOADER_KEY, '1'); }
+    catch { /* The loader still works when storage is unavailable. */ }
+    const timer = window.setTimeout(() => setInitialDisplayComplete(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, [initialDisplayComplete]);
 
   React.useEffect(() => {
     if (!canRegisterDocument) setIsRegisterModalOpen(false);
@@ -64,7 +79,11 @@ const MainLayout: React.FC = () => {
   }, [activeTab, currentUser.id, currentUser.sidebarModules, can, setActiveTab]);
 
   if (!authReady) {
-    return <StartupMessage title="Checking your login session..." />;
+    return <AppLoader message="Checking your login session..." />;
+  }
+
+  if (!initialDisplayComplete && !(isAuthenticated && databaseReady && (databaseError || users.length === 0))) {
+    return <AppLoader message={isAuthenticated && !databaseReady ? 'Connecting to the application database...' : 'Opening Records Management System...'} />;
   }
 
   if (!isAuthenticated) {
@@ -72,7 +91,7 @@ const MainLayout: React.FC = () => {
   }
 
   if (!databaseReady) {
-    return <StartupMessage title="Connecting to the application database..." />;
+    return <AppLoader message="Connecting to the application database..." />;
   }
 
   if (databaseError) {

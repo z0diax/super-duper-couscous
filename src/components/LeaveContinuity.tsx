@@ -7,6 +7,7 @@ import { useResourceInvalidation } from '../services/resourceInvalidation';
 import { readWorkspaceValue, writeWorkspaceValue } from '../services/workspace';
 import { OFFICE_OPTIONS } from '../data/offices';
 import { LeaveDateRangePicker } from './LeaveDateRangePicker';
+import { LeaveDatesCalendar } from './LeaveDatesCalendar';
 
 const LEAVE_TYPES: LeaveType[] = [
   'COC', 'Vacation Leave', 'Mandatory / Forced Leave', 'Sick Leave', 'Wellness Leave',
@@ -62,13 +63,26 @@ const detailLabels = (type: LeaveType) => {
 type DateRangeDraft = Pick<LeaveDateRange, 'id' | 'startDate' | 'endDate'> & { dayType: 'WHOLE_DAY' | 'AM_HALF_DAY' | 'PM_HALF_DAY' };
 type ChangeableLeaveStatus = 'For_Computation'|'On_Hold'|'For_Signature'|'Released';
 const emptyDateRange = (): DateRangeDraft => ({ startDate: '', endDate: '', dayType: 'WHOLE_DAY' });
+const isWeekend = (date: Date) => date.getUTCDay() === 0 || date.getUTCDay() === 6;
+const workingDaysBetween = (startDate: string, endDate: string) => {
+  const start = parseDateValue(startDate); const end = parseDateValue(endDate);
+  if (!start || !end || start > end) return 0;
+  const days = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+  let weekdays = Math.floor(days / 7) * 5;
+  for (let offset = 0; offset < days % 7; offset++) {
+    const date = new Date(start); date.setUTCDate(start.getUTCDate() + offset);
+    if (!isWeekend(date)) weekdays++;
+  }
+  return weekdays;
+};
 const rangesForRecord = (record: LeaveApplicationRecord): DateRangeDraft[] => record.dateRanges?.length
   ? [...record.dateRanges].sort((a,b) => a.startDate.localeCompare(b.startDate)).map(range => ({ id: range.id, startDate: range.startDate, endDate: range.endDate, dayType: range.dayType || 'WHOLE_DAY' }))
   : [{ startDate: record.startDate, endDate: record.endDate, dayType: 'WHOLE_DAY' }];
 const calculatedDays = (ranges: DateRangeDraft[]) => ranges.reduce((total, range) => {
   if (!range.startDate || !range.endDate || range.startDate > range.endDate) return total;
-  if (range.dayType !== 'WHOLE_DAY') return total + (range.startDate === range.endDate ? 0.5 : 0);
-  return total + Math.floor((new Date(`${range.endDate}T00:00:00Z`).getTime() - new Date(`${range.startDate}T00:00:00Z`).getTime()) / 86400000) + 1;
+  const weekdays = workingDaysBetween(range.startDate, range.endDate);
+  if (range.dayType !== 'WHOLE_DAY') return total + (range.startDate === range.endDate && weekdays ? 0.5 : 0);
+  return total + weekdays;
 }, 0);
 const dayTypeLabel = (type?: LeaveDateRange['dayType']) => type ? ({ WHOLE_DAY: 'Whole Day', AM_HALF_DAY: 'AM Half-Day', PM_HALF_DAY: 'PM Half-Day' }[type]) : 'Archived Date Range';
 const formatDays = (days: number) => `${days} day${days === 1 ? '' : 's'}`;
@@ -98,7 +112,11 @@ const selectedDates = (record: LeaveApplicationRecord) => {
     const start = parseDateValue(range.startDate); const end = parseDateValue(range.endDate);
     if (!start || !end || start > end) return [];
     const dates: { date: string; dayType: LeaveDateRange['dayType'] }[] = [];
-    for (const current = new Date(start); current <= end; current.setUTCDate(current.getUTCDate() + 1)) dates.push({ date: current.toISOString().slice(0,10), dayType: range.dayType || 'WHOLE_DAY' });
+    const weekdays = workingDaysBetween(range.startDate, range.endDate);
+    const preserveCalendarDays = range.leaveDayUnits === undefined || range.leaveDayUnits > weekdays * 2;
+    for (const current = new Date(start); current <= end; current.setUTCDate(current.getUTCDate() + 1)) {
+      if (preserveCalendarDays || !isWeekend(current)) dates.push({ date: current.toISOString().slice(0,10), dayType: range.dayType || 'WHOLE_DAY' });
+    }
     return dates;
   }).sort((a,b) => a.date.localeCompare(b.date));
 };
@@ -198,7 +216,7 @@ export const LeaveContinuity: React.FC = () => {
       if (!saved) return;
       setIsModalOpen(false); resetForm(); selectRegistryMode('ewp'); return;
     }
-    if (!employeeName.trim() || !office.trim() || dateRanges.some(range => !range.startDate || !range.endDate)) return;
+    if (!employeeName.trim() || !office.trim() || dateRanges.some(range => !range.startDate || !range.endDate || !workingDaysBetween(range.startDate, range.endDate))) return;
     const payload = {
       ...(editingRecord ? { id: editingRecord.id } : {}),
       employeeId: editingRecord?.employeeId || '', employeeName: employeeName.trim(), office: office.trim(), barcode: barcode.trim() || 'N/A', leaveType,
@@ -325,11 +343,11 @@ export const LeaveContinuity: React.FC = () => {
               <textarea id="input-leave-specific-details" required={leaveType === 'Sick Leave' || (leaveType === 'Others' && leaveSubtype === 'OTHER')} value={leaveDetails} onChange={event => setLeaveDetails(event.target.value)} rows={2} placeholder={leaveType === 'Vacation Leave' ? 'e.g. Cebu City or Japan' : leaveType === 'Sick Leave' ? 'Brief business-required illness information' : ''} className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" />
             </label>}
           </section>}
-          {intakeMode==='leave'&&<section className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-bold text-slate-800">Leave Dates</h3><p className="text-[10px] text-slate-500">Select the first and last date on the calendar. Add another range only for non-consecutive dates.</p></div><button id="btn-add-leave-range" type="button" onClick={() => setDateRanges(previous => [...previous, emptyDateRange()])} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 font-semibold text-blue-700 hover:bg-blue-50"><Plus className="h-3.5 w-3.5" /> Add Range</button></div>
+          {intakeMode==='leave'&&<section className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-bold text-slate-800">Leave Dates</h3><p className="text-[10px] text-slate-500">Select the first and last date on the calendar. Saturdays and Sundays are skipped automatically. Add another range only for other non-consecutive dates.</p></div><button id="btn-add-leave-range" type="button" onClick={() => setDateRanges(previous => [...previous, emptyDateRange()])} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 font-semibold text-blue-700 hover:bg-blue-50"><Plus className="h-3.5 w-3.5" /> Add Range</button></div>
             <div className="mt-3 space-y-3">{dateRanges.map((range,index) => <div key={range.id || index} data-testid={`leave-date-range-${index}`} className="rounded-lg border border-slate-200 bg-white p-3"><div className="mb-2 flex items-center justify-between"><span className="font-bold text-slate-600">Date Range {index+1}</span>{dateRanges.length>1 && <button aria-label={`Remove date range ${index+1}`} type="button" onClick={() => setDateRanges(previous => previous.filter((_,i)=>i!==index))} className="rounded-md p-1 text-rose-500 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>}</div><div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
               <label className="min-w-0 font-semibold text-slate-700">Date Range *<div className="mt-1"><LeaveDateRangePicker startDate={range.startDate} endDate={range.endDate} dayType={range.dayType} onChange={(startDate,endDate) => setDateRanges(previous => previous.map((item,i) => i===index ? { ...item, startDate, endDate } : item))} /></div></label>
               <label className="font-semibold text-slate-700">Duration *<select value={range.dayType} onChange={event => changeRange(index,'dayType',event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100"><option value="WHOLE_DAY">Whole Day</option><option value="AM_HALF_DAY">AM Half-Day</option><option value="PM_HALF_DAY">PM Half-Day</option></select></label>
-            </div></div>)}</div>
+            </div>{range.startDate && range.endDate && !workingDaysBetween(range.startDate, range.endDate) && <p className="mt-2 text-xs font-medium text-rose-600">Select a range with at least one Monday-to-Friday working day.</p>}</div>)}</div>
             <div className="mt-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2"><span className="font-semibold text-blue-800">Calculated Leave Days</span><strong id="calculated-leave-days" className="text-base text-blue-900">{formatDays(calculatedDays(dateRanges))}</strong></div>
           </section>}
           <label className="block font-semibold text-slate-700">Remarks<textarea value={remarks} onChange={event => setRemarks(event.target.value)} rows={3} className="mt-1 w-full resize-y rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>
@@ -341,7 +359,7 @@ export const LeaveContinuity: React.FC = () => {
     {datesRecord && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs" role="dialog" aria-modal="true" aria-labelledby="leave-dates-title">
       <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-center justify-between bg-slate-900 px-5 py-4 text-white"><div><p className="font-mono text-[10px] font-bold text-blue-300">{datesRecord.barcode || datesRecord.trackingNumber || 'N/A'}</p><h2 id="leave-dates-title" className="mt-1 text-base font-bold">Inclusive Dates</h2><p className="mt-0.5 text-xs text-slate-300">{datesRecord.employeeName}</p></div><button type="button" aria-label="Close Inclusive Dates" onClick={() => setDatesRecord(null)} className="rounded-lg p-2 text-slate-300 hover:bg-slate-800 hover:text-white"><X className="h-4 w-4" /></button></header>
-        <div className="max-h-[60vh] overflow-y-auto p-5"><div className="mb-3 flex items-center justify-between"><span className="text-xs font-semibold text-slate-500">Selected leave dates</span><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{selectedDates(datesRecord).length} dates</span></div><div className="grid gap-2 sm:grid-cols-2">{selectedDates(datesRecord).map(({date,dayType}) => <div key={`${date}-${dayType}`} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5"><div><p className="text-xs font-bold text-slate-800">{displayDate(date)}</p><p className="mt-0.5 text-[10px] text-slate-500">{dayTypeLabel(dayType)}</p></div><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-slate-200">{dayType === 'WHOLE_DAY' ? '1 day' : '½ day'}</span></div>)}</div></div>
+        <div className="max-h-[70vh] overflow-y-auto p-5"><div className="mb-3 flex items-center justify-between"><span className="text-xs font-semibold text-slate-500">Selected leave dates</span><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{selectedDates(datesRecord).length} dates</span></div><LeaveDatesCalendar record={datesRecord} selectedDates={selectedDates(datesRecord)} /></div>
         <footer className="flex justify-end border-t border-slate-200 bg-slate-50 px-5 py-3"><button type="button" onClick={() => setDatesRecord(null)} className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700">Close</button></footer>
       </div>
     </div>}

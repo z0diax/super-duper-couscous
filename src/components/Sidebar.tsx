@@ -19,6 +19,7 @@ import {
   Users
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
+import { AnimatedBrandText } from './AnimatedBrandText';
 import { SidebarWeatherCard } from './SidebarWeatherCard';
 import type { DocumentShellSnapshot } from '../services/useDocumentShellSummary';
 import type { PayrollShellSnapshot } from '../services/usePayrollShellSummary';
@@ -134,13 +135,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, i
       >
         {/* Brand Header */}
         <div className="h-20 px-4 sm:px-5 flex items-center justify-between border-b border-slate-800 shrink-0">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="flex flex-1 items-center gap-2.5 sm:gap-3 min-w-0">
             <BrandLogo className="h-10 w-10 shrink-0 drop-shadow-md" title="HRMDO Records Management System" />
-            <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-300">HRMDO</p>
-              <p className="mt-0.5 text-xs font-bold leading-tight text-white sm:text-sm">Records Management System</p>
-              <p className="mt-0.5 text-[10px] font-medium text-slate-400">Records · Workflow · Archives</p>
-            </div>
+            <AnimatedBrandText />
           </div>
 
           <button

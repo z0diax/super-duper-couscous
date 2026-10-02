@@ -3,7 +3,7 @@ declare(strict_types=1);
 require_once __DIR__.'/domain.php';
 require_once __DIR__.'/weather_service.php';
 
-const WEATHER_ALLOWED_SYSTEM_THEMES=['classic','valentine','womens-month','amihan-bloom','winter','chinese-new-year','hallo-christmas','government','festive','rainy-season','weather-sync'];
+const WEATHER_ALLOWED_SYSTEM_THEMES=['classic','valentine','womens-month','breast-cancer-awareness','amihan-bloom','winter','chinese-new-year','hallo-christmas','government','festive','rainy-season','weather-sync'];
 
 $pdo=database(); $user=authenticated_user($pdo); $method=$_SERVER['REQUEST_METHOD'];
 if ($method==='GET') respond(sidebar_weather_tacloban());

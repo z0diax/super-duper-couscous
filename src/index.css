@@ -190,3 +190,6 @@ html {
   animation: payroll-pending-pulse 1.15s ease-out infinite;
   transform-origin: center;
 }
+@keyframes brand-cursor-blink { 50% { opacity: 0; } }
+.brand-type-cursor { display: inline-block; margin-left: 1px; color: #93c5fd; font-weight: 400; animation: brand-cursor-blink 1s steps(1, end) infinite; }
+@media (prefers-reduced-motion: reduce) { .brand-type-cursor { animation: none; } }

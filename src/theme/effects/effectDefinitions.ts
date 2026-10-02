@@ -62,6 +62,7 @@ const createDefinition = (
 export const THEME_EFFECTS: Record<VisualEffectId, EffectDefinition> = {
   valentine: createDefinition('valentine', 'heart', 'fall', 12, 7, false, [11, 17]),
   'womens-month': createDefinition('womens-month', 'sparkle', 'float', 12, 7, true, [10, 17]),
+  'breast-cancer-awareness': createDefinition('breast-cancer-awareness', 'sparkle', 'float', 10, 6, true, [12, 19]),
   'amihan-bloom': createDefinition('amihan-bloom', 'leaf', 'float', 13, 7, true, [11, 18]),
   winter: createDefinition('winter', 'snow', 'fall', 30, 12, false, [9, 16]),
   'chinese-new-year': createDefinition('chinese-new-year', 'fleck', 'fall', 14, 8, true, [10, 17]),

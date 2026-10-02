@@ -79,7 +79,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const [detailRetry,setDetailRetry]=useState(0);
   const [itemPage,setItemPage]=useState(1);
   const [groupPage,setGroupPage]=useState(1);
-  React.useEffect(()=>{setItemPage(1);setGroupPage(1);setDetail(null);},[sourceBatch?.id]);
+  React.useEffect(()=>{setItemPage(1);setGroupPage(1);setDetail(null);setSelectedItemIds([]);setRouteSelections({});},[sourceBatch?.id]);
   React.useEffect(()=>{
     if(!payrollTargeted||!isOpen||!sourceBatch)return;
     let active=true,pending=false;
@@ -218,6 +218,18 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     const classification=item.employmentClassification==='Job Order (JOW)'?'JOW/COS':item.employmentClassification || '';
     return routingRuleFor(classification)?.assignmentMode === 'pool' && !routeSelections[item.id];
   }) : [];
+  const selectedPoolItems = usesEmploymentRouting ? initialCheckingItems.filter(item => {
+    if (!selectedItemIds.includes(item.id) || item.status === 'On_Hold' || item.verificationStatus !== 'Passed') return false;
+    const classification = item.employmentClassification === 'Job Order (JOW)' ? 'JOW/COS' : item.employmentClassification || '';
+    return routingRuleFor(classification)?.assignmentMode === 'pool';
+  }) : [];
+  const eligibleBulkProcessorIds = selectedPoolItems.length > 0
+    ? (routingRuleFor(selectedPoolItems[0].employmentClassification === 'Job Order (JOW)' ? 'JOW/COS' : selectedPoolItems[0].employmentClassification || '')?.eligibleProcessorIds || []).filter(id =>
+        selectedPoolItems.every(item => {
+          const classification = item.employmentClassification === 'Job Order (JOW)' ? 'JOW/COS' : item.employmentClassification || '';
+          return routingRuleFor(classification)?.eligibleProcessorIds?.includes(id);
+        }) && users.some(user => user.id === id))
+    : [];
   const releaseDesk = batch.workflowStages?.find(stage => stage.stageNumber === 4)?.assignedTo;
   const canReleaseBatch = isAdmin || can('canSupervise') || !!releaseDesk && (
     releaseDesk.userId
@@ -285,7 +297,13 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const handleBulkClassify = async (classification: EmploymentClassification) => {
     if (selectedItemIds.length === 0) return;
     if (!(await bulkClassifyPayrollItems(selectedItemIds, classification, true))) return;
+    setRouteSelections(current => Object.fromEntries(Object.entries(current).filter(([id]) => !selectedItemIds.includes(id))));
     setSelectedItemIds([]);
+  };
+
+  const handleBulkAssign = (processorId: string) => {
+    if (!eligibleBulkProcessorIds.includes(processorId)) return;
+    setRouteSelections(current => ({ ...current, ...Object.fromEntries(selectedPoolItems.map(item => [item.id, processorId])) }));
   };
 
   const handleOpenHoldModal = (itemId: string) => {
@@ -472,6 +490,14 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                         >
                           Set Regular
                         </button>
+                        {selectedPoolItems.length > 0 && <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                          <span>Assign {selectedPoolItems.length} eligible to:</span>
+                          <select aria-label="Assign selected payrolls to personnel" value="" onChange={event => handleBulkAssign(event.target.value)} disabled={eligibleBulkProcessorIds.length === 0} className="max-w-full rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-xs font-medium text-slate-700 disabled:opacity-50">
+                            <option value="">Choose personnel...</option>
+                            {eligibleBulkProcessorIds.map(id => { const user = users.find(person => person.id === id); return user ? <option key={id} value={id}>{user.name} — {user.roleTitle}</option> : null; })}
+                          </select>
+                          {eligibleBulkProcessorIds.length === 0 && <span className="text-amber-700">No personnel eligible for every selected payroll.</span>}
+                        </label>}
                       </div>
                     )}
                   </div>}

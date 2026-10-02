@@ -408,13 +408,14 @@ test('single payroll follows configured workflow and synchronizes its item on re
   await processor.action('placeDocumentHold',[single.id,{reason:'Needs payroll clarification',remarks:'Confirm period',files:[]}]);
   assert.equal(processor.state.documents.find(d=>d.id===single.id).currentStepIndex,phaseBeforeHold);
   await admin.refresh();
-  await admin.action('addDocumentRemark',[single.id,'Phase 1 personnel must not change Phase 2'],403);
-  await admin.action('recheckDocumentHold',[single.id,{remarks:'Administrator must not resume an assigned phase',files:[]}],403);
+  // The configured administrator capability explicitly overrides a phase assignment.
+  await admin.action('addDocumentRemark',[single.id,'Administrator oversight remark']);
   await processor.action('recheckDocumentHold',[single.id,{remarks:'Required payroll clarification was provided',files:[]}]);
   let resumed=processor.state.documents.find(d=>d.id===single.id);
   assert.equal(resumed.status,'In_Progress'); assert.equal(resumed.workflowSteps[0].status,'In_Progress'); assert.equal(resumed.currentStepIndex,phaseBeforeHold); assert.equal(resumed.complianceRemarks,'Required payroll clarification was provided');
   await processor.action('placeDocumentHold',[single.id,{reason:'Needs final confirmation',remarks:'Confirm period again',files:[]}]);
-  await processor.action('recheckDocumentHold',[single.id,{remarks:'Final confirmation was provided',files:[]}]);
+  await admin.action('recheckDocumentHold',[single.id,{remarks:'Administrator confirmed final compliance',files:[]}]);
+  await processor.refresh();
   assert.equal(processor.state.documents.find(d=>d.id===single.id).currentStepIndex,phaseBeforeHold);
   await processor.action('completeStep',[single.id,'Checked without classification'],422);
   await processor.action('updatePayrollItemClassification',[item.id,'Regular']);
@@ -466,6 +467,12 @@ test('HRMDO leave registry separates applicant and encoder, validates barcodes, 
   assert.equal(manuallyReleased.status,'Released'); assert(manuallyReleased.releasedAt); assert.equal(manuallyReleased.releaseRemarks,'');
   const am=(await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-AM',dateRanges:[{startDate:'2026-09-24',endDate:'2026-09-24',dayType:'AM_HALF_DAY'}]}])).result; assert.equal(am.totalLeaveDays,0.5);
   const pm=(await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-PM',dateRanges:[{startDate:'2026-09-25',endDate:'2026-09-25',dayType:'PM_HALF_DAY'}]}])).result; assert.equal(pm.totalLeaveDays,0.5);
+  const weekendSpan=(await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-WEEKEND-SPAN',dateRanges:[{startDate:'2026-10-02',endDate:'2026-10-05',dayType:'WHOLE_DAY'}],calculatedLeaveDays:4}])).result;
+  assert.equal(weekendSpan.totalLeaveDays,2); assert.equal(weekendSpan.workingDaysNumber,2); assert.equal(weekendSpan.dateRanges[0].leaveDayUnits,4);
+  const extendedSpan=(await receiver.action('updateLeaveApplication',[{...weekendSpan,dateRanges:[{...weekendSpan.dateRanges[0],endDate:'2026-10-12'}],calculatedLeaveDays:11}])).result;
+  assert.equal(extendedSpan.totalLeaveDays,7); assert.equal(extendedSpan.dateRanges[0].leaveDayUnits,14);
+  await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-WEEKEND-ONLY',dateRanges:[{startDate:'2026-10-03',endDate:'2026-10-04',dayType:'WHOLE_DAY'}]}],422);
+  await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-WEEKEND-HALF',dateRanges:[{startDate:'2026-10-03',endDate:'2026-10-03',dayType:'AM_HALF_DAY'}]}],422);
   const updated=(await receiver.action('updateLeaveApplication',[{...leave,dateRanges:[leave.dateRanges[0],{startDate:'2026-09-22',endDate:'2026-09-22',dayType:'PM_HALF_DAY'}],calculatedLeaveDays:99}])).result;
   assert.equal(updated.dateRanges.length,2); assert.equal(updated.totalLeaveDays,1.5); assert.equal(updated.workingDaysNumber,1.5);
   await receiver.action('fileLeaveApplication',[data],409);
@@ -580,10 +587,9 @@ test('external handoff preserves custody, waits for return, and activates the ne
   await admin.action('recordExternalHandoff',[record.id,{destinationOffice:"City Mayor's Office",purpose:'Approval',handedTo:'Office Records Clerk',representative:'Mayor Office liaison',expectedReturn:'2026-09-12T10:00',remarks:'For approval',files:[]}]);
   active=admin.state.documents.find(d=>d.id===record.id); assert.equal(active.status,'Awaiting_External_Return'); assert.equal(active.currentLocation,"City Mayor's Office"); assert.equal(active.workflowSteps[1].externalStatus,'OUTSIDE_HRMDO');
   await processor.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",result:'Approved',files:[]}],404);
-  await admin.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",returnedBy:'Unauthorized receiver',result:'Approved',files:[]}],403);
-  await receiver.refresh();
-  await receiver.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",returnedBy:'Mayor Office liaison',result:'Approved',remarks:'Approved and returned',files:[]}]);
-  active=receiver.state.documents.find(d=>d.id===record.id); assert.equal(active.id,record.id); assert.equal(active.trackingNumber,'EXTERNAL-RETURN-001'); assert.equal(active.currentLocation,'HRMDO'); assert.equal(active.workflowSteps[1].externalStatus,'COMPLETED'); assert.equal(active.currentStepNumber,3); assert.equal(active.workflowSteps[2].status,'In_Progress'); assert.equal(active.custodyHistory.filter(event=>event.movementType==='EXTERNAL_HANDOFF' || event.movementType==='RETURN_TO_HRMDO').length,2);
+  // Administrators may receive an external return despite a configured receiver.
+  await admin.action('recordExternalReturn',[record.id,{returnedFrom:"City Mayor's Office",returnedBy:'Mayor Office liaison',result:'Approved',remarks:'Approved and returned',files:[]}]);
+  active=admin.state.documents.find(d=>d.id===record.id); assert.equal(active.id,record.id); assert.equal(active.trackingNumber,'EXTERNAL-RETURN-001'); assert.equal(active.currentLocation,'HRMDO'); assert.equal(active.workflowSteps[1].externalStatus,'COMPLETED'); assert.equal(active.currentStepNumber,3); assert.equal(active.workflowSteps[2].status,'In_Progress'); assert.equal(active.custodyHistory.filter(event=>event.movementType==='EXTERNAL_HANDOFF' || event.movementType==='RETURN_TO_HRMDO').length,2);
 
   await admin.refresh();
   await admin.action('updateWorkflowTemplate',[{...externalWorkflow,isActive:false}]);

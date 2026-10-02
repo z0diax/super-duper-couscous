@@ -203,3 +203,44 @@ test('ordinary document workflows configure and use a personnel pool', async ({ 
   await expect(selector).toBeVisible();
   await expect(selector.locator('option')).toHaveCount(3);
 });
+
+test('selected payrolls can share an eligible personnel assignment before routing', async ({ page }) => {
+  const admin = await new Client(fixture.base).login();
+  const batch = (await admin.action('registerPayrollBatch', [{
+    office: 'HRMDO - Human Resource Management and Development Office', payrollType: 'Salary',
+    batchBarcode: 'PAYROLL-BULK-ASSIGN', files: [], items: [
+      { title: 'BULK JOW ONE', barcode: 'BULK-JOW-ONE', classificationType: 'Salary' },
+      { title: 'BULK JOW TWO', barcode: 'BULK-JOW-TWO', classificationType: 'Salary' },
+      { title: 'BULK REGULAR', barcode: 'BULK-REGULAR', classificationType: 'Salary' },
+    ],
+  }])).result;
+  for (const [index, classification] of ['JOW/COS', 'JOW/COS', 'Regular'].entries()) {
+    await admin.action('updatePayrollItemClassification', [batch.itemIds[index], classification]);
+  }
+  const jun = admin.state.users.find((user: any) => user.name === 'Jun');
+  const reymart = admin.state.users.find((user: any) => user.name === 'Reymart');
+
+  await page.goto(`${fixture.base}/`);
+  await page.getByLabel('Email address or username').fill('admin@example.test');
+  await page.getByLabel('Password', { exact: true }).fill(testPassword);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('button', { name: /^My Tasks & Queues/ }).click();
+  await page.locator(`#btn-open-payroll-task-${batch.id}`).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Payroll batch details' });
+  await dialog.getByRole('button', { name: 'Select payroll BULK-JOW-ONE' }).click();
+  await dialog.getByRole('button', { name: 'Select payroll BULK-JOW-TWO' }).click();
+  await dialog.getByRole('button', { name: 'Select payroll BULK-REGULAR' }).click();
+  const bulkPersonnel = dialog.getByLabel('Assign selected payrolls to personnel');
+  await expect(bulkPersonnel).toBeEnabled();
+  await expect(bulkPersonnel.locator('option')).toHaveCount(3);
+  await bulkPersonnel.selectOption(jun.id);
+  await expect(dialog.getByLabel('Assign BULK-JOW-ONE to')).toHaveValue(jun.id);
+  await expect(dialog.getByLabel('Assign BULK-JOW-TWO to')).toHaveValue(jun.id);
+  await dialog.getByLabel('Assign BULK-JOW-TWO to').selectOption(reymart.id);
+  await dialog.getByRole('button', { name: /Complete & Route 3 Payrolls/ }).click();
+
+  await admin.refresh();
+  const routed = batch.itemIds.map((id: string) => admin.state.payrollItems.find((item: any) => item.id === id));
+  expect(routed.map((item: any) => item.assignedToUserId)).toEqual([jun.id, reymart.id, admin.state.users.find((user: any) => user.name === 'Miguel').id]);
+});

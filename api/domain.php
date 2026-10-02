@@ -160,7 +160,16 @@ function validated_leave_date_ranges($submitted): array {
         fail_unless($start<=$end,'Leave Date Range '.($index+1).' must start on or before its end date.');
         $dayType=choice($range['dayType']??null,['WHOLE_DAY','AM_HALF_DAY','PM_HALF_DAY'],'duration type');
         if ($dayType!=='WHOLE_DAY') fail_unless($start===$end,'AM and PM Half-Day entries must use a single date.');
-        $units=$dayType==='WHOLE_DAY'?(((int)((strtotime($end)-strtotime($start))/86400)+1)*2):1;
+        $startDate=DateTimeImmutable::createFromFormat('!Y-m-d',$start);
+        $endDate=DateTimeImmutable::createFromFormat('!Y-m-d',$end);
+        $days=(int)$startDate->diff($endDate)->format('%a')+1;
+        $weekdays=intdiv($days,7)*5;
+        $remaining=$days%7;
+        for ($offset=0;$offset<$remaining;$offset++) {
+            if ((int)$startDate->modify('+'.$offset.' days')->format('N')<=5) $weekdays++;
+        }
+        fail_unless($weekdays>0,'Leave Date Range '.($index+1).' must include a Monday-to-Friday working day.');
+        $units=$dayType==='WHOLE_DAY'?$weekdays*2:1;
         $ranges[]=['id'=>(isset($range['id']) && is_string($range['id']) && trim($range['id'])!=='')?trim($range['id']):uid('leave-range'),'startDate'=>$start,'endDate'=>$end,'dayType'=>$dayType,'leaveDayUnits'=>$units];
         $halfDayUnits+=$units;
     }
