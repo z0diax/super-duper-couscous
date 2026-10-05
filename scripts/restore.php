@@ -9,7 +9,7 @@ $pdo=database(false); $name=app_config()['database'];
 $pdo->exec('CREATE DATABASE IF NOT EXISTS `'.$name.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'); $pdo->exec('USE `'.$name.'`');
 if ($pdo->query('SHOW TABLES')->fetch()) throw new RuntimeException('Refusing to restore over an existing database. Configure an empty recovery database.');
 foreach ($data['tables'] as $table=>$content) {
-    if (!preg_match('/^app_[a-z_]+$/',$table)) throw new RuntimeException('Invalid table name.');
+    if (!preg_match('/^app_[a-z_]+$/',$table) && !in_array($table,['workflow_templates','workflow_template_document_types','workflow_template_steps','documents','document_workflow_steps','document_attachments','document_custody_history'],true)) throw new RuntimeException('Invalid table name.');
     $pdo->exec($content['schema']);
     foreach ($content['rows'] as $row) {
         foreach (array_keys($row) as $col) if (!preg_match('/^[a-z_][a-z0-9_]*$/',$col)) throw new RuntimeException('Invalid column.');

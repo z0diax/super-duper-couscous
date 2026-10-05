@@ -217,6 +217,7 @@ export interface PayrollBatch {
     releasedAt?: string;
     releasedBy?: string;
     releasedTo?: string;
+    releasedToUserId?: string;
     releaseMode?: string;
     receiptRemarks?: string;
   };
@@ -325,7 +326,7 @@ export interface WorkflowStepInstance {
   allowHold?: boolean;
   requiresAttachment?: boolean;
   payrollAssignmentSource?: WorkflowStepTemplate['payrollAssignmentSource'];
-  assignmentSource?: WorkflowStepTemplate['assignmentSource'];
+  assignmentSource?: WorkflowStepTemplate['assignmentSource'] | 'dynamic';
   personnelPoolUserIds?: string[];
   stepNumber: number;
   name: string;
@@ -473,13 +474,17 @@ export interface DocumentRecord {
   complianceSubmittedAt?: string;
   currentStepNumber: number;
   totalSteps: number;
-  workflowTemplateId: string;
+  routingMode?: 'dynamic';
+  routingRevision?: number;
+  workflowTemplateId: string | null;
   workflowSteps: WorkflowStepInstance[];
   attachments: FileAttachment[];
   currentLocation?: string;
   custodyHistory?: Array<{
     id: string;
-    movementType: 'INTAKE' | 'EXTERNAL_HANDOFF' | 'RETURN_TO_HRMDO' | 'FINAL_RELEASE';
+    movementType: 'INTAKE' | 'EXTERNAL_HANDOFF' | 'RETURN_TO_HRMDO' | 'FINAL_RELEASE' | 'DOCKETED_SENT' | 'FORWARDED' | 'COMPLETED';
+    fromUserId?: string;
+    toUserId?: string;
     fromLocation: string;
     toLocation: string;
     timestamp: string;
@@ -499,6 +504,7 @@ export interface DocumentRecord {
     releasedAt: string;
     releasedBy: string;
     releasedTo: string;
+    releasedToUserId?: string;
     releaseMode: 'HRMDO Liaison' | 'External Liaison' | 'In-Person Pickup' | 'Others';
     otherReleaseMode?: string;
     receiptRemarks?: string;

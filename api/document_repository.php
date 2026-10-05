@@ -3,7 +3,7 @@ declare(strict_types=1);
 // Read-only normalized repository. app_records remains authoritative for writes.
 require_once __DIR__.'/domain.php';
 
-const DOCUMENT_LIST_COLUMNS='d.id,d.tracking_number,d.barcode,d.title,d.subject,d.source_office,d.sender_name,d.classification,d.document_type,d.employment_classification,d.priority,d.status,d.date_received,d.current_step_number,d.total_steps,d.current_location,d.workflow_template_id,d.encoded_by_user_id,d.is_legacy_v1,(SELECT s.name FROM document_workflow_steps s WHERE s.document_id=d.id AND s.step_number=d.current_step_number) AS current_step_name';
+const DOCUMENT_LIST_COLUMNS='d.id,d.tracking_number,d.barcode,d.title,d.subject,d.source_office,d.sender_name,d.classification,d.document_type,d.employment_classification,d.priority,d.status,d.date_received,d.current_step_number,d.total_steps,d.current_location,d.workflow_template_id,d.encoded_by_user_id,d.is_legacy_v1,(SELECT s.name FROM document_workflow_steps s WHERE s.document_id=d.id AND s.step_number=d.current_step_number) AS current_step_name,(SELECT CASE WHEN s.assignment_source=\'dynamic\' THEN \'dynamic\' ELSE NULL END FROM document_workflow_steps s WHERE s.document_id=d.id AND s.step_number=d.current_step_number) AS routing_mode';
 
 function document_repository_role_state(PDO $pdo,array $user): array {
     $q=$pdo->prepare("SELECT record_json FROM app_records WHERE collection='systemRoles' AND id=? LIMIT 1");
@@ -235,7 +235,7 @@ function document_repository_task_queue_condition(string $queue,array $user): ar
         'returned'=>["d.status='Returned'",[]],
         'waiting'=>["$active AND ((d.encoded_by_user_id=?) OR EXISTS (SELECT 1 FROM document_workflow_steps prior WHERE prior.document_id=d.id AND prior.step_number<d.current_step_number AND prior.completed_by_user_id=?)) AND COALESCE($actionableTeam,0)=0",[$user['id'],$user['id'],...$teamParams]],
         'ready_for_release'=>["d.status='Ready_For_Release'",[]],
-        'completed'=>["d.status IN ('Released','Disapproved')",[]],
+        'completed'=>["(d.status IN ('Released','Disapproved') OR (d.status='Archived' AND s.assignment_source='dynamic'))",[]],
     };
 }
 function document_repository_team_queue_condition(array $user,string $active): array {

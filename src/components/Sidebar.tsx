@@ -21,6 +21,8 @@ import {
 import { BrandLogo } from './BrandLogo';
 import { AnimatedBrandText } from './AnimatedBrandText';
 import { SidebarWeatherCard } from './SidebarWeatherCard';
+import { SidebarThemeDecoration } from '../theme/SidebarThemeDecoration';
+import { useTheme } from '../theme/ThemeProvider';
 import type { DocumentShellSnapshot } from '../services/useDocumentShellSummary';
 import type { PayrollShellSnapshot } from '../services/usePayrollShellSummary';
 
@@ -43,6 +45,7 @@ interface NavItem {
 
 export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, isOpen, onClose, onOpenRegisterModal, onOpenPayrollModal }) => {
   const { activeTab, setActiveTab, documents, currentUser, payrollBatches, payrollItems, workGroups, can } = useApp();
+  const { effectsEnabled } = useTheme();
   const showConfiguration = can('canAdmin');
   const showComplianceHistory = can('canAdmin') || can('canSupervise');
   const allOperationModules: SidebarModule[] = ['dashboard','queues','payroll','registry','leave'];
@@ -129,12 +132,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, i
 
       {/* Sidebar Container */}
       <aside 
-        className={`app-sidebar fixed top-0 bottom-0 left-0 z-50 w-64 sm:w-72 text-slate-300 flex flex-col border-r border-slate-800 transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+        className={`app-sidebar fixed top-0 bottom-0 left-0 z-50 w-64 sm:w-72 text-slate-300 flex flex-col overflow-hidden border-r border-slate-800 transition-transform duration-200 ease-in-out lg:translate-x-0 ${effectsEnabled ? 'sidebar-effects-on' : ''} ${
           isOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
         }`}
       >
         {/* Brand Header */}
-        <div className="h-20 px-4 sm:px-5 flex items-center justify-between border-b border-slate-800 shrink-0">
+        <div className="sidebar-brand-header relative z-10 h-20 px-4 sm:px-5 flex items-center justify-between border-b border-slate-800 shrink-0">
           <div className="flex flex-1 items-center gap-2.5 sm:gap-3 min-w-0">
             <BrandLogo className="h-10 w-10 shrink-0 drop-shadow-md" title="HRMDO Records Management System" />
             <AnimatedBrandText />
@@ -149,15 +152,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, i
           </button>
         </div>
 
+        <SidebarThemeDecoration />
+
         {/* Quick Action Button */}
-        <div className="p-4 pb-2 shrink-0 space-y-2">
+        <div className="relative z-10 p-4 pb-2 shrink-0 space-y-2">
           {visibleOperationModules.includes('registry') && <button
             id="btn-sidebar-register-doc"
             onClick={() => {
               onOpenRegisterModal();
               if (window.innerWidth < 1024) onClose();
             }}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-xs transition-all duration-150 cursor-pointer"
+            className="sidebar-primary-action w-full flex items-center justify-center gap-2 py-2 px-3.5 rounded-xl font-semibold text-xs shadow-xs transition-all duration-150 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Register Document</span>
@@ -172,14 +177,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, i
               }}
               className="w-full flex items-center justify-center gap-2 py-2 px-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 font-semibold text-xs transition-all duration-150 cursor-pointer"
             >
-              <Layers className="w-3.5 h-3.5 text-blue-400" />
+              <Layers className="sidebar-payroll-icon w-3.5 h-3.5" />
               <span>Intake Payroll</span>
             </button>
           )}
         </div>
 
         {/* Navigation Links (Organized by Section) */}
-        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-5">
+        <nav className="relative z-10 flex-1 overflow-y-auto px-3 py-3 space-y-5">
           {sections.map(section => {
             const items = navItems.filter(item => item.section === section && (!['workflows', 'catalogue', 'users', 'migration'].includes(item.id) || can('canAdmin')));
             if (items.length === 0) return null;
@@ -198,7 +203,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, i
                       onClick={() => handleNavClick(item.id)}
                       className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer ${
                         isActive
-                          ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                          ? 'sidebar-nav-active font-semibold shadow-xs'
                           : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                       }`}
                     >
@@ -209,7 +214,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, i
 
                       {item.badge !== undefined && (
                         <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                          isActive ? 'bg-white text-blue-600' : 'bg-rose-500 text-white'
+                          isActive ? 'sidebar-active-badge bg-white' : 'bg-rose-500 text-white'
                         }`}>
                           {item.badge}
                         </span>
@@ -224,7 +229,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, i
         </nav>
 
         {/* Local Date, Time & Weather */}
-        <div className="p-3 border-t border-slate-800 shrink-0 bg-slate-950/40">
+        <div className="relative z-10 p-3 border-t border-slate-800 shrink-0 bg-slate-950/40">
           <SidebarWeatherCard />
         </div>
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { startFixture, Client, testPassword } from './support.mjs';
-let fixture, admin, employee, receiver, processor, approver, releaser, workflow, payrollWorkflow, doc, batch;
+let fixture, admin, employee, receiver, processor, approver, releaser, liaison, workflow, payrollWorkflow, doc, batch;
 const userData = (role) => ({name:`Test ${role}`,email:`${role}@example.test`,password:testPassword,role,roleTitle:role,office:'HRMDO',division:'Operations',position:'Officer'});
 const step = (n,role,action,extra={}) => ({stepNumber:n,name:`Step ${n}`,description:'Test routing',assigneeType:'Role',assigneeRole:role,assigneeName:role,slaHours:24,requiredAction:action,allowHold:true,allowReturn:n>1,requiresAttachment:false,...extra});
 const documentData = (barcode) => ({title:'Integration document',subject:'Test subject',sourceType:'Internal',sourceOffice:'HRMDO',senderName:'Test Sender',classification:'Communication',documentType:'Office Order',priority:'Routine',description:'Test',barcode,files:[]});
@@ -147,10 +147,14 @@ test('claim, return, required uploads, approval, release, and read-only history'
   await employee.action('uploadSupportingFile',[doc.id,file],404);
   await approver.action('uploadSupportingFile',[doc.id,file]);
   await approver.action('approveDocument',[doc.id,'Approved']);
+  await admin.action('addSystemRole',[{id:'liaison',name:'LIASON',code:'LSN',description:'Receives released records',badgeClass:'bg-blue-100 text-blue-700'}]);
+  liaison=(await admin.action('addUser',[{...userData('liaison'),name:'Office Liaison Officer'}])).result;
   await processor.action('releaseDocument',[doc.id,{releasedTo:'Office',releaseMode:'HRMDO Liaison'}],403);
   assert.equal(processor.state.documents.some(record=>record.id===doc.id),true); // previous processor: view only
-  await releaser.action('releaseDocument',[doc.id,{releasedTo:'Office',releaseMode:'HRMDO Liaison'}]);
+  await releaser.action('releaseDocument',[doc.id,{releasedToUserId:processor.state.users.find(user=>user.role==='processor').id,releaseMode:'HRMDO Liaison'}],422);
+  await releaser.action('releaseDocument',[doc.id,{releasedToUserId:liaison.id,releasedTo:'Wrong name',releaseMode:'HRMDO Liaison'}]);
   await admin.refresh(); const saved=admin.state.documents.find(d=>d.id===doc.id); assert.equal(saved.status,'Released'); assert(saved.workflowSteps.every(s=>s.status==='Completed'));
+  assert.equal(saved.releasedDetails.releasedTo,liaison.name); assert.equal(saved.releasedDetails.releasedToUserId,liaison.id);
   await admin.action('addDocumentRemark',[doc.id,'Cannot edit released record'],409);
   const response=await fetch(`${fixture.base}/api/files.php?id=${file.id}`,{headers:{Cookie:admin.cookie}}); assert.equal(response.status,200); assert.match(await response.text(),/Integration evidence/);
   assert.equal((await fetch(`${fixture.base}/api/files.php?id=${file.id}`,{headers:{Cookie:processor.cookie}})).status,200);
@@ -213,7 +217,10 @@ test('payroll batch checking, exceptions, routing, processing and release',async
   assert.equal(releaser.state.payrollItems.find(item=>item.id===phaseThreeItemId).currentStage,'release');
   await receiver.action('submitPayrollItemCompliance',[phaseThreeItemId,{remarks:'Recipient details supplied',files:[]}]);
   await releaser.action('resumePayrollItemHold',[phaseThreeItemId]);
-  await releaser.action('releasePayrollBatch',[batch.id,{releasedTo:'Payroll liaison',releaseMode:'Electronic Copy'}]);
+  await releaser.action('releasePayrollBatch',[batch.id,{releasedTo:'External receiving officer',releaseMode:'External Liaison'}]);
+  await admin.refresh();
+  assert.equal(admin.state.payrollBatches.find(record=>record.id===batch.id).releaseDetails.releasedTo,'External receiving officer');
+  assert.equal(admin.state.payrollBatches.find(record=>record.id===batch.id).releaseDetails.releaseMode,'External Liaison');
   assert.equal(releaser.state.payrollItems.find(item=>item.id===batch.itemIds[0]).status,'Released');
   assert.equal(releaser.state.payrollItems.some(item=>item.id===batch.itemIds[1]),false);
   assert.equal(releaser.state.payrollBatches.find(b=>b.id===batch.id).status,'PROCESSING_WITH_HOLDS');

@@ -78,12 +78,14 @@ function payroll_batch_list(PDO $pdo,array $user,array $filters,int $page=1,int 
         $batch['itemIds']=[];$batch['workGroupIds']=[];$batch['attachments']=[];$batch['workflowHistory']=[];
     }unset($batch);
     $owner=$user['role']==='admin'?'1=1':'b.encoded_by_user_id=?';$ownerParams=$user['role']==='admin'?[]:[$user['id']];
-    $stats=$pdo->prepare("SELECT COALESCE(SUM(b.derived_status<>'COMPLETED'),0) active,COALESCE(SUM(b.initial_active>0),0) initial,COALESCE(SUM(b.derived_status='COMPLETED'),0) completed FROM payroll_read_batches b WHERE $owner");
+    $stats=$pdo->prepare("SELECT COUNT(*) total,COALESCE(SUM(b.derived_status<>'COMPLETED'),0) active,COALESCE(SUM(b.initial_active>0),0) initial,COALESCE(SUM(b.derived_status='COMPLETED'),0) completed FROM payroll_read_batches b WHERE $owner");
     payroll_bind($stats,$ownerParams);$stats->execute();$metric=$stats->fetch();
+    $held=$pdo->prepare("SELECT COUNT(*) FROM payroll_read_batches b WHERE $owner AND EXISTS (SELECT 1 FROM payroll_read_items i WHERE i.batch_id=b.id AND (i.status IN ('On_Hold','Ready_For_Recheck') OR i.verification_status='Exception'))");
+    payroll_bind($held,$ownerParams);$held->execute();
     $groups=$pdo->prepare("SELECT COUNT(*) FROM payroll_read_groups g JOIN payroll_read_batches b ON b.id=g.batch_id WHERE $owner AND g.status='In_Progress'");payroll_bind($groups,$ownerParams);$groups->execute();
     $offices=$pdo->prepare("SELECT DISTINCT b.office FROM payroll_read_batches b WHERE $owner ORDER BY b.office ASC");payroll_bind($offices,$ownerParams);$offices->execute();
     return ['items'=>$batches,'page'=>$page,'limit'=>$limit,'total'=>$total,'totalPages'=>(int)ceil($total/$limit),
-        'metrics'=>['active'=>(int)$metric['active'],'initial'=>(int)$metric['initial'],'completed'=>(int)$metric['completed'],'workGroups'=>(int)$groups->fetchColumn()],
+        'metrics'=>['total'=>(int)$metric['total'],'active'=>(int)$metric['active'],'hold'=>(int)$held->fetchColumn(),'initial'=>(int)$metric['initial'],'completed'=>(int)$metric['completed'],'workGroups'=>(int)$groups->fetchColumn()],
         'offices'=>$offices->fetchAll(PDO::FETCH_COLUMN)];
 }
 function payroll_task_condition(array $user,array $caps): array {
@@ -150,7 +152,7 @@ function payroll_shell_summary(PDO $pdo,array $user): array {
     }
     return ['sidebarPayrollTaskCount'=>$taskCount,'payrollNotifications'=>$notifications];
 }
-function payroll_batch_detail(PDO $pdo,array $user,string $id,int $itemPage=1,int $groupPage=1,int $limit=25): array {
+function payroll_batch_detail(PDO $pdo,array $user,string $id,int $itemPage=1,int $groupPage=1,int $limit=25,string $itemOrder=''): array {
     [$itemPage,$limit,$itemOffset]=payroll_page($itemPage,$limit);[$groupPage,,$groupOffset]=payroll_page($groupPage,$limit);
     $caps=payroll_read_caps($pdo,$user);[$scope,$params]=payroll_batch_sql($user,$caps);
     $q=$pdo->prepare("SELECT b.id FROM payroll_read_batches b WHERE b.id=? AND $scope");payroll_bind($q,[$id,...$params]);$q->execute();
@@ -161,8 +163,8 @@ function payroll_batch_detail(PDO $pdo,array $user,string $id,int $itemPage=1,in
     [$itemScope,$itemParams]=payroll_item_sql($user,$caps);
     $itemWhere="i.batch_id=? AND $itemScope";$itemParams=[$id,...$itemParams];
     $count=$pdo->prepare("SELECT COUNT(*) FROM payroll_read_items i JOIN payroll_read_batches b ON b.id=i.batch_id WHERE $itemWhere");payroll_bind($count,$itemParams);$count->execute();$itemTotal=(int)$count->fetchColumn();
-    $q=$pdo->prepare("SELECT i.id FROM payroll_read_items i JOIN payroll_read_batches b ON b.id=i.batch_id WHERE $itemWhere ORDER BY i.item_number ASC,i.id ASC LIMIT ? OFFSET ?");
-    // item_number remains authoritative in JSON; IDs preserve its usual registration order.
+    $orderBy=$itemOrder==='name'?'i.title COLLATE utf8mb4_unicode_ci ASC,i.id ASC':'i.item_number ASC,i.id ASC';
+    $q=$pdo->prepare("SELECT i.id FROM payroll_read_items i JOIN payroll_read_batches b ON b.id=i.batch_id WHERE $itemWhere ORDER BY $orderBy LIMIT ? OFFSET ?");
     payroll_bind($q,[...$itemParams,$limit,$itemOffset]);$q->execute();$items=payroll_json_rows($pdo,'payrollItems',$q->fetchAll(PDO::FETCH_COLUMN));
     $groupMember="(g.processor_id=? OR (g.assigned_team<>'' AND g.assigned_team IN (?,?)))";
     $groupWhere=$isFull?'g.batch_id=?':"g.batch_id=? AND $groupMember";

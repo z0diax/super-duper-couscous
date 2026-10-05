@@ -2,9 +2,10 @@
 import { downloadUrl } from '../services/http';
 import { useApp } from '../context/AppContext';
 import { useWorkspaceState } from '../services/workspace';
-import { PayrollBatch, EmploymentClassification } from '../types';
+import { PayrollBatch, EmploymentClassification, PayrollItem } from '../types';
 import { getPayrollBatchDetail,type PayrollBatchDetail } from '../services/payrollApi';
 import { useResourceInvalidation } from '../services/resourceInvalidation';
+import { ReleaseModal } from './ReleaseModal';
 import { 
   X, 
   Layers, 
@@ -41,6 +42,7 @@ const payrollStatusStyle = (status: string) => status === 'On_Hold'
 const PayrollStatus: React.FC<{ status: string }> = ({ status }) => <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${payrollStatusStyle(status)}`}>{payrollStatusLabel(status)}</span>;
 const payrollCount = (count: number) => `${count} payroll${count === 1 ? '' : 's'}`;
 const classificationLabel = (value: string) => value === 'Job Order (JOW)' ? 'JOW/COS' : value;
+const sortPayrollItemsByName = (items: PayrollItem[]) => [...items].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
 
 interface Props {
   batch: PayrollBatch | null;
@@ -60,6 +62,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     workGroups:legacyWorkGroups, 
     currentUser, 
     users,
+    systemRoles,
     updatePayrollItemClassification, 
     bulkClassifyPayrollItems, 
     placePayrollItemHold,
@@ -79,13 +82,14 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const [detailRetry,setDetailRetry]=useState(0);
   const [itemPage,setItemPage]=useState(1);
   const [groupPage,setGroupPage]=useState(1);
+  const [activeTab, setActiveTab] = useWorkspaceState<'workflow' | 'items' | 'audit'>(currentUser.id, 'payroll-batch-detail.tab', 'workflow');
   React.useEffect(()=>{setItemPage(1);setGroupPage(1);setDetail(null);setSelectedItemIds([]);setRouteSelections({});},[sourceBatch?.id]);
   React.useEffect(()=>{
     if(!payrollTargeted||!isOpen||!sourceBatch)return;
     let active=true,pending=false;
     const refresh=async()=>{
       if(pending)return;pending=true;setDetailLoading(true);setDetailError(false);
-      try{const value=await getPayrollBatchDetail(sourceBatch.id,itemPage,groupPage,25);if(active){setDetail(value);setDetailLoading(false);}}
+      try{const value=await getPayrollBatchDetail(sourceBatch.id,itemPage,groupPage,25,activeTab==='workflow'?'name':undefined);if(active){setDetail(value);setDetailLoading(false);}}
       catch{if(active){setDetail(null);setDetailLoading(false);setDetailError(true);}}
       finally{pending=false;}
     };
@@ -93,11 +97,10 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     const resume=()=>{if(document.visibilityState==='visible')void refresh();};
     window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};
-  },[payrollTargeted,isOpen,sourceBatch?.id,itemPage,groupPage,stateRevision,detailRetry,invalidation]);
+  },[payrollTargeted,isOpen,sourceBatch?.id,itemPage,groupPage,activeTab,stateRevision,detailRetry,invalidation]);
   const batch=payrollTargeted?detail?.batch||sourceBatch:sourceBatch;
   const workGroups=payrollTargeted?detail?.workGroups||[]:legacyWorkGroups;
 
-  const [activeTab, setActiveTab] = useWorkspaceState<'workflow' | 'items' | 'audit'>(currentUser.id, 'payroll-batch-detail.tab', 'workflow');
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [routeSelections, setRouteSelections] = useState<Record<string, string>>({});
   const [activeWorkGroupTab, setActiveWorkGroupTab] = useState<string>(initialWorkGroupId || '');
@@ -118,14 +121,8 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
 
   const [showReleaseModal, setShowReleaseModal] = useState(false);
-  const [isReleasing, setIsReleasing] = useState(false);
 
   React.useEffect(() => { setShowReleaseModal(false); }, [isOpen, batch?.id]);
-
-  // Release form state
-  const [releasedTo, setReleasedTo] = useState(batch?.receivedFromLiaison || 'Office Liaison Officer');
-  const [releaseMode] = useState<'In-Person Pick-up' | 'Official Courier' | 'Electronic Copy' | 'Internal Messenger'>('Electronic Copy');
-  const [releaseRemarks, setReleaseRemarks] = useState('');
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -177,7 +174,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
   const items = payrollTargeted?detail?.items||[]:legacyPayrollItems.filter(i => i.batchId === batch.id);
   const batchWorkGroups = workGroups.filter(w => w.batchId === batch.id);
   const progress = batch.progress;
-  const initialCheckingItems = items.filter(item => (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking');
+  const initialCheckingItems = sortPayrollItemsByName(items.filter(item => (item.currentStage || (item.workGroupId ? 'verification_signing' : 'initial_checking')) === 'initial_checking'));
   const isAdmin = can('canAdmin');
   const initialCheckingDesk = batch.initialCheckingDesk || batch.assignedDesk;
   const canInitialCheck = isAdmin || can('canSupervise') || (
@@ -328,21 +325,6 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
     if (!complianceItemId) return;
     if (!(await submitPayrollItemCompliance(complianceItemId, { remarks: complianceRemarks, files: complianceFiles }))) return;
     setComplianceItemId(null);
-  };
-
-  const handleReleaseSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isReleasing || !canReleaseBatch || readyForReleaseCount === 0) return;
-    setIsReleasing(true);
-    try {
-      if (await releasePayrollBatch(batch.id, {
-        releasedTo: releasedTo.trim(),
-        releaseMode,
-        receiptRemarks: releaseRemarks
-      })) setShowReleaseModal(false);
-    } finally {
-      setIsReleasing(false);
-    }
   };
 
   return (
@@ -716,7 +698,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
 
                   {/* Active Work Group Details */}
                   {batchWorkGroups.filter(w => w.id === activeWorkGroupTab).map(wg => {
-                    const wgItems = items.filter(i => wg.itemIds.includes(i.id));
+                    const wgItems = sortPayrollItemsByName(items.filter(i => wg.itemIds.includes(i.id)));
                     const isUserAssigned = isAdmin || currentUser.id === wg.assignedProcessorId || !!wg.assignedTeam && [currentUser.division,currentUser.office].includes(wg.assignedTeam) || !!wg.assignedRoleId && wg.assignedRoleId === currentUser.role;
                     const isCompleted = wg.status === 'Completed';
 
@@ -781,7 +763,7 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
                     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                       <div className="border-b border-slate-100 px-4 py-3 text-xs font-semibold text-slate-600">Payrolls at the release desk</div>
                       <div className="divide-y divide-slate-100">
-                        {items.filter(item => item.currentStage === 'release' && item.status !== 'Released').map(item => <div key={item.id} className="space-y-3 p-4">
+                        {sortPayrollItemsByName(items.filter(item => item.currentStage === 'release' && item.status !== 'Released')).map(item => <div key={item.id} className="space-y-3 p-4">
                           <div className="flex items-start gap-3"><FileCheck2 className="mt-0.5 h-4 w-4 shrink-0 text-violet-500" /><div className="min-w-0 flex-1"><p className="break-words text-sm font-semibold text-slate-900">{item.title}</p><div className="mt-2 flex flex-wrap items-center gap-2"><span className="font-mono text-xs text-slate-500">{item.barcode}</span><PayrollStatus status={item.status} /></div></div></div>
                           <div className="flex flex-wrap gap-2">
                             {item.status === 'Ready_For_Release' && phaseAllowsHold(4) && <button type="button" onClick={() => handleOpenHoldModal(item.id)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 hover:bg-amber-100"><PauseCircle className="h-3.5 w-3.5" />Hold</button>}
@@ -880,26 +862,15 @@ export const PayrollBatchDetailModal: React.FC<Props> = ({
         </footer>
       </div>
 
-      {showReleaseModal && canReleaseBatch && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-xs">
-          <form onSubmit={handleReleaseSubmit} role="dialog" aria-modal="true" aria-label="Release payrolls" data-release-dialog className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 p-5">
-              <div className="flex items-center gap-3"><span className="rounded-xl bg-blue-50 p-2.5 text-blue-600"><Send className="h-5 w-5" /></span><div><h3 className="text-base font-bold text-slate-900">Release payrolls</h3><p className="mt-1 text-xs text-slate-500">{payrollCount(readyForReleaseCount)} ready in {batch.batchNumber}</p></div></div>
-              <button type="button" aria-label="Close release form" onClick={() => setShowReleaseModal(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
-            </header>
-            <div className="min-h-0 overflow-y-auto">
-                      <div className="space-y-4 p-4 sm:p-5">
-                        <label className="block text-xs font-semibold text-slate-700">Recipient <span className="text-rose-500">*</span><input type="text" required value={releasedTo} onChange={e => setReleasedTo(e.target.value)} placeholder="Name of recipient or liaison" className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label>
-                        <label className="block text-xs font-semibold text-slate-700">Receipt remarks <span className="font-normal text-slate-400">(optional)</span><textarea rows={2} value={releaseRemarks} onChange={e => setReleaseRemarks(e.target.value)} placeholder="Receipt number or handover notes" className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal outline-hidden focus:border-blue-500 focus:ring-2 focus:ring-blue-100" /></label>
-                      </div>
-            </div>
-            <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
-              <button type="button" onClick={() => setShowReleaseModal(false)} className="rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100">Cancel</button>
-              <button type="submit" disabled={isReleasing || readyForReleaseCount === 0 || !releasedTo.trim()} className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><Send className="h-4 w-4" />{isReleasing ? 'Releasing...' : `Release ${payrollCount(readyForReleaseCount)}`}</button>
-            </footer>
-          </form>
-        </div>
-      )}
+      {showReleaseModal && canReleaseBatch && <ReleaseModal
+        title="Release payrolls"
+        subtitle={`${payrollCount(readyForReleaseCount)} ready in ${batch.batchNumber}`}
+        submitLabel={`Release ${payrollCount(readyForReleaseCount)}`}
+        users={users}
+        systemRoles={systemRoles}
+        onClose={() => setShowReleaseModal(false)}
+        onSubmit={details => releasePayrollBatch(batch.id, details)}
+      />}
 
       {/* Reason for hold Dialog */}
       {holdingItemId && (

@@ -1,5 +1,9 @@
 DirectoryIndex dist/index.html
 Options -Indexes
+<IfModule mod_env.c>
+  # The document UI and native Others routing use normalized targeted APIs.
+  SetEnv HRMDO_DOCUMENT_TARGETED_READS_ENABLED 1
+</IfModule>
 <IfModule php_module>
   php_value upload_max_filesize 10M
   php_value post_max_size 12M

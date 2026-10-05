@@ -17,6 +17,9 @@ test.beforeAll(async () => {
   const jun = await addProcessor('Jun');
   const reymart = await addProcessor('Reymart');
   const miguel = await addProcessor('Miguel');
+  await admin.action('addSystemRole', [{ id: 'liaison', name: 'LIASON', code: 'LSN', description: 'Receives released records', badgeClass: 'bg-blue-100 text-blue-700' }]);
+  await admin.action('addUser', [{ name: 'Office Liaison Officer', email: 'liaison@example.test', password: testPassword,
+    role: 'liaison', roleTitle: 'Liaison', office: 'HRMDO', division: 'Records', position: 'Liaison Officer' }]);
   const phase = (stepNumber: number, name: string, requiredAction: string, extra = {}) => ({
     stepNumber, name, description: '', assigneeType: 'Person', assigneeUserId: adminUser.id,
     assigneeName: adminUser.name, slaHours: 24, requiredAction,
@@ -110,10 +113,13 @@ test('batch details distinguish personnel groups and remain usable on mobile', a
   expect(dialogBounds?.x).toBeGreaterThanOrEqual(0);
   expect((dialogBounds?.x ?? 0) + (dialogBounds?.width ?? 0)).toBeLessThanOrEqual(390);
   await page.screenshot({ path: 'test-results/payroll-batch-mobile.png', animations: 'disabled' });
-  await expect(dialog.getByLabel('Recipient')).toHaveCount(0);
+  await expect(dialog.getByLabel('Liaison officer')).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Release payrolls (1)', exact: true }).click();
   const releaseDialog = page.getByRole('dialog', { name: 'Release payrolls', exact: true });
-  await expect(releaseDialog.getByLabel('Recipient')).toBeVisible();
+  await expect(releaseDialog.getByLabel('Liaison officer')).toBeVisible();
+  await expect(releaseDialog.getByLabel('Liaison officer').getByRole('option', { name: 'Office Liaison Officer — HRMDO' })).toHaveCount(1);
+  await expect(releaseDialog.getByLabel('Release method')).toHaveValue('HRMDO Liaison');
+  await expect(releaseDialog.getByRole('textbox', { name: 'Recipient' })).toHaveCount(0);
   await expect(releaseDialog.getByRole('button', { name: 'Release 1 payroll', exact: true })).toBeInViewport();
   await page.screenshot({ path: 'test-results/payroll-release-mobile.png', animations: 'disabled' });
   await releaseDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -142,6 +148,37 @@ test('assigned payroll processor retains signing and hold controls', async ({ pa
   await expect(dialog.getByRole('button', { name: 'Hold', exact: true })).toBeVisible();
   await expect(dialog.getByRole('button', { name: /^Complete group/ })).toBeVisible();
   await page.screenshot({ path: 'test-results/payroll-batch-processor.png', fullPage: true, animations: 'disabled' });
+});
+
+test('batch release uses the shared liaison and release method selectors', async ({ page }) => {
+  await page.goto(`${fixture.base}/`);
+  await page.getByLabel('Email address or username').fill('admin@example.test');
+  await page.getByLabel('Password', { exact: true }).fill(testPassword);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('button', { name: 'Payroll Management', exact: true }).click();
+  await page.getByRole('button', { name: 'Open', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Payroll batch details' }).getByRole('button', { name: 'Release payrolls (1)', exact: true }).click();
+  const releaseDialog = page.getByRole('dialog', { name: 'Release payrolls', exact: true });
+  await releaseDialog.getByLabel('Liaison officer').selectOption({ label: 'Office Liaison Officer — HRMDO' });
+  await expect(releaseDialog.getByLabel('Release method')).toHaveValue('HRMDO Liaison');
+  await expect(releaseDialog.getByRole('button', { name: 'Release 1 payroll' })).toBeEnabled();
+  await releaseDialog.getByLabel('Release method').selectOption('External Liaison');
+  await expect(releaseDialog.getByLabel('Liaison officer')).toHaveCount(0);
+  await expect(releaseDialog.getByLabel('External liaison name')).toBeVisible();
+  await expect(releaseDialog.getByRole('button', { name: 'Release 1 payroll' })).toBeDisabled();
+  await releaseDialog.getByLabel('External liaison name').fill('External receiving officer');
+  await expect(releaseDialog.getByRole('button', { name: 'Release 1 payroll' })).toBeEnabled();
+  await releaseDialog.getByLabel('Release method').selectOption('In-Person Pickup');
+  await expect(releaseDialog.getByLabel('Pickup recipient name')).toHaveValue('');
+  await releaseDialog.getByLabel('Pickup recipient name').fill('Walk-in recipient');
+  await releaseDialog.getByLabel('Release method').selectOption('Others');
+  await expect(releaseDialog.getByLabel('Recipient name')).toHaveValue('');
+  await releaseDialog.getByLabel('Recipient name').fill('Other recipient');
+  await expect(releaseDialog.getByRole('button', { name: 'Release 1 payroll' })).toBeDisabled();
+  await releaseDialog.getByLabel('Specify release method').fill('Secure counter collection');
+  await expect(releaseDialog.getByRole('button', { name: 'Release 1 payroll' })).toBeEnabled();
+  await releaseDialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(releaseDialog).toHaveCount(0);
 });
 
 test('workflow phase opens focused payroll routing settings', async ({ page }) => {
@@ -243,4 +280,37 @@ test('selected payrolls can share an eligible personnel assignment before routin
   await admin.refresh();
   const routed = batch.itemIds.map((id: string) => admin.state.payrollItems.find((item: any) => item.id === id));
   expect(routed.map((item: any) => item.assignedToUserId)).toEqual([jun.id, reymart.id, admin.state.users.find((user: any) => user.name === 'Miguel').id]);
+});
+
+test('Processing displays payroll names alphabetically without changing item order or selection', async ({ page }) => {
+  const admin = await new Client(fixture.base).login();
+  const names = ['ZAMORA, TEST', 'BADORIA, JANNELYN', 'FERNANDEZ, MA. IMELDA ET. AL', 'ABETO, RICHARD ET. AL', 'CRUZ, TEST'];
+  const batch = (await admin.action('registerPayrollBatch', [{
+    office: 'HRMDO - Human Resource Management and Development Office', payrollType: 'Salary',
+    batchBarcode: 'PAYROLL-SORT-DETAIL', files: [],
+    items: names.map((title, index) => ({ title, barcode: `SORT-ITEM-${index}`, classificationType: 'Salary' })),
+  }])).result;
+
+  await page.goto(`${fixture.base}/`);
+  await page.getByLabel('Email address or username').fill('admin@example.test');
+  await page.getByLabel('Password', { exact: true }).fill(testPassword);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await page.getByRole('button', { name: /^My Tasks & Queues/ }).click();
+  await page.locator(`#btn-open-payroll-task-${batch.id}`).click();
+
+  const dialog = page.getByRole('dialog', { name: 'Payroll batch details' });
+  await dialog.getByRole('button', { name: 'Processing', exact: true }).click();
+  const selectButtons = dialog.getByRole('button', { name: /^Select payroll SORT-ITEM-/ });
+  await expect(selectButtons).toHaveCount(5);
+  expect(await selectButtons.evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')))).toEqual([
+    'Select payroll SORT-ITEM-3', 'Select payroll SORT-ITEM-1', 'Select payroll SORT-ITEM-4',
+    'Select payroll SORT-ITEM-2', 'Select payroll SORT-ITEM-0',
+  ]);
+  await dialog.getByRole('button', { name: 'Select payroll SORT-ITEM-3' }).click();
+  await expect(dialog.getByRole('button', { name: 'Select payroll SORT-ITEM-3' })).toHaveAttribute('aria-pressed', 'true');
+  await dialog.getByRole('button', { name: 'Payroll items (5)' }).click();
+  const itemTitles = dialog.getByRole('heading', { name: 'Payroll items' }).locator('xpath=..').locator('xpath=following-sibling::div[1]').locator('p.font-semibold');
+  await admin.refresh();
+  expect(await itemTitles.allTextContents()).toEqual(admin.state.payrollItems.filter((item: any) => item.batchId === batch.id).map((item: any) => item.title));
+  expect(batch.itemIds.map((id: string) => admin.state.payrollItems.find((item: any) => item.id === id).title)).toEqual(names);
 });

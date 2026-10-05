@@ -101,7 +101,7 @@ export const MyTasksQueue: React.FC = () => {
   const selectQueue=(queue:DocumentTaskQueue)=>{setPage(1);setActiveQueue(queue);};
   const taskDocuments=targeted?[]:documents;
   const openTask=(id:string,classification:string)=>{
-    if(targeted && targetedDetail && classification!=='Payroll'){openTargetedDocument(id);return;}
+    if(targeted && (targetedDetail || taskPage?.data.find(row=>row.id===id)?.routingMode==='dynamic') && classification!=='Payroll'){openTargetedDocument(id);return;}
     const doc=documents.find(item=>item.id===id);
     if(doc)setSelectedDocument(doc);
     else showToast('error','Document unavailable','Refresh the application and try opening this document again.');
@@ -511,7 +511,7 @@ export const MyTasksQueue: React.FC = () => {
                       {/* Current Step & Assignee */}
                       <td className="py-3 px-4">
                         <div className="font-semibold text-blue-700 flex items-center gap-1.5">
-                          <span>Phase {doc.currentStepNumber}/{doc.totalSteps}:</span>
+                          <span>{doc.routingMode === 'dynamic' ? 'Handler:' : `Phase ${doc.currentStepNumber}/${doc.totalSteps}:`}</span>
                           <span className="truncate max-w-[160px]">{doc.currentStepName}</span>
                         </div>
                         <div className="text-xs text-slate-600 truncate max-w-[180px] mt-0.5">

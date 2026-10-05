@@ -67,7 +67,7 @@ button { touch-action: manipulation; }
 .app-toast {
   right: max(1rem, env(safe-area-inset-right));
   bottom: max(1rem, env(safe-area-inset-bottom));
-  width: min(28rem, calc(100vw - 2rem));
+  width: min(22rem, calc(100vw - 2rem));
 }
 
 .app-saving-overlay {
@@ -90,13 +90,6 @@ button { touch-action: manipulation; }
     overflow-y: auto;
   }
 
-  .app-toast {
-    left: max(1rem, env(safe-area-inset-left));
-    right: max(1rem, env(safe-area-inset-right));
-    bottom: max(1rem, env(safe-area-inset-bottom));
-    width: auto;
-    max-width: none;
-  }
 }
 [data-appearance="dark"] .bg-white { background-color: var(--app-surface); }
 [data-appearance="dark"] .bg-slate-50, [data-appearance="dark"] .bg-slate-50\/50, [data-appearance="dark"] .bg-slate-50\/70, [data-appearance="dark"] .bg-slate-100 { background-color: var(--app-surface-muted); }

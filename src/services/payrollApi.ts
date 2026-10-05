@@ -2,7 +2,8 @@ import { request } from './http';
 import type { DocumentRecord,PayrollBatch, PayrollItem, WorkGroup } from '../types';
 
 export interface PayrollPage<T> { data:T[]; pagination:{page:number;limit:number;total:number;totalPages:number} }
-export interface PayrollBatchList extends PayrollPage<PayrollBatch & {_canEdit?:boolean}> {metrics:{active:number;initial:number;completed:number;workGroups:number};offices:string[]}
+export interface PayrollBatchList extends PayrollPage<PayrollBatch & {_canEdit?:boolean}> {metrics:{total:number;active:number;hold:number;initial:number;completed:number;workGroups:number};offices:string[]}
+export interface PayrollSingleList extends PayrollPage<DocumentRecord> {metrics:{total:number;hold:number;initial:number;released:number}}
 export interface PayrollTaskBatch extends PayrollBatch { _assignedGroup?:WorkGroup|null }
 export interface PayrollTaskPage extends PayrollPage<PayrollTaskBatch> { allTaskCount:number }
 export interface PayrollHeldPage extends PayrollPage<PayrollItem> { batches:PayrollBatch[] }
@@ -22,7 +23,7 @@ export const listPayrollBatches=(filters:{owned?:boolean;office?:string;stage?:s
   if(filters.owned)params.set('owned','1');if(filters.office)params.set('office',filters.office);if(filters.stage)params.set('stage',filters.stage);
   return request(`payroll_batches.php?${params}`);
 };
-export const listSinglePayroll=(filters:{office?:string;stage?:string},page=1,limit=10):Promise<PayrollPage<DocumentRecord>>=>{
+export const listSinglePayroll=(filters:{office?:string;stage?:string},page=1,limit=10):Promise<PayrollSingleList>=>{
   const params=new URLSearchParams({page:String(page),limit:String(limit)});
   if(filters.office)params.set('office',filters.office);if(filters.stage)params.set('stage',filters.stage);
   return request(`payroll_single.php?${params}`);
@@ -33,8 +34,8 @@ export const listPayrollTasks=(search='',page=1,limit=25):Promise<PayrollTaskPag
 };
 export const listHeldPayrollItems=(page=1,limit=25):Promise<PayrollHeldPage>=>
   request(`payroll_held.php?page=${page}&limit=${limit}`);
-export const getPayrollBatchDetail=(id:string,itemPage=1,groupPage=1,limit=25):Promise<PayrollBatchDetail>=>
-  request(`payroll_batch.php?id=${encodeURIComponent(id)}&itemPage=${itemPage}&groupPage=${groupPage}&limit=${limit}`);
+export const getPayrollBatchDetail=(id:string,itemPage=1,groupPage=1,limit=25,itemOrder?:'name'):Promise<PayrollBatchDetail>=>
+  request(`payroll_batch.php?id=${encodeURIComponent(id)}&itemPage=${itemPage}&groupPage=${groupPage}&limit=${limit}${itemOrder?`&itemOrder=${itemOrder}`:''}`);
 export const searchPayroll=(query:string):Promise<PayrollSearchResult>=>
   request(`payroll_search.php?q=${encodeURIComponent(query)}`);
 export const getPayrollShellSummary=():Promise<PayrollShellSummary>=>request('payroll_shell_summary.php');

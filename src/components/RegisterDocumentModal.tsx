@@ -15,7 +15,8 @@ import {
   UserCheck
 } from 'lucide-react';
 import { resolveWorkflow } from '../services/workflow';
-import { DocumentClassification } from '../types';
+import { DocumentClassification, UserAccount } from '../types';
+import { getRoutingPeople, registerRoutedDocument } from '../services/documentApi';
 import { readWorkspaceValue, writeWorkspaceValue } from '../services/workspace';
 import { OFFICE_OPTIONS } from '../data/offices';
 
@@ -33,6 +34,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
     registerDocument, 
     documents,
     setSelectedDocument,
+    openTargetedDocument,
     currentUser,
     users
   } = useApp();
@@ -48,6 +50,15 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
   const [files, setFiles] = useState<File[]>([]);
   const [initialAssigneeId, setInitialAssigneeId] = useState('');
   const [isWorkflowPreviewOpen, setIsWorkflowPreviewOpen] = useState(false);
+  const [routingPeople, setRoutingPeople] = useState<UserAccount[]>([]);
+  const [routingError, setRoutingError] = useState('');
+  const [routingBusy, setRoutingBusy] = useState(false);
+  useEffect(() => {
+    if (!isOpen || classification !== 'Others') return;
+    let active=true;
+    getRoutingPeople().then(people=>{if(active){setRoutingPeople(people);setRoutingError('');}}).catch(error=>{if(active){setRoutingPeople([]);setRoutingError(error.message);}});
+    return()=>{active=false;};
+  },[isOpen,classification]);
 
   useEffect(() => {
     writeWorkspaceValue(currentUser.id, 'draft.register-document', { classification, documentType, employmentClassification, title, barcode, sourceOffice, remarks });
@@ -77,6 +88,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
     wf.isActive && Array.isArray(wf.steps) && wf.steps.length > 0
   );
   const resolvedWorkflow = resolveWorkflow(workflowTemplates, classification, documentType, classification === 'Payroll' ? employmentClassification : undefined);
+  const dynamicRouting = classification === 'Others' && !resolvedWorkflow;
   const firstOperationalStep = resolvedWorkflow?.steps[0]?.assignmentSource === 'personnel_pool'
     ? resolvedWorkflow.steps[0]
     : resolvedWorkflow?.steps[0]?.requiredAction === 'Receive' ? resolvedWorkflow.steps[1] : resolvedWorkflow?.steps[0];
@@ -98,7 +110,8 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
     e.preventDefault();
     if (!title.trim() || !barcode.trim()) return;
 
-    if (!resolvedWorkflow) {
+    if (dynamicRouting && (!documentType.trim() || !initialAssigneeId)) return;
+    if (!resolvedWorkflow && !dynamicRouting) {
       alert('No active workflow is configured. Ask an administrator to create a workflow with at least one phase before registering documents.');
       return;
     }
@@ -114,7 +127,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
 
     const finalDocType = documentType.trim() || (classification === 'Others' ? 'General Request' : 'Standard Document');
 
-    const newDoc = await registerDocument({
+    const registration = {
       title: title.trim(),
       subject: remarks.trim() || title.trim(),
       sourceType: sourceOffice.includes('External') ? 'External' : 'Internal',
@@ -127,13 +140,18 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
       description: remarks.trim() || title.trim(),
       files,
       barcode: barcode.trim(),
-      initialAssigneeId: initialPoolUserIds.length > 0 ? initialAssigneeId : undefined,
-    });
+      initialAssigneeId: dynamicRouting || initialPoolUserIds.length > 0 ? initialAssigneeId : undefined,
+    };
+    setRoutingBusy(true);setRoutingError('');
+    let newDoc;
+    try { newDoc = dynamicRouting ? await registerRoutedDocument(registration,files) : await registerDocument(registration); }
+    catch(error) { setRoutingError(error instanceof Error?error.message:'Could not send the document.');return; }
+    finally { setRoutingBusy(false); }
     if (!newDoc) return;
 
     setTitle(''); setBarcode(''); setRemarks(''); setFiles([]); setInitialAssigneeId('');
     onClose();
-    setSelectedDocument(newDoc);
+    if (dynamicRouting) openTargetedDocument(newDoc.id); else setSelectedDocument(newDoc);
   };
 
   return (
@@ -151,7 +169,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
                 Register Incoming Document
               </h2>
               <p className="text-xs text-slate-400">
-                Official docketing & automatic phase-based workflow assignment
+                {dynamicRouting ? 'Official docketing & assignment' : 'Official docketing & automatic phase-based workflow assignment'}
               </p>
             </div>
           </div>
@@ -180,7 +198,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="reg-input-classification" className="mb-1 flex h-6 items-center text-xs font-semibold text-slate-700">
                   Document Classification
                 </label>
                 <select
@@ -196,12 +214,12 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
               </div>
 
               <div>
-                <div className="mb-1 flex items-center justify-between gap-2">
+                <div className="mb-1 flex h-6 items-center justify-between gap-2">
                   <label htmlFor="reg-input-doctype" className="block text-xs font-semibold text-slate-700">Document Type {classification === 'Others' ? '*' : ''}</label>
-                  <button type="button" disabled={!resolvedWorkflow} onClick={() => setIsWorkflowPreviewOpen(true)} className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-50 hover:text-blue-800 disabled:cursor-not-allowed disabled:text-slate-400">Workflow</button>
+                  {!dynamicRouting && <button type="button" disabled={!resolvedWorkflow} onClick={() => setIsWorkflowPreviewOpen(true)} className="shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-50 hover:text-blue-800 disabled:cursor-not-allowed disabled:text-slate-400">Workflow</button>}
                 </div>
                 <div className="flex items-center gap-2">
-                  <select
+                  {classification === 'Others' ? <input id="reg-input-doctype" required value={documentType} onChange={e=>{setDocumentType(e.target.value);setInitialAssigneeId('');}} placeholder="Enter document type" className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white p-2.5 text-sm" /> : <select
                     id="reg-input-doctype"
                     value={documentType}
                     onChange={e => { setDocumentType(e.target.value); setInitialAssigneeId(''); }}
@@ -212,7 +230,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
                         {t.name}
                       </option>
                     ))}
-                  </select>
+                  </select>}
                 </div>
               </div>
             </div>
@@ -224,7 +242,9 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
               </select>
               <span className="mt-1 block font-normal text-slate-500">This person will receive {firstOperationalStep?.name}.</span>
             </label>}
-            {!resolvedWorkflow && <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800 sm:col-span-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>No active workflow is configured for this classification and document type.</span></div>}
+            {dynamicRouting && <label className="block rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs font-semibold text-slate-700 sm:col-span-2">Person in Charge *<select required value={initialAssigneeId} onChange={e=>setInitialAssigneeId(e.target.value)} className="mt-1.5 w-full rounded-lg border border-blue-300 bg-white p-2.5 text-sm"><option value="">Select employee...</option>{routingPeople.map(person=><option key={person.id} value={person.id}>{person.name} — {person.roleTitle}</option>)}</select><span className="mt-2 block font-normal text-slate-600">No predefined workflow is configured for this document. Select the person who should handle it first.</span></label>}
+            {!resolvedWorkflow && !dynamicRouting && <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800 sm:col-span-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>No active workflow is configured for this classification and document type.</span></div>}
+            {dynamicRouting && routingError && <p role="alert" className="text-sm text-rose-700 sm:col-span-2">{routingError}</p>}
           </div>
 
           {/* Title */}
@@ -447,12 +467,12 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
             <button
               type="submit"
               id="btn-submit-register-document"
-              disabled={isDuplicateBarcode || !resolvedWorkflow || (initialPoolUsers.length > 0 && !initialAssigneeId)}
+              disabled={routingBusy || isDuplicateBarcode || (!resolvedWorkflow && !dynamicRouting) || (dynamicRouting && (!documentType.trim() || !initialAssigneeId)) || (initialPoolUsers.length > 0 && !initialAssigneeId)}
               className={`px-5 py-2 text-xs sm:text-sm font-semibold text-white rounded-lg shadow-sm transition-colors flex items-center gap-2 cursor-pointer ${
-                isDuplicateBarcode || !resolvedWorkflow || (initialPoolUsers.length > 0 && !initialAssigneeId) ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
+                routingBusy || isDuplicateBarcode || (!resolvedWorkflow && !dynamicRouting) || ((dynamicRouting || initialPoolUsers.length > 0) && !initialAssigneeId) ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'
               }`}
             >
-              <span>Docket & Launch Workflow</span>
+              <span>{routingBusy ? 'Sending...' : dynamicRouting ? 'Docket & Send' : 'Docket & Launch Workflow'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </footer>

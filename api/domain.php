@@ -8,6 +8,19 @@ function required(array $data,string $key,int $max=190): string {
 function choice($value,array $values,string $label): string {
     fail_unless(is_string($value) && in_array($value,$values,true),"Invalid $label."); return $value;
 }
+function release_recipient(array $s,array $details): array {
+    if (array_key_exists('releasedToUserId',$details)) {
+        $selectedId=required($details,'releasedToUserId',64);
+        $user=$s['users'][index_of($s['users'],$selectedId)];
+        $role=$user['role']??'';
+        $isLiaison=$role==='liaison';
+        foreach ($s['systemRoles']??[] as $definition) if (($definition['id']??'')===$role && preg_match('/liaison|liason/i',($definition['id']??'').' '.($definition['name']??''))) $isLiaison=true;
+        fail_unless($isLiaison,'Select a user assigned to the LIAISON role.',422);
+        $details['releasedTo']=$user['name'];
+        $details['releasedToUserId']=$user['id'];
+    } else $details['releasedTo']=required($details,'releasedTo');
+    return $details;
+}
 function positive($value,string $label,int $max=8760): float {
     fail_unless(is_numeric($value) && $value>0 && $value<=$max,"$label must be greater than zero and at most $max."); return (float)$value;
 }
@@ -142,6 +155,9 @@ function filter_state_for_view(array $s,array $u): array {
 }
 function assert_barcode(array $s,string $barcode,array $additional=[],string $excludeLeaveId=''): void {
     fail_unless(strlen($barcode)<=190 && $barcode!=='','Barcode is required and must be at most 190 characters.');
+    // Native dynamic records are absent from legacy state collections.
+    $dynamic=database()->prepare("SELECT id FROM documents WHERE (barcode=? OR tracking_number=?) AND JSON_UNQUOTE(JSON_EXTRACT(source_json,'$.routingMode'))='dynamic' LIMIT 1");
+    $dynamic->execute([$barcode,$barcode]);fail_unless(!$dynamic->fetch(),'Barcode is already in use.',409);
     $codes=$additional;
     foreach ($s['documents'] as $r) { $codes[]=$r['barcode']??''; $codes[]=$r['trackingNumber']; }
     foreach ($s['payrollBatches'] as $r) { $codes[]=$r['batchBarcode']??''; $codes[]=$r['batchNumber']; }
@@ -352,7 +368,7 @@ function validated_workflow(array $s,array $d): array {
     } unset($step);
     $d['isActive']=(bool)($d['isActive']??false); return $d;
 }
-function resolve_workflow(array $s,array $d): array {
+function resolve_workflow(array $s,array $d,bool $allowMissing=false): ?array {
     $matches=[]; $payrollIntakeWithoutEmployment=($d['classification']??null)==='Payroll' && empty($d['employmentClassification']);
     foreach ($s['workflowTemplates'] as $wf) {
         if (empty($wf['isActive']) || empty($wf['steps']) || $wf['classification']!==$d['classification']) continue;
@@ -368,6 +384,7 @@ function resolve_workflow(array $s,array $d): array {
         $matches[]=['workflow'=>$wf,'typeScore'=>$exact?2:0,'employmentScore'=>$payrollIntakeWithoutEmployment ? ($employment==='All'?1:0) : ($employment!=='All'?1:0)];
     }
     usort($matches,fn($a,$b)=>($b['typeScore']<=>$a['typeScore']) ?: ($b['employmentScore']<=>$a['employmentScore']));
+    if (!$matches && $allowMissing) return null;
     fail_unless(count($matches)>0,'Configure an active workflow for this classification and document type first.');
     fail_unless(count($matches)<2 || $matches[0]['typeScore']!==$matches[1]['typeScore'] || $matches[0]['employmentScore']!==$matches[1]['employmentScore'],'Multiple workflows match. Deactivate the duplicate routing configuration.');
     return $matches[0]['workflow'];
@@ -387,9 +404,10 @@ function register_document(PDO $pdo,array &$s,array $u,array $d): array {
     $title=required($d,'title',300); $office=required($d,'sourceOffice'); $type=required($d,'documentType');
     $category=null; foreach ($s['classifications'] as $c) if ($c['classification']===($d['classification']??'')) $category=$c;
     fail_unless($category!==null,'Choose a configured classification.');
-    fail_unless(count(array_filter($category['types'],fn($t)=>!empty($t['isActive']) && strcasecmp($t['name'],$type)===0))>0,'Choose an active document type from the catalogue.');
+    fail_unless($category['classification']==='Others' || count(array_filter($category['types'],fn($t)=>!empty($t['isActive']) && strcasecmp($t['name'],$type)===0))>0,'Choose an active document type from the catalogue.');
     $wf=resolve_workflow($s,$d); $id=uid('doc'); $barcode=trim($d['barcode']??'') ?: 'HRMDO-'.date('Y').'-'.strtoupper(bin2hex(random_bytes(5)));
-    assert_barcode($s,$barcode); $steps=[]; $registeredAt=now();
+    assert_barcode($s,$barcode);
+    $steps=[]; $registeredAt=now();
     foreach ($wf['steps'] as $i=>$st) {
         $stageType=$st['stageType']??(($st['requiredAction']??'')==='Release & Archive'?'FINAL_RELEASE':'INTERNAL_PROCESSING');
         $isExternal=$stageType==='EXTERNAL_HANDOFF_REVIEW';
@@ -594,7 +612,7 @@ function document_action(PDO $pdo,array &$s,array $u,string $action,array $args)
             $step['remarks']=is_string($args[1]??null)?$args[1]:''; $step['actionTaken']=$args[2]??$required;
         }
         if ($action==='releaseDocument') {
-            $details=$args[1]; required($details,'releasedTo'); $releaseMode=choice($details['releaseMode']??null,['HRMDO Liaison','External Liaison','In-Person Pickup','Others'],'release mode');
+            $details=release_recipient($s,$args[1]); $releaseMode=choice($details['releaseMode']??null,['HRMDO Liaison','External Liaison','In-Person Pickup','Others'],'release mode');
             if ($releaseMode==='Others') $details['otherReleaseMode']=required($details,'otherReleaseMode'); else unset($details['otherReleaseMode']);
             $releasedAt=now(); $doc['releasedDetails']=array_merge($details,['releaseNumber'=>uid('release'),'releasedAt'=>$releasedAt,'releasedBy'=>$u['name']]); $doc['status']='Released';
             $doc['custodyHistory'][]=['id'=>uid('custody'),'movementType'=>'FINAL_RELEASE','fromLocation'=>$doc['currentLocation']??'HRMDO','toLocation'=>$details['releasedTo'],'timestamp'=>$releasedAt,'stageNumber'=>$n+1,'remarks'=>$details['receiptRemarks']??'','actorId'=>$u['id'],'actorName'=>$u['name']];

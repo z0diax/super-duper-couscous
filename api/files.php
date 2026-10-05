@@ -8,8 +8,16 @@ if ($method==='GET') {
     // File identifiers are not authorization. Resolve the owning record and apply
     // the same record-level view policy used by the state API so an authenticated
     // user cannot enumerate attachments from records outside their work scope.
-    $state=load_state($pdo);
-    fail_unless((bool)$file && can_view_attachment_owner($state,$u,$file['owner_id']??null,$file['uploaded_by']??null),'File not found.',404);
+    require_once __DIR__.'/document_repository.php';
+    $owner=$file['owner_id']??null;
+    $q=$pdo->prepare('SELECT source_json FROM documents WHERE id=?');$q->execute([$owner]);$ownerJson=$q->fetchColumn();
+    $dynamic=$ownerJson!==false && (json_decode($ownerJson,true)['routingMode']??'')==='dynamic';
+    if ($dynamic) {
+        fail_unless((bool)$file && document_repository_by_id($pdo,$u,$owner)!==null,'File not found.',404);
+    } else {
+        $state=load_state($pdo);
+        fail_unless((bool)$file && can_view_attachment_owner($state,$u,$owner,$file['uploaded_by']??null),'File not found.',404);
+    }
     $path=app_config()['upload_directory'].'/'.$id; fail_unless(is_file($path),'Stored file is missing.',404);
     fail_unless(hash_equals($file['sha256'],hash_file('sha256',$path)),'File integrity verification failed.',409);
     header('Content-Type: '.$file['mime_type']); header('Content-Length: '.$file['size_bytes']);

@@ -47,7 +47,6 @@ export const LeaveDatesCalendar: React.FC<Props> = ({ record, selectedDates }) =
     </div>
     <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-slate-100 pt-2 text-[10px] text-slate-500">
       <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-600" /> Leave date</span>
-      <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-50 ring-1 ring-blue-100" /> Weekend skipped</span>
       {selectedDates.some(entry => entry.dayType !== 'WHOLE_DAY') && <span>Dot = half-day</span>}
     </div>
   </div>;

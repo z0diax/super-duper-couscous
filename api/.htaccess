@@ -1,4 +1,4 @@
 Options -Indexes
-<FilesMatch "^(?!(?:auth|state|files|leave|archive|weather|settings|dashboard|documents|document_registry_export|document_search|document_shell_summary|document_tasks|ewp|leave_audit|leave_detail|payroll_batch|payroll_batches|payroll_held|payroll_search|payroll_shell_summary|payroll_single|payroll_tasks|reference|revision|workflow_templates)\.php$).+">
+<FilesMatch "^(?!(?:auth|state|files|leave|archive|weather|settings|dashboard|documents|document_routing|document_registry_export|document_search|document_shell_summary|document_tasks|ewp|leave_audit|leave_detail|payroll_batch|payroll_batches|payroll_held|payroll_search|payroll_shell_summary|payroll_single|payroll_tasks|reference|revision|workflow_templates)\.php$).+">
   Require all denied
 </FilesMatch>

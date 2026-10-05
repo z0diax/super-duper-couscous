@@ -5,7 +5,7 @@ import { useResourceInvalidation } from '../services/resourceInvalidation';
 import { DocumentRecord } from '../types';
 import { useWorkspaceState } from '../services/workspace';
 import { documentSenderLabel } from '../services/documentDisplay';
-import { exportRegistryCsv, listRegistryDocuments, type RegistryCounts, type RegistryPage, type RegistryRow } from '../services/documentApi';
+import { deleteRoutedDocument, exportRegistryCsv, listRegistryDocuments, type RegistryCounts, type RegistryPage, type RegistryRow } from '../services/documentApi';
 import { 
   FileStack, 
   Filter, 
@@ -35,6 +35,8 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
   const [statusFilter, setStatusFilter] = useWorkspaceState<string>(currentUser.id, 'registry.status-filter', 'all');
   const [priorityFilter, setPriorityFilter] = useWorkspaceState<string>(currentUser.id, 'registry.priority-filter', 'all');
   const [deleteConfirmDocumentId, setDeleteConfirmDocumentId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deleteInFlight=useRef(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [targetPage, setTargetPage] = useState<RegistryPage | null>(null);
@@ -75,8 +77,16 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
   const updatePriority = (value: string) => { setPage(1); setPriorityFilter(value); };
 
   const handleDeleteDocument = async (documentId: string) => {
-    if (!(await deleteDocument(documentId))) return;
-    setDeleteConfirmDocumentId(null);
+    if(deleteInFlight.current)return;
+    deleteInFlight.current=true;setDeleting(true);
+    try {
+      const dynamic=targetPage?.data.find(row=>row.id===documentId)?.routingMode==='dynamic';
+      if (!(await (dynamic ? deleteRoutedDocument(documentId) : deleteDocument(documentId)))) return;
+      setDeleteConfirmDocumentId(null);
+      if(dynamic)showToast('success','Document deleted','The document has been removed from the registry.');
+    } catch(error) {
+      showToast('error','Document was not deleted',error instanceof Error?error.message:'Please try again.');
+    } finally {deleteInFlight.current=false;setDeleting(false);}
   };
 
   const filteredDocs = registryDocuments.filter(doc => {
@@ -110,7 +120,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
     outside: registryDocuments.filter(doc => doc.status === 'Awaiting_External_Return').length,
   };
   const openDocument = (id: string) => {
-    if (targetedDetail) { openTargetedDocument(id); return; }
+    if (targetedDetail || targetPage?.data.find(row=>row.id===id)?.routingMode==='dynamic') { openTargetedDocument(id); return; }
     const fullDocument = documents.find(doc => doc.id === id);
     if (fullDocument) setSelectedDocument(fullDocument);
     else showToast('error', 'Document unavailable', 'Refresh the application and try opening this document again.');
@@ -359,7 +369,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                         ) : (
                           <div>
                             <div className={`text-xs font-bold ${doc.status === 'Disapproved' ? 'text-rose-700' : 'text-slate-900'}`}>
-                              {doc.status === 'Disapproved' ? 'Document was disapproved' : `Phase ${doc.currentStepNumber} of ${doc.totalSteps}`}
+                              {doc.routingMode === 'dynamic' ? doc.status === 'Archived' ? 'Completed' : 'Person in Charge' : doc.status === 'Disapproved' ? 'Document was disapproved' : `Phase ${doc.currentStepNumber} of ${doc.totalSteps}`}
                             </div>
                             <div className={`text-[11px] truncate max-w-[180px] ${doc.status === 'Disapproved' ? 'font-semibold text-rose-600' : 'text-blue-600'}`}>
                               {doc.status === 'Disapproved' ? 'Processing ended after external review' : doc.currentStepName}
@@ -376,8 +386,8 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                         <div className="inline-flex items-center gap-1">
                           {can('canAdmin') && (deleteConfirmDocumentId === doc.id ? (
                             <>
-                              <button type="button" onClick={event => { event.stopPropagation(); void handleDeleteDocument(doc.id); }} className="rounded bg-rose-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-rose-700">Confirm</button>
-                              <button type="button" onClick={event => { event.stopPropagation(); setDeleteConfirmDocumentId(null); }} className="rounded px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
+                              <button type="button" disabled={deleting} onClick={event => { event.stopPropagation(); void handleDeleteDocument(doc.id); }} className="rounded bg-rose-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-rose-700 disabled:opacity-50">{deleting?'Deleting...':'Confirm'}</button>
+                              <button type="button" disabled={deleting} onClick={event => { event.stopPropagation(); setDeleteConfirmDocumentId(null); }} className="rounded px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
                             </>
                           ) : (
                             <button type="button" aria-label={`Delete ${doc.trackingNumber}`} title="Delete document" onClick={event => { event.stopPropagation(); setDeleteConfirmDocumentId(doc.id); }} className="rounded p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700">

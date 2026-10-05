@@ -406,9 +406,10 @@ function payroll_action(PDO $pdo,array &$s,array $u,string $action,array $args):
         fail_unless(is_array($releaseDesk) && payroll_desk_matches_user($s,$u,$releaseDesk),'This batch is assigned to another officer.',403);
         $ready=array_values(array_filter($s['payrollItems'],fn($item)=>$item['batchId']===$batch['id'] && $item['status']==='Ready_For_Release'));
         fail_unless(count($ready)>0,'No payroll items are ready for release.',409);
-        $details=$args[1]; required($details,'releasedTo');
+        $details=release_recipient($s,$args[1]);
         $details['releaseMode']=$details['releaseMode'] ?? 'Electronic Copy';
-        choice($details['releaseMode'],['In-Person Pick-up','Official Courier','Electronic Copy','Internal Messenger'],'release mode');
+        choice($details['releaseMode'],['HRMDO Liaison','External Liaison','In-Person Pickup','Others','In-Person Pick-up','Official Courier','Electronic Copy','Internal Messenger'],'release mode');
+        if ($details['releaseMode']==='Others') $details['otherReleaseMode']=required($details,'otherReleaseMode'); else unset($details['otherReleaseMode']);
         $release=array_merge($details,['releasedAt'=>now(),'releasedBy'=>$u['name']]);
         foreach ($ready as $record) { $j=index_of($s['payrollItems'],$record['id']); $item=&$s['payrollItems'][$j]; $item['currentStage']='completed'; $item['status']='Released'; $item['releaseDetails']=$release; payroll_item_audit($item,$u,'PAYROLL_RELEASED','Officially released to '.$details['releasedTo'].'.'); unset($item); }
         $batch['releaseDetails']=$release;

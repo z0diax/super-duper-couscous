@@ -34,7 +34,7 @@ import {
 import { EmploymentRoutingRulesModal } from './EmploymentRoutingRulesModal';
 import { EditPayrollBatchModal } from './EditPayrollBatchModal';
 import { useWorkspaceState } from '../services/workspace';
-import { getPayrollBatchDetail,listPayrollBatches,listSinglePayroll,type PayrollBatchList,type PayrollBatchDetail,type PayrollPage } from '../services/payrollApi';
+import { getPayrollBatchDetail,listPayrollBatches,listSinglePayroll,type PayrollBatchList,type PayrollBatchDetail,type PayrollSingleList } from '../services/payrollApi';
 import { useResourceInvalidation } from '../services/resourceInvalidation';
 
 interface Props {
@@ -60,7 +60,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   const payrollTargeted=import.meta.env.VITE_PAYROLL_TARGETED_READS==='1';
   const invalidation=useResourceInvalidation('payroll');
   const [batchList,setBatchList]=useState<PayrollBatchList|null>(null);
-  const [singleList,setSingleList]=useState<PayrollPage<DocumentRecord>|null>(null);
+  const [singleList,setSingleList]=useState<PayrollSingleList|null>(null);
   const [singleError,setSingleError]=useState(false);
   const [singleRetry,setSingleRetry]=useState(0);
   const [batchListLoading,setBatchListLoading]=useState(payrollTargeted);
@@ -107,7 +107,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     return()=>{active=false;};
   },[payrollTargeted,editingBatchId,stateRevision,showToast,invalidation]);
   useEffect(()=>{
-    if(!payrollTargeted||viewMode!=='single_entries')return;
+    if(!payrollTargeted)return;
     let active=true,pending=false;
     const refresh=async()=>{
       if(pending)return;pending=true;setSingleError(false);
@@ -119,7 +119,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},5000);
     const resume=()=>{if(document.visibilityState==='visible')void refresh();};window.addEventListener('focus',resume);
     return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);};
-  },[payrollTargeted,viewMode,currentUser.id,stateRevision,officeFilter,stageFilter,singleListPage,singleRetry,setSingleListPage,invalidation]);
+  },[payrollTargeted,currentUser.id,stateRevision,officeFilter,stageFilter,singleListPage,singleRetry,setSingleListPage,invalidation]);
   const payrollBatches=payrollTargeted?batchList?.data||[]:legacyPayrollBatches;
   const payrollItems=payrollTargeted?editingDetail?.items||[]:legacyPayrollItems;
   const workGroups=payrollTargeted?[]:legacyWorkGroups;
@@ -227,10 +227,15 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   }, [currentSingleListPage, setSingleListPage, singleListPage]);
 
   // Calculate metrics
-  const totalActiveBatches = payrollTargeted?batchList?.metrics.active??0:ownedPayrollBatches.filter(b => b.progress.derivedStatus !== 'COMPLETED').length;
+  const totalBatchPayrolls = payrollTargeted?batchList?.metrics.total??0:ownedPayrollBatches.length;
+  const totalVouchers = payrollTargeted?singleList?.metrics.total??0:singlePayrollDocs.length;
+  const heldBatches = payrollTargeted?batchList?.metrics.hold??0:ownedPayrollBatches.filter(batch => payrollItems.some(item => item.batchId === batch.id && (item.status === 'On_Hold' || item.status === 'Ready_For_Recheck' || item.verificationStatus === 'Exception'))).length;
+  const heldVouchers = payrollTargeted?singleList?.metrics.hold??0:singlePayrollDocs.filter(doc => doc.status === 'On_Hold' || doc.status === 'Ready_For_Recheck').length;
   const initialCheckingBatches = payrollTargeted?batchList?.metrics.initial??0:ownedPayrollBatches.filter(b => b.progress.initialChecking.active > 0).length;
+  const initialCheckingVouchers = payrollTargeted?singleList?.metrics.initial??0:singlePayrollDocs.filter(doc => doc.status !== 'Archived' && doc.status !== 'Released' && doc.currentStepNumber <= 2).length;
   const activeWorkGroupsCount = payrollTargeted?batchList?.metrics.workGroups??0:workGroups.filter(w => ownedPayrollBatches.some(batch => batch.id === w.batchId) && w.status === 'In_Progress').length;
   const releasedBatchesCount = payrollTargeted?batchList?.metrics.completed??0:ownedPayrollBatches.filter(b => b.progress.derivedStatus === 'COMPLETED').length;
+  const releasedVouchersCount = payrollTargeted?singleList?.metrics.released??0:singlePayrollDocs.filter(doc => doc.status === 'Archived' || doc.status === 'Released').length;
 
   // Unique offices for filter
   const offices = payrollTargeted?batchList?.offices||[]:Array.from(new Set(ownedPayrollBatches.map(b => b.office)));
@@ -239,6 +244,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     <div className="space-y-6">
       {payrollTargeted&&batchListLoading&&<div role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Refreshing payroll batches...</div>}
       {payrollTargeted&&batchListError&&<div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Payroll batches could not be loaded. <button type="button" className="font-semibold underline" onClick={()=>setBatchRetry(value=>value+1)}>Retry</button></div>}
+      {payrollTargeted&&singleError&&<div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Single payroll vouchers could not be loaded. <button type="button" className="font-semibold underline" onClick={()=>setSingleRetry(value=>value+1)}>Retry</button></div>}
       {/* Top Banner & Header */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-2xs">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
@@ -273,23 +279,23 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
         {/* 4 Metric Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-6 mt-6 border-t border-slate-100">
           <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/80">
-            <p className="text-xs font-semibold text-slate-500">Batch Transmittals</p>
-            <p className="text-2xl font-bold text-slate-900 mt-0.5">{totalActiveBatches}</p>
+            <p className="text-xs font-semibold text-slate-500">Payroll Entries</p>
+            <p className="text-2xl font-bold text-slate-900 mt-0.5">{payrollTargeted&&(!batchList||!singleList)?'—':totalBatchPayrolls + totalVouchers}</p>
           </div>
 
-          <div className="p-3 rounded-xl bg-blue-50/60 border border-blue-200/70">
-            <p className="text-xs font-semibold text-blue-800">Single Vouchers</p>
-            <p className="text-2xl font-bold text-blue-900 mt-0.5">{filteredSingleTotal}</p>
+          <div className="p-3 rounded-xl bg-rose-50/60 border border-rose-200/70">
+            <p className="text-xs font-semibold text-rose-800">Hold</p>
+            <p className="text-2xl font-bold text-rose-900 mt-0.5">{payrollTargeted&&(!batchList||!singleList)?'—':heldBatches + heldVouchers}</p>
           </div>
 
           <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/70">
             <p className="text-xs font-semibold text-amber-800">Initial Checking</p>
-            <p className="text-2xl font-bold text-amber-900 mt-0.5">{initialCheckingBatches}</p>
+            <p className="text-2xl font-bold text-amber-900 mt-0.5">{payrollTargeted&&(!batchList||!singleList)?'—':initialCheckingBatches + initialCheckingVouchers}</p>
           </div>
 
           <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/70">
-            <p className="text-xs font-semibold text-emerald-800">Concluded / Released</p>
-            <p className="text-2xl font-bold text-emerald-900 mt-0.5">{releasedBatchesCount}</p>
+            <p className="text-xs font-semibold text-emerald-800">Released</p>
+            <p className="text-2xl font-bold text-emerald-900 mt-0.5">{payrollTargeted&&(!batchList||!singleList)?'—':releasedBatchesCount + releasedVouchersCount}</p>
           </div>
         </div>
       </div>
@@ -307,7 +313,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Batch Payroll Entry ({ownedPayrollBatches.length})
+              Batch Payroll Entry ({payrollTargeted&&!batchList?'…':totalBatchPayrolls})
             </button>
             <button
               onClick={() => setViewMode('single_entries')}
@@ -317,7 +323,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              Single Payroll Entry ({filteredSingleTotal})
+              Single Payroll Entry ({payrollTargeted&&!singleList?'…':totalVouchers})
             </button>
           </div>
 
@@ -614,7 +620,6 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
       {viewMode === 'single_entries' && (
         <div className="space-y-4">
           {payrollTargeted&&!singleList&&!singleError&&<div role="status" className="rounded-lg bg-blue-50 p-3 text-sm text-blue-800">Loading single payroll vouchers...</div>}
-          {payrollTargeted&&singleError&&<div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Single payroll vouchers could not be loaded. <button type="button" className="font-semibold underline" onClick={()=>setSingleRetry(value=>value+1)}>Retry</button></div>}
           {filteredSingleDocs.length === 0 ? (
             <div className="bg-white rounded-2xl p-12 text-center border border-slate-200 shadow-2xs space-y-3">
               <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">

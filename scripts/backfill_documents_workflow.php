@@ -119,6 +119,10 @@ function p2_verify(PDO $pdo,array $project,array &$issues): array {
         foreach ($project[$table]??[] as $row) $expected[implode('|',array_map(fn($k)=>(string)$row[$k],$keyFields))]=$row;
         $actual=[];
         $query=$table==='workflow_templates'?'SELECT * FROM workflow_templates WHERE is_current=1':($table==='workflow_template_steps'||$table==='workflow_template_document_types' ? "SELECT child.* FROM `$table` child JOIN workflow_templates parent ON parent.id=child.template_id AND parent.version=child.template_version WHERE parent.is_current=1" : "SELECT * FROM `$table`");
+        // Dynamic records are native normalized records, not shadow JSON sources.
+        if (in_array($table,['documents','document_workflow_steps','document_attachments','document_custody_history'],true)) {
+            $query=$table==='documents' ? "SELECT * FROM documents WHERE COALESCE(JSON_UNQUOTE(JSON_EXTRACT(source_json,'$.routingMode')),'')<>'dynamic'" : "SELECT child.* FROM `$table` child JOIN documents d ON d.id=child.document_id WHERE COALESCE(JSON_UNQUOTE(JSON_EXTRACT(d.source_json,'$.routingMode')),'')<>'dynamic'";
+        }
         foreach ($pdo->query($query) as $row) $actual[implode('|',array_map(fn($k)=>(string)$row[$k],$keyFields))]=$row;
         $counts[$table]=['source'=>count($expected),'normalized'=>count($actual)];
         foreach ($expected as $key=>$row) {

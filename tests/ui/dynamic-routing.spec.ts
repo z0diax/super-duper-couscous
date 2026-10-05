@@ -1,0 +1,67 @@
+import { test, expect } from '@playwright/test';
+import { startFixture, Client, testPassword } from '../support.mjs';
+
+test('receiving officer sends Others, assignees forward and complete through the existing inbox',async({page})=>{
+  const fixture=await startFixture(18806,{HRMDO_DOCUMENT_TARGETED_READS_ENABLED:'1'});
+  try {
+    const admin=await new Client(fixture.base).login();
+    for(const name of ['Alice','Bob'])await admin.action('addUser',[{name,email:`${name.toLowerCase()}@example.test`,password:testPassword,role:'employee',roleTitle:'Employee',office:'HRMDO',division:'HRMDO',position:'Officer'}]);
+    const login=async(email:string)=>{
+      await page.context().clearCookies();await page.goto(`${fixture.base}/`);
+      await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill(testPassword);
+      await page.getByRole('button',{name:'Sign in',exact:true}).click();
+      await expect(page.getByRole('button',{name:/^My Tasks & Queues/})).toBeVisible();
+    };
+    await login('admin@example.test');
+    await page.getByRole('button',{name:/Register Incoming|Register Document|Register New/}).first().click();
+    await page.locator('#reg-input-classification').selectOption('Others');
+    await page.locator('#reg-input-doctype').fill('Manual service request');
+    await page.locator('#reg-input-title').fill('Browser dynamic routing');
+    await page.locator('#reg-input-barcode').fill('DYNAMIC-BROWSER');
+    await page.locator('#reg-file-upload-input').setInputFiles({name:'routing-browser.txt',mimeType:'text/plain',buffer:Buffer.from('Routing attachment')});
+    const registration=page.getByRole('dialog',{name:'Register Incoming Document'});
+    await expect(registration.getByRole('button',{name:'Docket & Send'})).toBeDisabled();
+    await registration.getByLabel('Person in Charge').selectOption({label:'Alice — Employee'});
+    await registration.getByRole('button',{name:'Docket & Send'}).click();
+    await expect(page.getByRole('heading',{name:'Routing History',exact:true})).toBeVisible();
+    await expect(page.getByText('Workflow progress',{exact:true})).toHaveCount(0);
+    await page.locator('#btn-close-detail-modal').click();
+    await login('alice@example.test');await page.getByRole('button',{name:/^My Tasks & Queues/}).click();
+    await page.getByText('Browser dynamic routing',{exact:true}).locator('..').locator('..').getByRole('button',{name:'Open & Process'}).click();
+    await page.getByRole('button',{name:'Forward',exact:true}).click();
+    const forward=page.getByRole('dialog',{name:'Forward Document'});
+    await forward.getByLabel('Forward to').selectOption({label:'Bob — Employee'});
+    await forward.getByLabel('Remarks / Instructions').fill('Please verify the record.');
+    await forward.getByRole('button',{name:'Forward Document'}).click();
+    await expect(forward).toHaveCount(0);
+    await page.locator('#btn-close-detail-modal').click();
+    await expect(page.getByText('Browser dynamic routing',{exact:true})).toHaveCount(0);
+    await login('bob@example.test');await page.getByRole('button',{name:/^My Tasks & Queues/}).click();
+    await page.getByText('Browser dynamic routing',{exact:true}).locator('..').locator('..').getByRole('button',{name:'Open & Process'}).click();
+    await expect(page.getByText('Please verify the record.',{exact:true})).toBeVisible();
+    await page.getByRole('button',{name:/^Attachments/}).click();
+    const attachment=page.getByRole('link',{name:/routing-browser.txt/});
+    const href=await attachment.getAttribute('href');expect(href).toContain('/api/files.php');
+    const downloaded=await page.request.get(new URL(href!,fixture.base).toString());expect(downloaded.status()).toBe(200);expect(await downloaded.text()).toBe('Routing attachment');
+    await page.getByRole('button',{name:'Routing History & Actions'}).click();
+    await page.getByRole('button',{name:'Complete',exact:true}).click();
+    const complete=page.getByRole('dialog',{name:'Complete Document'});
+    await complete.getByLabel('Action / Remarks').fill('Processing completed.');
+    await complete.getByRole('button',{name:'Complete Document'}).click();
+    await expect(complete).toHaveCount(0);
+    await expect(page.getByText('Processing completed.',{exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'Forward',exact:true})).toHaveCount(0);
+    await page.locator('#btn-close-detail-modal').click();
+    await page.reload();await expect(page.getByRole('button',{name:/^My Tasks & Queues/})).toBeVisible();
+    await login('admin@example.test');
+    await page.getByRole('button',{name:'Document Registry',exact:true}).click();
+    const remove=page.getByRole('button',{name:'Delete DYNAMIC-BROWSER',exact:true});
+    await expect(remove).toBeVisible();await remove.click();
+    await page.getByRole('button',{name:'Cancel',exact:true}).click();
+    await expect(remove).toBeVisible();await remove.click();
+    await page.getByRole('button',{name:'Confirm',exact:true}).click();
+    await expect(page.getByText('Browser dynamic routing',{exact:true})).toHaveCount(0);
+    await page.reload();await page.getByRole('button',{name:'Document Registry',exact:true}).click();
+    await expect(page.getByRole('button',{name:'Delete DYNAMIC-BROWSER',exact:true})).toHaveCount(0);
+  } finally {await fixture.stop();}
+});

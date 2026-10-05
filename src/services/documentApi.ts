@@ -1,5 +1,30 @@
 import { apiEndpoint, request, ApiError } from './http';
 import type { AuditEvent, DocumentClassification, DocumentRecord, DocumentStatus, PriorityLevel, PayrollItem } from '../types';
+import type { UserAccount } from '../types';
+import { uploadFiles, deleteUnattachedUpload, downloadUrl } from './http';
+import { invalidateResource } from './resourceInvalidation';
+
+export const getRoutingPeople = async (): Promise<UserAccount[]> => (await request('document_routing.php')).data;
+export async function deleteRoutedDocument(documentId: string): Promise<boolean> {
+  const result=await request('document_routing.php',{method:'POST',body:JSON.stringify({action:'delete',documentId})});
+  invalidateResource('document');invalidateResource('dashboard');
+  return result.data.deleted===true;
+}
+export async function sendRoutingAction(data: Record<string, unknown>): Promise<DocumentRecord> {
+  const result=await request('document_routing.php',{method:'POST',body:JSON.stringify(data)});
+  invalidateResource('document');invalidateResource('dashboard');
+  return result.data;
+}
+export async function registerRoutedDocument(data: Record<string, unknown>, files: File[]): Promise<DocumentRecord> {
+  const uploaded: Awaited<ReturnType<typeof uploadFiles>>=[];
+  try {
+    for(const file of files) uploaded.push(...await uploadFiles([file]));
+    return await sendRoutingAction({...data,action:'register',files:uploaded});
+  } catch(error) {
+    if(error instanceof ApiError) await Promise.allSettled(uploaded.map(file=>deleteUnattachedUpload(file.id)));
+    throw error;
+  }
+}
 
 export interface DocumentDetailPayload { data: DocumentRecord; auditEvents: AuditEvent[]; payrollItem?: PayrollItem | null }
 export interface ShellDocumentRow {
@@ -40,6 +65,7 @@ export interface DocumentTaskPage {
 }
 
 export interface RegistryRow {
+  routingMode?: 'dynamic';
   id: string; trackingNumber: string; title: string; subject: string;
   sourceOffice: string; senderName: string; classification: DocumentClassification;
   documentType: string; employmentClassification?: string; priority: PriorityLevel;
@@ -47,6 +73,7 @@ export interface RegistryRow {
   totalSteps: number; currentLocation?: string; currentStepName?: string; isLegacyV1: boolean;
 }
 interface RegistryWireRow {
+  routing_mode?: 'dynamic' | null;
   id: string; tracking_number: string; title: string; subject: string | null;
   source_office: string; sender_name: string; classification: DocumentClassification;
   document_type: string; employment_classification: string | null; priority: PriorityLevel;
@@ -76,7 +103,7 @@ export async function listRegistryDocuments(filters: RegistryFilters, page = 1, 
   const params = paramsFor(filters); params.set('page', String(page)); params.set('limit', String(limit));
   const result = await request(`documents.php?${params}`) as { data: RegistryWireRow[]; pagination: RegistryPage['pagination']; registryCounts: RegistryCounts };
   return { pagination: result.pagination, registryCounts: result.registryCounts, data: result.data.map(row => ({
-    id: row.id, trackingNumber: row.tracking_number, title: row.title, subject: row.subject || '',
+    routingMode:row.routing_mode || undefined, id: row.id, trackingNumber: row.tracking_number, title: row.title, subject: row.subject || '',
     sourceOffice: row.source_office, senderName: row.sender_name, classification: row.classification,
     documentType: row.document_type, employmentClassification: row.employment_classification || undefined,
     priority: row.priority, status: row.status, dateReceived: row.date_received,
@@ -91,7 +118,7 @@ export async function listMyDocumentTasks(queue: DocumentTaskQueue, filters: { c
   if (filters.search?.trim()) params.set('search',filters.search);
   const result=await request(`document_tasks.php?${params}`) as { data: TaskWireRow[]; pagination: DocumentTaskPage['pagination']; queueCounts: DocumentTaskPage['queueCounts'] };
   return { pagination:result.pagination, queueCounts:result.queueCounts, data:result.data.map(row=>({
-    id:row.id, trackingNumber:row.tracking_number, title:row.title, subject:row.subject || '',
+    routingMode:row.routing_mode || undefined, id:row.id, trackingNumber:row.tracking_number, title:row.title, subject:row.subject || '',
     sourceOffice:row.source_office, senderName:row.sender_name, classification:row.classification,
     documentType:row.document_type, employmentClassification:row.employment_classification || undefined,
     priority:row.priority, status:row.status, dateReceived:row.date_received,
@@ -100,12 +127,17 @@ export async function listMyDocumentTasks(queue: DocumentTaskQueue, filters: { c
     assignedDisplayName:row.assigned_display_name || undefined, isLegacyV1:Number(row.is_legacy_v1)===1,
   })) };
 }
+const documentDetail = async (query: string): Promise<DocumentDetailPayload> => {
+  const payload: DocumentDetailPayload = await request(`documents.php?${query}`);
+  if(payload.data.routingMode==='dynamic') payload.data.attachments=payload.data.attachments.map(file=>({...file,url:downloadUrl(file.id)}));
+  return payload;
+};
 export const getDocumentDetailById = (id: string): Promise<DocumentDetailPayload> =>
-  request(`documents.php?id=${encodeURIComponent(id)}`);
+  documentDetail(`id=${encodeURIComponent(id)}`);
 export const getDocumentDetailByTrackingNumber = (value: string): Promise<DocumentDetailPayload> =>
-  request(`documents.php?trackingNumber=${encodeURIComponent(value)}`);
+  documentDetail(`trackingNumber=${encodeURIComponent(value)}`);
 export const getDocumentDetailByBarcode = (value: string): Promise<DocumentDetailPayload> =>
-  request(`documents.php?barcode=${encodeURIComponent(value)}`);
+  documentDetail(`barcode=${encodeURIComponent(value)}`);
 export async function exportRegistryCsv(filters: RegistryFilters): Promise<void> {
   const response = await fetch(`${apiEndpoint('document_registry_export.php')}?${paramsFor(filters)}`, { credentials: 'same-origin', headers: { Accept: 'text/csv' } });
   if (!response.ok) throw new ApiError('Could not export the registry. Please try again.', response.status);
