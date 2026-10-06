@@ -98,7 +98,7 @@ const MainLayout: React.FC = () => {
   }, [activeTab, currentUser.id, currentUser.sidebarModules, can, setActiveTab]);
 
   if (!initialDisplayComplete && !(authReady && isAuthenticated && databaseReady && (databaseError || users.length === 0))) {
-    return <AppLoader exiting={initialDisplayExiting} message={!authReady ? 'Checking your login session...' : isAuthenticated && !databaseReady ? 'Connecting to the application database...' : 'Opening Records Management System...'} />;
+    return <AppLoader initialStartup exiting={initialDisplayExiting} message={!authReady ? 'Checking your login session...' : isAuthenticated && !databaseReady ? 'Connecting to the application database...' : 'Opening Records Management System...'} />;
   }
 
   if (!authReady) {
