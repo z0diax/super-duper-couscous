@@ -26,7 +26,14 @@ test('sidebar motifs and controls follow every system theme, appearance, and eff
     }, setting);
     await expect(page.locator('html')).toHaveAttribute('data-system-theme', theme.id);
     if (theme.effectId) await expect(aside.locator('.sidebar-theme-decoration')).toHaveAttribute('data-sidebar-effect', theme.effectId);
-    else await expect(aside.locator('.sidebar-theme-decoration')).toHaveCount(0);
+    if (theme.effectId) {
+      await expect(page.locator('[data-nav-effect]')).toHaveAttribute('data-nav-effect', theme.effectId);
+      if (theme.id !== 'valentine') await expect(page.locator('[data-nav-effect] svg')).toHaveCount(2);
+    } else {
+      await expect(page.locator('[data-nav-effect]')).toHaveCount(0);
+      await expect(aside.locator('.sidebar-theme-decoration')).toHaveCount(0);
+    }
+
     await expect.poll(() => page.evaluate(() => {
       const root = document.documentElement;
       const sample = document.createElement('div');

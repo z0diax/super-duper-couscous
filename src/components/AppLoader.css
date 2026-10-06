@@ -1,4 +1,6 @@
 .app-loader-screen {
+  position: relative;
+  isolation: isolate;
   display: flex;
   min-height: 100vh;
   min-height: 100dvh;
@@ -20,6 +22,8 @@
 }
 
 .app-loader {
+  position: relative;
+  z-index: 1;
   width: min(100%, 25rem);
   text-align: center;
 }

@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Gift, Heart, Mail, Sparkles } from 'lucide-react';
-import { useTheme } from './ThemeProvider';
-import { SYSTEM_THEMES } from './themeRegistry';
-import { THEME_EFFECTS, WEATHER_EFFECTS } from './effects/effectDefinitions';
-import { WomensMonthNavMotif, BreastCancerAwarenessNavMotif, AmihanBloomNavMotif, WinterNavMotif, ChineseNewYearNavMotif, HalloChristmasNavMotif, FestiveNavMotif, RainySeasonNavMotif } from './motifs/ThemeNavMotifs';
+import { useThemeEffect } from './useThemeEffect';
+import { THEME_EFFECTS } from './effects/effectDefinitions';
+import { ThemeMotif } from './motifs/ThemeMotif';
 
 const usePrefersReducedMotion = () => {
   const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
@@ -19,8 +18,7 @@ const usePrefersReducedMotion = () => {
 };
 
 export const ThemeEffects: React.FC = () => {
-  const { systemTheme, effectiveWeatherTheme, effectsEnabled } = useTheme();
-  const effectId = systemTheme==='weather-sync' && effectiveWeatherTheme ? WEATHER_EFFECTS[effectiveWeatherTheme] : SYSTEM_THEMES[systemTheme].effectId;
+  const { effectId, effectsEnabled } = useThemeEffect();
   if (!effectsEnabled || !effectId) return null;
 
   if (effectId === 'valentine') return (
@@ -50,45 +48,16 @@ export const ThemeEffects: React.FC = () => {
  * effects are kept here so they cannot pass through page cards or dialogs.
  */
 export const ThemeNavEffects: React.FC = () => {
-  const { systemTheme, effectiveWeatherTheme, effectsEnabled } = useTheme();
+  const { effectId, effectsEnabled } = useThemeEffect();
   const reducedMotion = usePrefersReducedMotion();
-  const effectId = systemTheme==='weather-sync' && effectiveWeatherTheme ? WEATHER_EFFECTS[effectiveWeatherTheme] : SYSTEM_THEMES[systemTheme].effectId;
   if (!effectsEnabled || !effectId || (reducedMotion && effectId !== 'womens-month' && effectId !== 'breast-cancer-awareness' && effectId !== 'amihan-bloom' && effectId !== 'winter' && effectId !== 'chinese-new-year' && effectId !== 'hallo-christmas' && effectId !== 'festive' && effectId !== 'rainy-season')) return null;
 
   const definition = THEME_EFFECTS[effectId];
   return (
     <div key={effectId} className={`theme-nav-effect-field theme-nav-effect-field--${effectId}`} data-nav-effect={effectId} aria-hidden="true">
-      {effectId === 'womens-month' && <>
-        <WomensMonthNavMotif side="left" />
-        <WomensMonthNavMotif side="right" />
-      </>}
-      {effectId === 'breast-cancer-awareness' && <>
-        <BreastCancerAwarenessNavMotif side="left" />
-        <BreastCancerAwarenessNavMotif side="right" />
-      </>}
-      {effectId === 'amihan-bloom' && <>
-        <AmihanBloomNavMotif side="left" />
-        <AmihanBloomNavMotif side="right" />
-      </>}
-      {effectId === 'winter' && <>
-        <WinterNavMotif side="left" />
-        <WinterNavMotif side="right" />
-      </>}
-      {effectId === 'chinese-new-year' && <>
-        <ChineseNewYearNavMotif side="left" />
-        <ChineseNewYearNavMotif side="right" />
-      </>}
-      {effectId === 'hallo-christmas' && <>
-        <HalloChristmasNavMotif side="left" />
-        <HalloChristmasNavMotif side="right" />
-      </>}
-      {effectId === 'festive' && <>
-        <FestiveNavMotif side="left" />
-        <FestiveNavMotif side="right" />
-      </>}
-      {effectId === 'rainy-season' && <>
-        <RainySeasonNavMotif side="left" />
-        <RainySeasonNavMotif side="right" />
+      {effectId !== 'valentine' && !effectId.startsWith('weather-') && <>
+        <ThemeMotif effectId={effectId} side="left" />
+        <ThemeMotif effectId={effectId} side="right" />
       </>}
       {!reducedMotion && definition.particles.map(particle => (
         <span

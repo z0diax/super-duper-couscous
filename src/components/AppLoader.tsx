@@ -1,5 +1,6 @@
 import React from 'react';
 import './AppLoader.css';
+import { LoaderThemeDecoration } from '../theme/LoaderThemeDecoration';
 
 type AppLoaderProps = {
   message: string;
@@ -8,6 +9,7 @@ type AppLoaderProps = {
 
 export const AppLoader: React.FC<AppLoaderProps> = ({ message, exiting = false }) => (
   <main className={`app-loader-screen${exiting ? ' app-loader-exiting' : ''}`}>
+    <LoaderThemeDecoration />
     <section className="app-loader" role="status" aria-live="polite" aria-label={message}>
       <div className="app-loader-scene" aria-hidden="true">
         <div className="app-loader-folder-back" />

@@ -57,7 +57,7 @@
 .sidebar-theme-decoration--weather-windy .sidebar-theme-art,
 .sidebar-theme-decoration--weather-thunderstorm .sidebar-theme-art { opacity: .18; transform: rotate(-8deg); }
 
-.sidebar-theme-heart {
+.sidebar-theme-art .theme-motif-heart {
   top: auto !important;
   right: 0;
   bottom: -40px;
@@ -67,7 +67,7 @@
   color: #f9a8d4;
 }
 
-.sidebar-theme-mail {
+.sidebar-theme-art .theme-motif-mail {
   top: 6px !important;
   bottom: auto !important;
   right: 102px;

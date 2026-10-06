@@ -1,0 +1,86 @@
+.app-loader-theme-decoration {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--app-theme-highlight);
+  contain: strict;
+}
+
+.app-loader-theme-motif {
+  position: absolute;
+  bottom: 12%;
+  width: clamp(100px, 18vw, 240px);
+  height: clamp(64px, 10vw, 130px);
+  opacity: .32;
+}
+.app-loader-theme-motif--left { left: 2%; }
+.app-loader-theme-motif--right { right: 2%; transform: scaleX(-1); }
+
+/* Reset navbar artwork positioning only inside the loader's own wrappers. */
+.app-loader-theme-motif svg {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 1;
+  transform: none;
+  filter: none;
+  animation: none;
+}
+.app-loader-theme-motif .theme-motif-heart { width: 65%; left: 25%; }
+.app-loader-theme-motif .theme-motif-mail { width: 40%; height: 50%; top: 45%; }
+.app-loader-theme-decoration--chinese-new-year .app-loader-theme-motif,
+.app-loader-theme-decoration--festive .app-loader-theme-motif { top: 12%; bottom: auto; }
+
+.app-loader-theme-particles { position: absolute; inset: 0; }
+.app-loader-theme-particle {
+  position: absolute;
+  left: var(--loader-particle-x);
+  background: currentColor;
+  border-radius: 50%;
+  animation: app-loader-theme-float ease-in-out infinite;
+}
+.app-loader-theme-particle[data-motion="fall"] { animation-name: app-loader-theme-fall; }
+.app-loader-theme-particle[data-motion="drift"] { animation-name: app-loader-theme-drift; }
+.app-loader-theme-particle[data-kind="heart"] { background: none; color: #f472b6; }
+.app-loader-theme-particle svg { width: 100%; height: 100%; }
+.app-loader-theme-particle[data-kind="sparkle"],
+.app-loader-theme-particle[data-kind="star"] { clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%); }
+.app-loader-theme-particle[data-kind="leaf"] { border-radius: 80% 0 80% 0; color: #2dd4bf; }
+.app-loader-theme-particle[data-kind="snow"] { color: #7dd3fc; }
+.app-loader-theme-particle[data-kind="fleck"] { color: #d4a72c; border-radius: 1px; }
+.app-loader-theme-particle[data-kind="confetti"] { border-radius: 1px; }
+.app-loader-theme-particle[data-kind="cloud"] { color: #94a3b8; }
+.app-loader-theme-particle[data-kind="wind"] { background: linear-gradient(90deg, transparent, currentColor, transparent); }
+.app-loader-theme-particle[data-kind="rain"],
+.app-loader-theme-particle[data-kind="storm"] { color: #38bdf8; }
+.app-loader-theme-decoration--womens-month .app-loader-theme-particle { color: #a78bfa; }
+.app-loader-theme-decoration--breast-cancer-awareness .app-loader-theme-particle { color: #f472b6; }
+
+@keyframes app-loader-theme-fall {
+  from { transform: translateY(-100vh); }
+  to { transform: translateY(100vh); }
+}
+@keyframes app-loader-theme-float {
+  0%, 100% { transform: translateY(-8px) rotate(-8deg); }
+  50% { transform: translateY(8px) rotate(8deg); }
+}
+@keyframes app-loader-theme-drift {
+  0%, 100% { transform: translateX(-5px); }
+  50% { transform: translateX(5px); }
+}
+[data-appearance="dark"] .app-loader-theme-decoration { opacity: .7; }
+@media (max-width: 639px) {
+  .app-loader-theme-motif { bottom: 8%; width: 110px; height: 66px; opacity: .26; }
+  .app-loader-theme-motif--left { left: -12px; }
+  .app-loader-theme-motif--right { right: -12px; }
+  .app-loader-theme-particle { left: 1%; max-width: 10px; }
+  .app-loader-theme-particle:nth-child(even) { left: auto; right: 1%; }
+  .app-loader-theme-particle[data-desktop-only="true"] { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-loader-theme-decoration .app-loader-theme-particle { display: none; animation: none; }
+}
