@@ -100,13 +100,13 @@ button { touch-action: manipulation; }
 [data-appearance="dark"] .bg-gray-100, [data-appearance="dark"] .bg-gray-200, [data-appearance="dark"] .bg-gray-300 { background-color: var(--app-surface-elevated); }
 [data-appearance="dark"] .bg-blue-50, [data-appearance="dark"] .bg-blue-50\/30, [data-appearance="dark"] .bg-blue-50\/40, [data-appearance="dark"] .bg-blue-50\/45, [data-appearance="dark"] .bg-blue-50\/60, [data-appearance="dark"] .bg-blue-50\/70, [data-appearance="dark"] .bg-blue-100 { background-color: #172f52; }
 [data-appearance="dark"] .bg-blue-50\/80, [data-appearance="dark"] .bg-blue-50\/90, [data-appearance="dark"] .bg-white\/70, [data-appearance="dark"] .bg-white\/90 { background-color: var(--app-surface-elevated); }
-[data-appearance="dark"] .bg-amber-50, [data-appearance="dark"] .bg-amber-100 { background-color: #3a2b13; }
+[data-appearance="dark"] .bg-amber-50, [data-appearance="dark"] .bg-amber-50\/60, [data-appearance="dark"] .bg-amber-100 { background-color: #3a2b13; }
 [data-appearance="dark"] .bg-emerald-50, [data-appearance="dark"] .bg-emerald-100 { background-color: #123528; }
 [data-appearance="dark"] .bg-emerald-50\/40, [data-appearance="dark"] .bg-emerald-50\/60, [data-appearance="dark"] .bg-emerald-50\/70 { background-color: #123528; }
 [data-appearance="dark"] .bg-emerald-50\/95, [data-appearance="dark"] .bg-emerald-100\/95 { background-color: #123528; }
 [data-appearance="dark"] .bg-amber-50\/95, [data-appearance="dark"] .bg-amber-100\/95 { background-color: #3a2b13; }
 [data-appearance="dark"] .bg-blue-50\/95, [data-appearance="dark"] .bg-blue-100\/95 { background-color: #172f52; }
-[data-appearance="dark"] .bg-rose-50, [data-appearance="dark"] .bg-rose-100 { background-color: #40202a; }
+[data-appearance="dark"] .bg-rose-50, [data-appearance="dark"] .bg-rose-50\/60, [data-appearance="dark"] .bg-rose-100 { background-color: #40202a; }
 [data-appearance="dark"] .bg-rose-50\/95, [data-appearance="dark"] .bg-rose-100\/95 { background-color: #40202a; }
 [data-appearance="dark"] .bg-violet-50, [data-appearance="dark"] .bg-violet-100 { background-color: #2d2048; }
 [data-appearance="dark"] .text-slate-950, [data-appearance="dark"] .text-slate-900, [data-appearance="dark"] .text-slate-800 { color: var(--app-text); }
@@ -114,11 +114,13 @@ button { touch-action: manipulation; }
 [data-appearance="dark"] .text-slate-500, [data-appearance="dark"] .text-slate-400, [data-appearance="dark"] .text-slate-300 { color: var(--app-text-subtle); }
 [data-appearance="dark"] .text-blue-700, [data-appearance="dark"] .text-blue-800 { color: #93c5fd; }
 [data-appearance="dark"] .text-amber-700, [data-appearance="dark"] .text-amber-800, [data-appearance="dark"] .text-amber-900 { color: #fcd34d; }
-[data-appearance="dark"] .text-emerald-700, [data-appearance="dark"] .text-emerald-800 { color: #6ee7b7; }
+[data-appearance="dark"] .text-emerald-700, [data-appearance="dark"] .text-emerald-800, [data-appearance="dark"] .text-emerald-900 { color: #6ee7b7; }
 [data-appearance="dark"] .text-violet-700, [data-appearance="dark"] .text-violet-800 { color: #c4b5fd; }
 [data-appearance="dark"] .text-rose-700, [data-appearance="dark"] .text-rose-800, [data-appearance="dark"] .text-rose-900 { color: #fda4af; }
-[data-appearance="dark"] .border-slate-100, [data-appearance="dark"] .border-slate-200, [data-appearance="dark"] .border-slate-300 { border-color: var(--app-border); }
-[data-appearance="dark"] .border-rose-200, [data-appearance="dark"] .border-rose-300 { border-color: #9f4055; }
+[data-appearance="dark"] .border-slate-100, [data-appearance="dark"] .border-slate-200, [data-appearance="dark"] .border-slate-200\/80, [data-appearance="dark"] .border-slate-300 { border-color: var(--app-border); }
+[data-appearance="dark"] .border-rose-200, [data-appearance="dark"] .border-rose-200\/70, [data-appearance="dark"] .border-rose-300 { border-color: #9f4055; }
+[data-appearance="dark"] .border-amber-200\/70 { border-color: #86651f; }
+[data-appearance="dark"] .border-emerald-200\/70 { border-color: #287457; }
 [data-appearance="dark"] input, [data-appearance="dark"] select, [data-appearance="dark"] textarea { background-color: var(--app-input-bg); color: var(--app-text); border-color: var(--app-input-border); }
 [data-appearance="dark"] input::placeholder, [data-appearance="dark"] textarea::placeholder { color: var(--app-input-placeholder); }
 [data-appearance="dark"] .shadow-xs, [data-appearance="dark"] .shadow-sm, [data-appearance="dark"] .shadow-md { box-shadow: var(--app-shadow); }

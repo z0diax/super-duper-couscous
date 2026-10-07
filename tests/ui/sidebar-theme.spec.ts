@@ -6,6 +6,67 @@ let fixture: Awaited<ReturnType<typeof startFixture>>;
 test.beforeAll(async () => { fixture = await startFixture(18784); });
 test.afterAll(async () => { await fixture?.stop(); });
 
+test('semantic nav icons play once, restart on activation, and respect reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${fixture.base}/`);
+  await page.getByLabel('Email address').fill('admin@example.test');
+  await page.getByLabel('Password', { exact: true }).fill(testPassword);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  const aside = page.locator('aside.app-sidebar');
+  await expect(page.locator('#sidebar-link-dashboard')).toBeVisible();
+  const animations = {
+    dashboard: 'nav-dashboard', queues: 'nav-inbox', payroll: 'nav-layers',
+    registry: 'nav-documents', leave: 'nav-calendar', workflows: 'nav-workflow',
+    catalogue: 'nav-tags', users: 'nav-users', migration: 'nav-archive', audit: 'nav-history',
+  };
+  for (const [id, name] of Object.entries(animations)) {
+    const button = page.locator(`#sidebar-link-${id}`);
+    const icon = button.locator('.animated-nav-icon');
+    await expect(icon).toHaveAttribute('aria-hidden', 'true');
+    await expect(icon.locator('svg')).toHaveCSS('animation-name', 'none');
+    const before = await button.boundingBox();
+    await button.hover();
+    await expect(icon).toHaveAttribute('data-trigger', 'hover');
+    await expect(icon.locator('svg')).toHaveCSS('animation-name', name);
+    await expect(icon.locator('svg')).toHaveCSS('animation-iteration-count', '1');
+    await expect(icon).toHaveAttribute('data-trigger', 'idle');
+    expect(await button.boundingBox()).toEqual(before);
+    await button.click();
+    await expect(button).toHaveClass(/sidebar-nav-active/);
+    await expect(icon).toHaveAttribute('data-active', 'true');
+    await expect(icon).toHaveAttribute('data-trigger', 'activation');
+    await expect(icon).toHaveAttribute('data-trigger', 'idle');
+    await button.click(); // Clicking an already active module also replays.
+    await expect(icon).toHaveAttribute('data-trigger', 'activation');
+    await expect(icon).toHaveAttribute('data-trigger', 'idle');
+    await expect(icon.locator('svg')).toHaveCSS('transform', 'none');
+    await expect(page.locator('main')).not.toBeEmpty();
+  }
+  const dashboard = page.locator('#sidebar-link-dashboard');
+  await page.keyboard.press('Tab'); // Establish keyboard focus modality.
+  await dashboard.focus();
+  await expect(dashboard.locator('.animated-nav-icon')).toHaveAttribute('data-trigger', 'focus');
+  await expect(dashboard.locator('.animated-nav-icon')).toHaveAttribute('data-trigger', 'idle');
+  await page.keyboard.press('Enter');
+  await expect(dashboard).toHaveClass(/sidebar-nav-active/);
+  await expect(dashboard.locator('.animated-nav-icon')).toHaveAttribute('data-trigger', 'activation');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(dashboard.locator('svg')).toHaveCSS('animation-name', 'none');
+  await expect(dashboard.locator('svg')).toHaveCSS('transform', 'none');
+  await page.locator('#sidebar-link-registry').hover();
+  await page.locator('#sidebar-link-registry').click();
+  await expect(page.locator('#sidebar-link-registry')).toHaveClass(/sidebar-nav-active/);
+  await expect(aside.locator('.animated-nav-icon:not([data-trigger="idle"])')).toHaveCount(0);
+  await expect(page.locator('#btn-sidebar-register-doc .animated-nav-icon')).toHaveCount(0);
+  await expect(page.locator('#btn-sidebar-register-payroll .animated-nav-icon')).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('#btn-open-sidebar-menu').click();
+  expect(await aside.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await dashboard.click();
+  await expect(aside).toHaveClass(/-translate-x-full/);
+  await expect(dashboard).toHaveClass(/sidebar-nav-active/);
+});
+
 test('sidebar motifs and controls follow every system theme, appearance, and effects preference', async ({ page }) => {
   const admin = await new Client(fixture.base).login();
   await page.goto(`${fixture.base}/`);

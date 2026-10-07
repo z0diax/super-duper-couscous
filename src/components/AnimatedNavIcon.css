@@ -1,0 +1,90 @@
+.animated-nav-icon {
+  display: inline-flex;
+  pointer-events: none;
+  --nav-distance: 1.5px;
+  --nav-angle: 5deg;
+  --nav-scale: 1.06;
+}
+
+.animated-nav-icon-svg {
+  transform-box: view-box;
+  transform-origin: center;
+}
+
+.animated-nav-icon[data-trigger="activation"] {
+  --nav-distance: 2px;
+  --nav-angle: 7deg;
+  --nav-scale: 1.09;
+}
+
+.animated-nav-icon:not([data-trigger="idle"]) .animated-nav-icon-svg {
+  animation: var(--nav-animation) 380ms ease-out 1;
+}
+
+.animated-nav-icon[data-icon-type="dashboard"] { --nav-animation: nav-dashboard; }
+.animated-nav-icon[data-icon-type="queues"] { --nav-animation: nav-inbox; }
+.animated-nav-icon[data-icon-type="payroll"] { --nav-animation: nav-layers; }
+.animated-nav-icon[data-icon-type="registry"] { --nav-animation: nav-documents; }
+.animated-nav-icon[data-icon-type="leave"] { --nav-animation: nav-calendar; }
+.animated-nav-icon[data-icon-type="workflows"] { --nav-animation: nav-workflow; }
+.animated-nav-icon[data-icon-type="catalogue"] { --nav-animation: nav-tags; }
+.animated-nav-icon[data-icon-type="catalogue"] .animated-nav-icon-svg { transform-origin: 25% 25%; }
+.animated-nav-icon[data-icon-type="users"] { --nav-animation: nav-users; }
+.animated-nav-icon[data-icon-type="migration"] { --nav-animation: nav-archive; }
+.animated-nav-icon[data-icon-type="audit"] { --nav-animation: nav-history; }
+
+@keyframes nav-dashboard {
+  0%, 100% { transform: none; }
+  40% { transform: scale(var(--nav-scale)) rotate(-2deg); }
+}
+@keyframes nav-inbox {
+  0%, 100% { transform: none; }
+  30% { transform: translateY(calc(-1 * var(--nav-distance))); }
+  65% { transform: translateY(calc(var(--nav-distance) * .5)); }
+}
+/* Whole-icon stepped movement avoids relying on Lucide's internal paths. */
+@keyframes nav-layers {
+  0%, 100% { transform: none; }
+  25%, 40% { transform: translateY(calc(-1 * var(--nav-distance))); }
+  60%, 75% { transform: translateY(calc(var(--nav-distance) * .5)); }
+}
+@keyframes nav-documents {
+  0%, 100% { transform: none; }
+  40% { transform: translate(var(--nav-distance), calc(-.5 * var(--nav-distance))); }
+}
+@keyframes nav-calendar {
+  0%, 100% { transform: none; }
+  30% { transform: rotate(var(--nav-angle)); }
+  65% { transform: rotate(calc(-.5 * var(--nav-angle))); }
+}
+@keyframes nav-workflow {
+  0%, 100% { transform: none; }
+  35% { transform: translate(calc(var(--nav-distance) * .5), calc(-1 * var(--nav-distance))) scale(1.03); }
+  65% { transform: translateX(var(--nav-distance)); }
+}
+@keyframes nav-tags {
+  0%, 100% { transform: none; }
+  35% { transform: rotate(var(--nav-angle)); }
+  70% { transform: rotate(calc(-.4 * var(--nav-angle))); }
+}
+@keyframes nav-users {
+  0%, 100% { transform: none; }
+  40% { transform: scale(var(--nav-scale)); }
+  75% { transform: scale(.98); }
+}
+@keyframes nav-archive {
+  0%, 100% { transform: none; }
+  45% { transform: translateY(var(--nav-distance)); }
+}
+@keyframes nav-history {
+  0%, 100% { transform: none; }
+  45% { transform: rotate(calc(-1 * var(--nav-angle))); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated-nav-icon .animated-nav-icon-svg {
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}

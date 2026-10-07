@@ -282,7 +282,7 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
         {/* 4 Metric Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-6 mt-6 border-t border-slate-100">
           <div className="p-3 rounded-xl bg-slate-50/80 border border-slate-200/80">
-            <p className="text-xs font-semibold text-slate-500">Payroll Entries</p>
+            <p className="text-xs font-semibold text-slate-600">Payroll Entries</p>
             <p className="text-2xl font-bold text-slate-900 mt-0.5">{payrollTargeted&&(!batchList||!singleList)?'—':totalBatchPayrolls + totalVouchers}</p>
           </div>
 

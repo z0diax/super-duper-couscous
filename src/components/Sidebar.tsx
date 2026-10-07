@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { AnimatedBrandText } from './AnimatedBrandText';
+import { AnimatedNavIcon } from './AnimatedNavIcon';
 import { SidebarWeatherCard } from './SidebarWeatherCard';
 import { SidebarThemeDecoration } from '../theme/SidebarThemeDecoration';
 import { useTheme } from '../theme/ThemeProvider';
@@ -208,7 +209,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, i
                       }`}
                     >
                       <div className="flex items-center gap-2.5 truncate">
-                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                        <AnimatedNavIcon icon={Icon} type={item.id} active={isActive} />
                         <span className="truncate">{item.label}</span>
                       </div>
 
