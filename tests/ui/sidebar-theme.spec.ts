@@ -15,22 +15,60 @@ test('semantic nav icons play once, restart on activation, and respect reduced m
   const aside = page.locator('aside.app-sidebar');
   await expect(page.locator('#sidebar-link-dashboard')).toBeVisible();
   const animations = {
-    dashboard: 'nav-dashboard', queues: 'nav-inbox', payroll: 'nav-layers',
-    registry: 'nav-documents', leave: 'nav-calendar', workflows: 'nav-workflow',
-    catalogue: 'nav-tags', users: 'nav-users', migration: 'nav-archive', audit: 'nav-history',
+    dashboard: ['.dashboard-tile-1', 'nav-tile-first'],
+    queues: ['.inbox-item', 'nav-task-arrival'],
+    payroll: ['.payroll-top', 'nav-layer-top'],
+    registry: ['.registry-front', 'nav-sheet-retrieve'],
+    leave: ['.calendar-minute', 'nav-minute-advance'],
+    workflows: ['.workflow-travel', 'nav-flow-travel'],
+    catalogue: ['.catalogue-front', 'nav-tag-select'],
+    users: ['.users-left', 'nav-user-left'],
+    migration: ['.archive-record', 'nav-record-store'],
+    audit: ['.audit-trail', 'nav-history-trace'],
   };
-  for (const [id, name] of Object.entries(animations)) {
+  for (const [id, [part, name]] of Object.entries(animations)) {
     const button = page.locator(`#sidebar-link-${id}`);
     const icon = button.locator('.animated-nav-icon');
     await expect(icon).toHaveAttribute('aria-hidden', 'true');
+    await expect(icon.locator('svg')).toHaveAttribute('viewBox', '0 0 24 24');
+    await expect(icon.locator('svg')).toHaveAttribute('focusable', 'false');
     await expect(icon.locator('svg')).toHaveCSS('animation-name', 'none');
+    expect(await icon.evaluate(element => [element.clientWidth, element.clientHeight])).toEqual([16, 16]);
     const before = await button.boundingBox();
     await button.hover();
     await expect(icon).toHaveAttribute('data-trigger', 'hover');
-    await expect(icon.locator('svg')).toHaveCSS('animation-name', name);
-    await expect(icon.locator('svg')).toHaveCSS('animation-iteration-count', '1');
+    await expect(icon.locator(part)).toHaveCSS('animation-name', name);
+    await expect(icon.locator(part)).toHaveCSS('animation-iteration-count', '1');
+    await expect(icon.locator('svg')).toHaveCSS('animation-name', 'none');
+    await expect(icon.locator('svg')).toHaveCSS('transform', 'none');
+    expect(await button.boundingBox()).toEqual(before);
+    // Sample the actual browser animation: internal shapes must change, while
+    // the frame and all explicitly stationary artwork keep their transforms.
+    const sampled = await icon.evaluate(element => {
+      const playing = element.getAnimations({ subtree: true });
+      const samples = [0, .25, .5, .75].map(progress => {
+        playing.forEach(animation => {
+          animation.currentTime = Number(animation.effect!.getTiming().duration) * progress;
+        });
+        return Array.from(element.querySelectorAll('.icon-part')).map(part => {
+          const style = getComputedStyle(part);
+          return [style.transform, style.opacity, style.strokeDashoffset].join('|');
+        }).join(';');
+      });
+      const stationary = Array.from(element.querySelectorAll('svg, .icon-static')).every(part =>
+        getComputedStyle(part).transform === 'none' && getComputedStyle(part).animationName === 'none');
+      playing.forEach(animation => animation.finish());
+      return { distinctFrames: new Set(samples).size, stationary };
+    });
+    expect(sampled.distinctFrames).toBeGreaterThan(1);
+    expect(sampled.stationary).toBe(true);
     await expect(icon).toHaveAttribute('data-trigger', 'idle');
     expect(await button.boundingBox()).toEqual(before);
+    await page.mouse.move(800, 70);
+    await button.hover(); // Re-entering the row reliably replays the parts.
+    await expect(icon).toHaveAttribute('data-trigger', 'hover');
+    await expect(icon.locator(part)).toHaveCSS('animation-name', name);
+    await expect(icon).toHaveAttribute('data-trigger', 'idle');
     await button.click();
     await expect(button).toHaveClass(/sidebar-nav-active/);
     await expect(icon).toHaveAttribute('data-active', 'true');
@@ -40,6 +78,8 @@ test('semantic nav icons play once, restart on activation, and respect reduced m
     await expect(icon).toHaveAttribute('data-trigger', 'activation');
     await expect(icon).toHaveAttribute('data-trigger', 'idle');
     await expect(icon.locator('svg')).toHaveCSS('transform', 'none');
+    expect(await icon.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0);
+    expect(await icon.locator('.icon-transient').evaluateAll(parts => parts.every(part => getComputedStyle(part).opacity === '0'))).toBe(true);
     await expect(page.locator('main')).not.toBeEmpty();
   }
   const dashboard = page.locator('#sidebar-link-dashboard');
@@ -53,10 +93,16 @@ test('semantic nav icons play once, restart on activation, and respect reduced m
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await expect(dashboard.locator('svg')).toHaveCSS('animation-name', 'none');
   await expect(dashboard.locator('svg')).toHaveCSS('transform', 'none');
+  expect(await aside.locator('.animated-nav-icon').evaluateAll(icons => icons.every(icon =>
+    icon.getAnimations({ subtree: true }).length === 0 && Array.from(icon.querySelectorAll('.icon-part')).every(part =>
+      getComputedStyle(part).animationName === 'none' && getComputedStyle(part).transform === 'none')))).toBe(true);
   await page.locator('#sidebar-link-registry').hover();
   await page.locator('#sidebar-link-registry').click();
   await expect(page.locator('#sidebar-link-registry')).toHaveClass(/sidebar-nav-active/);
   await expect(aside.locator('.animated-nav-icon:not([data-trigger="idle"])')).toHaveCount(0);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  expect(await aside.locator('.animated-nav-icon').evaluateAll(icons => icons.every(icon => icon.getAnimations({ subtree: true }).length === 0))).toBe(true);
+  await page.screenshot({ path: 'test-results/semantic-sidebar-icons-desktop.png', animations: 'disabled' });
   await expect(page.locator('#btn-sidebar-register-doc .animated-nav-icon')).toHaveCount(0);
   await expect(page.locator('#btn-sidebar-register-payroll .animated-nav-icon')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });

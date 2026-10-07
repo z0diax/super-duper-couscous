@@ -1,15 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import './AnimatedNavIcon.css';
+import { NavIconArtwork, type NavIconType } from './NavIconArtwork';
 
-export type NavIconType = 'dashboard' | 'queues' | 'payroll' | 'registry' | 'leave' | 'workflows' | 'catalogue' | 'users' | 'migration' | 'audit';
+export type { NavIconType } from './NavIconArtwork';
 
 interface AnimatedNavIconProps {
-  icon: React.ComponentType<{ className?: string }>;
   type: NavIconType;
   active: boolean;
 }
 
-export function AnimatedNavIcon({ icon: Icon, type, active }: AnimatedNavIconProps) {
+export function AnimatedNavIcon({ type, active }: AnimatedNavIconProps) {
   const container = useRef<HTMLSpanElement>(null);
   const [animation, setAnimation] = useState({ sequence: 0, trigger: 'idle' });
 
@@ -48,11 +48,21 @@ export function AnimatedNavIcon({ icon: Icon, type, active }: AnimatedNavIconPro
       data-icon-type={type}
       data-active={active}
       data-trigger={animation.trigger}
-      onAnimationEnd={() => setAnimation(previous => ({ ...previous, trigger: 'idle' }))}
+      onAnimationEnd={event => {
+        // Parts may finish independently; only the marker settles playback.
+        if (event.animationName === 'nav-icon-complete') {
+          setAnimation(previous => ({ ...previous, trigger: 'idle' }));
+        }
+      }}
       aria-hidden="true"
     >
       {/* A new SVG restarts the one-shot animation, including repeated clicks. */}
-      <Icon key={animation.sequence} className="animated-nav-icon-svg w-full h-full" />
+      <svg key={animation.sequence} className="animated-nav-icon-svg w-full h-full"
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+        strokeLinecap="round" strokeLinejoin="round" focusable="false">
+        <NavIconArtwork type={type} />
+        <g className="icon-completion" />
+      </svg>
     </span>
   );
 }

@@ -2,25 +2,10 @@ import React from 'react';
 import { useApp } from '../context/AppContext';
 import { isDocumentActionableForUser } from '../services/documentTaskAssignment';
 import { SidebarModule } from '../types';
-import { 
-  LayoutDashboard, 
-  Inbox, 
-  Layers,
-  FileStack, 
-  CalendarClock, 
-  GitMerge, 
-  Tags, 
-  DatabaseBackup, 
-  History,
-  X,
-  ChevronRight,
-  ShieldCheck,
-  Plus,
-  Users
-} from 'lucide-react';
+import { Layers, X, Plus } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { AnimatedBrandText } from './AnimatedBrandText';
-import { AnimatedNavIcon } from './AnimatedNavIcon';
+import { AnimatedNavIcon, type NavIconType } from './AnimatedNavIcon';
 import { SidebarWeatherCard } from './SidebarWeatherCard';
 import { SidebarThemeDecoration } from '../theme/SidebarThemeDecoration';
 import { useTheme } from '../theme/ThemeProvider';
@@ -37,9 +22,8 @@ interface SidebarProps {
 }
 
 interface NavItem {
-  id: 'dashboard' | 'queues' | 'payroll' | 'registry' | 'leave' | 'workflows' | 'catalogue' | 'migration' | 'audit' | 'users';
+  id: NavIconType;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
   badge?: number;
   section?: string;
 }
@@ -81,32 +65,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, i
   const payrollTaskCount=import.meta.env.VITE_PAYROLL_TARGETED_READS==='1'?(payrollShell.summary?.sidebarPayrollTaskCount??0):legacyPayrollTaskCount;
 
   const navItems: NavItem[] = ([
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, section: 'Operations' },
+    { id: 'dashboard', label: 'Dashboard', section: 'Operations' },
     { 
       id: 'queues', 
       label: 'My Tasks & Queues', 
-      icon: Inbox, 
       badge: documentTaskCount + payrollTaskCount > 0 ? documentTaskCount + payrollTaskCount : undefined,
       section: 'Operations'
     },
     { 
       id: 'payroll', 
       label: 'Payroll Management', 
-      icon: Layers, 
       section: 'Operations'
     },
-    { id: 'registry', label: 'Document Registry', icon: FileStack, section: 'Operations' },
-    { id: 'leave', label: 'Leave Records', icon: CalendarClock, section: 'Operations' },
+    { id: 'registry', label: 'Document Registry', section: 'Operations' },
+    { id: 'leave', label: 'Leave Records', section: 'Operations' },
 
     ...(showConfiguration ? [
-      { id: 'workflows' as const, label: 'Workflow Engine', icon: GitMerge, section: 'Configuration' },
-      { id: 'catalogue' as const, label: 'Classification Catalogue', icon: Tags, section: 'Configuration' },
-      { id: 'users' as const, label: 'Users & Designations', icon: Users, section: 'Configuration' },
+      { id: 'workflows' as const, label: 'Workflow Engine', section: 'Configuration' },
+      { id: 'catalogue' as const, label: 'Classification Catalogue', section: 'Configuration' },
+      { id: 'users' as const, label: 'Users & Designations', section: 'Configuration' },
     ] : []),
 
     ...(showComplianceHistory ? [
-      ...(showConfiguration ? [{ id: 'migration' as const, label: 'Historical Archive', icon: DatabaseBackup, section: 'Compliance & History' }] : []),
-      { id: 'audit' as const, label: 'Audit Trail & Reports', icon: History, section: 'Compliance & History' },
+      ...(showConfiguration ? [{ id: 'migration' as const, label: 'Historical Archive', section: 'Compliance & History' }] : []),
+      { id: 'audit' as const, label: 'Audit Trail & Reports', section: 'Compliance & History' },
     ] : []),
   ] as NavItem[]).filter(item => item.section !== 'Operations' || visibleOperationModules.includes(item.id as SidebarModule));
 
@@ -195,7 +177,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, i
                   {section}
                 </div>
                 {items.map(item => {
-                  const Icon = item.icon;
                   const isActive = activeTab === item.id;
                   return (
                     <button
@@ -209,7 +190,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ documentShell, payrollShell, i
                       }`}
                     >
                       <div className="flex items-center gap-2.5 truncate">
-                        <AnimatedNavIcon icon={Icon} type={item.id} active={isActive} />
+                        <AnimatedNavIcon type={item.id} active={isActive} />
                         <span className="truncate">{item.label}</span>
                       </div>
 

@@ -1,88 +1,202 @@
-.animated-nav-icon {
+﻿.animated-nav-icon {
   display: inline-flex;
   pointer-events: none;
-  --nav-distance: 1.5px;
-  --nav-angle: 5deg;
-  --nav-scale: 1.06;
+  --nav-duration: 620ms;
+  --nav-emphasis: 1;
 }
-
-.animated-nav-icon-svg {
-  transform-box: view-box;
-  transform-origin: center;
-}
-
 .animated-nav-icon[data-trigger="activation"] {
-  --nav-distance: 2px;
-  --nav-angle: 7deg;
-  --nav-scale: 1.09;
+  --nav-duration: 560ms;
+  --nav-emphasis: 1.15;
+}
+.animated-nav-icon-svg { overflow: visible; }
+.animated-nav-icon .icon-part { transform-box: view-box; }
+.animated-nav-icon .icon-transient { opacity: 0; }
+
+/* Full timelines use staged keyframes, with no delays or work at rest. */
+.animated-nav-icon:not([data-trigger="idle"]) :is(.icon-part, .icon-completion) {
+  animation: var(--part-animation, none) var(--nav-duration) cubic-bezier(.22, .61, .36, 1) 1;
+}
+.animated-nav-icon .icon-completion { --part-animation: nav-icon-complete; }
+@keyframes nav-icon-complete { from, to { opacity: 0; } }
+
+.animated-nav-icon .dashboard-tile { transform-box: fill-box; transform-origin: center; }
+.dashboard-tile-1 { --part-animation: nav-tile-first; }
+.dashboard-tile-2 { --part-animation: nav-tile-second; }
+.dashboard-tile-3 { --part-animation: nav-tile-third; }
+.dashboard-tile-4 { --part-animation: nav-tile-fourth; }
+@keyframes nav-tile-first {
+  0%, 48%, 100% { transform: none; opacity: 1; }
+  8% { transform: scale(.85); opacity: .6; }
+  24% { transform: scale(1.08); }
+}
+@keyframes nav-tile-second {
+  0%, 14%, 62%, 100% { transform: none; opacity: 1; }
+  22% { transform: scale(.85); opacity: .6; }
+  38% { transform: scale(1.08); }
+}
+@keyframes nav-tile-third {
+  0%, 28%, 76%, 100% { transform: none; opacity: 1; }
+  36% { transform: scale(.85); opacity: .6; }
+  52% { transform: scale(1.08); }
+}
+@keyframes nav-tile-fourth {
+  0%, 42%, 90%, 100% { transform: none; opacity: 1; }
+  50% { transform: scale(.85); opacity: .6; }
+  66% { transform: scale(1.08); }
 }
 
-.animated-nav-icon:not([data-trigger="idle"]) .animated-nav-icon-svg {
-  animation: var(--nav-animation) 380ms ease-out 1;
+.inbox-item { --part-animation: nav-task-arrival; }
+.inbox-tray { --part-animation: nav-tray-receive; }
+@keyframes nav-task-arrival {
+  0%, 100% { opacity: 0; transform: none; }
+  12% { opacity: 1; transform: translateY(-1px); }
+  50%, 65% { opacity: 1; transform: translateY(9px); }
+  82% { opacity: 0; transform: translateY(9px); }
+}
+@keyframes nav-tray-receive {
+  0%, 36%, 80%, 100% { transform: none; }
+  54% { transform: translateY(calc(.8px * var(--nav-emphasis))); }
 }
 
-.animated-nav-icon[data-icon-type="dashboard"] { --nav-animation: nav-dashboard; }
-.animated-nav-icon[data-icon-type="queues"] { --nav-animation: nav-inbox; }
-.animated-nav-icon[data-icon-type="payroll"] { --nav-animation: nav-layers; }
-.animated-nav-icon[data-icon-type="registry"] { --nav-animation: nav-documents; }
-.animated-nav-icon[data-icon-type="leave"] { --nav-animation: nav-calendar; }
-.animated-nav-icon[data-icon-type="workflows"] { --nav-animation: nav-workflow; }
-.animated-nav-icon[data-icon-type="catalogue"] { --nav-animation: nav-tags; }
-.animated-nav-icon[data-icon-type="catalogue"] .animated-nav-icon-svg { transform-origin: 25% 25%; }
-.animated-nav-icon[data-icon-type="users"] { --nav-animation: nav-users; }
-.animated-nav-icon[data-icon-type="migration"] { --nav-animation: nav-archive; }
-.animated-nav-icon[data-icon-type="audit"] { --nav-animation: nav-history; }
+.payroll-top { --part-animation: nav-layer-top; }
+.payroll-middle { --part-animation: nav-layer-middle; }
+.payroll-bottom { --part-animation: nav-layer-anchor; }
+@keyframes nav-layer-top {
+  0%, 62%, 100% { transform: none; }
+  24%, 38% { transform: translateY(calc(-2px * var(--nav-emphasis))); }
+}
+@keyframes nav-layer-middle {
+  0%, 12%, 78%, 100% { transform: none; }
+  34%, 52% { transform: translateY(calc(-1.5px * var(--nav-emphasis))); }
+}
+@keyframes nav-layer-anchor {
+  0%, 64%, 100% { opacity: 1; }
+  78% { opacity: .55; }
+}
 
-@keyframes nav-dashboard {
+.registry-front { --part-animation: nav-sheet-retrieve; }
+@keyframes nav-sheet-retrieve {
   0%, 100% { transform: none; }
-  40% { transform: scale(var(--nav-scale)) rotate(-2deg); }
+  32%, 52% { transform: translateX(calc(2.5px * var(--nav-emphasis))); }
+  82% { transform: none; }
 }
-@keyframes nav-inbox {
+
+.calendar-clock { --part-animation: nav-clock-ring; transform-origin: 17px 17px; }
+.calendar-minute { --part-animation: nav-minute-advance; transform-origin: 17px 17px; }
+.calendar-hour { --part-animation: nav-hour-advance; transform-origin: 17px 17px; }
+@keyframes nav-clock-ring {
   0%, 100% { transform: none; }
-  30% { transform: translateY(calc(-1 * var(--nav-distance))); }
-  65% { transform: translateY(calc(var(--nav-distance) * .5)); }
+  40% { transform: scale(1.06); }
 }
-/* Whole-icon stepped movement avoids relying on Lucide's internal paths. */
-@keyframes nav-layers {
-  0%, 100% { transform: none; }
-  25%, 40% { transform: translateY(calc(-1 * var(--nav-distance))); }
-  60%, 75% { transform: translateY(calc(var(--nav-distance) * .5)); }
+@keyframes nav-minute-advance {
+  0%, 100% { transform: none; opacity: 1; }
+  35% { transform: rotate(90deg); }
+  65%, 78% { transform: rotate(180deg); opacity: 1; }
+  88% { transform: rotate(180deg); opacity: 0; }
+  89% { transform: none; opacity: 0; }
 }
-@keyframes nav-documents {
-  0%, 100% { transform: none; }
-  40% { transform: translate(var(--nav-distance), calc(-.5 * var(--nav-distance))); }
+@keyframes nav-hour-advance {
+  0%, 100% { transform: none; opacity: 1; }
+  65%, 78% { transform: rotate(15deg); opacity: 1; }
+  88% { transform: rotate(15deg); opacity: 0; }
+  89% { transform: none; opacity: 0; }
 }
-@keyframes nav-calendar {
-  0%, 100% { transform: none; }
-  30% { transform: rotate(var(--nav-angle)); }
-  65% { transform: rotate(calc(-.5 * var(--nav-angle))); }
+
+.workflow-source { --part-animation: nav-source-pulse; transform-origin: 6px 5px; }
+.workflow-destination { --part-animation: nav-destination-pulse; transform-origin: 18px 5px; }
+.workflow-branch { --part-animation: nav-branch-pulse; transform-origin: 6px 19px; }
+.workflow-travel, .workflow-branch-travel { stroke-dasharray: .18 .82; stroke-dashoffset: .18; stroke-width: 3; }
+.workflow-travel { --part-animation: nav-flow-travel; }
+.workflow-branch-travel { --part-animation: nav-branch-travel; }
+@keyframes nav-source-pulse {
+  0%, 28%, 100% { transform: none; }
+  12% { transform: scale(1.16); }
 }
-@keyframes nav-workflow {
-  0%, 100% { transform: none; }
-  35% { transform: translate(calc(var(--nav-distance) * .5), calc(-1 * var(--nav-distance))) scale(1.03); }
-  65% { transform: translateX(var(--nav-distance)); }
+@keyframes nav-flow-travel {
+  0%, 10% { opacity: 0; stroke-dashoffset: .18; }
+  18% { opacity: 1; stroke-dashoffset: .18; }
+  52% { opacity: 1; stroke-dashoffset: -.82; }
+  60%, 100% { opacity: 0; stroke-dashoffset: -1; }
 }
-@keyframes nav-tags {
-  0%, 100% { transform: none; }
-  35% { transform: rotate(var(--nav-angle)); }
-  70% { transform: rotate(calc(-.4 * var(--nav-angle))); }
+@keyframes nav-destination-pulse {
+  0%, 46%, 76%, 100% { transform: none; }
+  60% { transform: scale(1.16); }
 }
-@keyframes nav-users {
-  0%, 100% { transform: none; }
-  40% { transform: scale(var(--nav-scale)); }
-  75% { transform: scale(.98); }
+@keyframes nav-branch-travel {
+  0%, 48% { opacity: 0; stroke-dashoffset: .18; }
+  54% { opacity: 1; stroke-dashoffset: .18; }
+  76% { opacity: 1; stroke-dashoffset: -.82; }
+  84%, 100% { opacity: 0; stroke-dashoffset: -1; }
 }
-@keyframes nav-archive {
-  0%, 100% { transform: none; }
-  45% { transform: translateY(var(--nav-distance)); }
+@keyframes nav-branch-pulse {
+  0%, 72%, 100% { transform: none; }
+  84% { transform: scale(1.16); }
 }
-@keyframes nav-history {
+
+.catalogue-front { --part-animation: nav-tag-select; transform-origin: 7px 7px; }
+.catalogue-hole { --part-animation: nav-tag-hole; transform-origin: 7px 7px; }
+@keyframes nav-tag-select {
   0%, 100% { transform: none; }
-  45% { transform: rotate(calc(-1 * var(--nav-angle))); }
+  32%, 50% { transform: translateX(calc(1.5px * var(--nav-emphasis))) rotate(-5deg); }
+  84% { transform: none; }
+}
+@keyframes nav-tag-hole {
+  0%, 20%, 74%, 100% { transform: none; }
+  44% { transform: scale(1.3); }
+}
+
+.users-left { --part-animation: nav-user-left; }
+.users-right { --part-animation: nav-user-right; }
+.users-center-head { --part-animation: nav-group-organize; transform-origin: 12px 7px; }
+@keyframes nav-user-left {
+  0%, 100% { transform: none; }
+  30%, 45% { transform: translateX(calc(-1.5px * var(--nav-emphasis))); }
+  80% { transform: none; }
+}
+@keyframes nav-user-right {
+  0%, 100% { transform: none; }
+  30%, 45% { transform: translateX(calc(1.5px * var(--nav-emphasis))); }
+  80% { transform: none; }
+}
+@keyframes nav-group-organize {
+  0%, 48%, 100% { transform: none; }
+  68% { transform: scale(1.1); }
+}
+
+.archive-record { --part-animation: nav-record-store; }
+.archive-shelf { --part-animation: nav-archive-receive; }
+@keyframes nav-record-store {
+  0%, 100% { opacity: 0; transform: none; }
+  12% { opacity: 1; transform: none; }
+  56% { opacity: 1; transform: translateY(8px); }
+  78% { opacity: 0; transform: translateY(11px); }
+}
+@keyframes nav-archive-receive {
+  0%, 40%, 100% { transform: none; }
+  65% { transform: translateY(.7px); }
+}
+
+.audit-trail { --part-animation: nav-history-trace; }
+.audit-arrow { --part-animation: nav-history-arrow; }
+.audit-hand { --part-animation: nav-history-hand; transform-origin: 12px 12px; }
+@keyframes nav-history-trace {
+  0%, 100% { stroke-dasharray: 1; stroke-dashoffset: 0; opacity: 1; }
+  8% { stroke-dasharray: 1; stroke-dashoffset: 1; opacity: .3; }
+  72% { stroke-dasharray: 1; stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes nav-history-arrow {
+  0%, 100% { opacity: 1; transform: none; }
+  10%, 55% { opacity: 0; transform: translateY(-1px); }
+  78% { opacity: 1; transform: none; }
+}
+@keyframes nav-history-hand {
+  0%, 100% { transform: none; }
+  60% { transform: rotate(20deg); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animated-nav-icon .animated-nav-icon-svg {
+  .animated-nav-icon .animated-nav-icon-svg,
+  .animated-nav-icon .animated-nav-icon-svg * {
     animation: none !important;
     transform: none !important;
     transition: none !important;
