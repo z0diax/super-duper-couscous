@@ -1,3 +1,4 @@
+import type { HalloChristmasPhase } from '../themeTypes';
 import React from 'react';
 
 export const WomensMonthNavMotif: React.FC<{ side: 'left' | 'right' }> = ({ side }) => (
@@ -79,19 +80,44 @@ export const ChineseNewYearNavMotif: React.FC<{ side: 'left' | 'right' }> = ({ s
   </svg>
 );
 
-export const HalloChristmasNavMotif: React.FC<{ side: 'left' | 'right' }> = ({ side }) => (
-  <svg className={`hallo-christmas-nav-motif hallo-christmas-nav-motif--${side}`} viewBox="0 0 120 64" fill="none" aria-hidden="true">
-    <path d="M35 28C24 28 19 36 21 47C23 56 31 59 40 59C51 59 58 54 59 45C60 35 53 28 44 28Z" fill="#ea580c" stroke="#fdba74" strokeWidth="1.3" />
-    <path d="M33 29C28 36 28 51 34 57M46 29C52 36 52 51 46 57" stroke="#fb923c" strokeWidth="1.2" />
-    <path d="M39 29C39 23 42 20 46 20" stroke="#4d7c0f" strokeWidth="3" strokeLinecap="round" />
-    <path d="m29 40 5-3 4 3m8 0 5-3 4 3M34 48C38 53 44 53 49 48" stroke="#42162f" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    <path d="M86 11 70 34h8L66 50h40L94 34h8Z" fill="#166534" stroke="#86efac" strokeWidth="1.2" strokeLinejoin="round" />
-    <path d="M86 6 88 10 92 10 89 13 90 17 86 15 82 17 83 13 80 10 84 10Z" fill="#fbbf24" />
-    <path d="M82 50V57H90V50" fill="#92400e" />
-    <circle cx="78" cy="36" r="2" fill="#fca5a5" />
-    <circle cx="94" cy="43" r="2" fill="#fbbf24" />
-    <circle cx="85" cy="27" r="1.8" fill="#fecaca" />
-    <path d="M7 17 10 20 13 17M108 21 111 24 114 21" stroke="#fbbf24" strokeWidth="1.2" strokeLinecap="round" />
+export const HalloChristmasNavMotif: React.FC<{ side: 'left' | 'right'; phase: HalloChristmasPhase }> = ({ side, phase }) => (
+  <svg className={'hallo-christmas-nav-motif hallo-christmas-nav-motif--' + side} data-hallo-phase={phase} viewBox="0 0 120 64" fill="none" aria-hidden="true" focusable="false">
+    {phase === 'halloween' && <g data-hallo-art="halloween">
+      <path d="M35 28C24 28 19 36 21 47C23 56 31 59 40 59C51 59 58 54 59 45C60 35 53 28 44 28Z" fill="#ea580c" stroke="#fdba74" strokeWidth="1.3" />
+      <path d="M33 29C28 36 28 51 34 57M46 29C52 36 52 51 46 57" stroke="#fb923c" strokeWidth="1.2" />
+      <path d="M39 29C39 23 42 20 46 20" stroke="#4d7c0f" strokeWidth="3" strokeLinecap="round" />
+      <path d="m29 40 5-3 4 3m8 0 5-3 4 3M34 48C38 53 44 53 49 48" stroke="#42162f" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M74 20 68 14 59 16 66 22 70 21 74 26 78 21 83 22 90 16 81 14Z" fill="#c4b5fd" fillOpacity=".65" />
+      <path d="M88 48V38a8 8 0 0 1 16 0v12l-4-3-4 3-4-3Z" fill="#ede9fe" fillOpacity=".5" />
+      <circle cx="93" cy="38" r="1" fill="#42162f" /><circle cx="99" cy="38" r="1" fill="#42162f" />
+      <path d="m16 12 2 4 4 1-4 2-2 4-1-4-4-2 4-1Z" fill="#fdba74" />
+    </g>}
+    {phase === 'remembrance' && <g data-hallo-art="remembrance">
+      <ellipse cx="59" cy="55" rx="35" ry="4" fill="#fde68a" fillOpacity=".08" />
+      <circle cx="60" cy="22" r="15" fill="#fde68a" fillOpacity=".07" />
+      <rect x="52" y="30" width="16" height="23" rx="2" fill="#e7dfd0" stroke="#fef3c7" strokeWidth="1" />
+      <path d="M60 29v-5" stroke="#a18865" strokeWidth="1.2" />
+      <path d="M60 25c-7-4-3-10 0-14 5 6 6 10 0 14Z" fill="#fcd58b" />
+      <path d="M27 52c10 2 16-2 22-6M72 47c8 5 14 7 22 5" stroke="#a8b5a0" strokeWidth="1.2" strokeLinecap="round" />
+      <path d="M32 52c-2-8 5-9 7-3M84 51c1-8 7-8 8-1" fill="#a8b5a0" fillOpacity=".5" />
+      <g fill="#ede6db" fillOpacity=".8">
+        <ellipse cx="42" cy="44" rx="3" ry="6" /><ellipse cx="42" cy="44" rx="6" ry="3" />
+        <ellipse cx="78" cy="44" rx="3" ry="6" /><ellipse cx="78" cy="44" rx="6" ry="3" />
+      </g>
+      <circle cx="42" cy="44" r="2" fill="#d6b77b" /><circle cx="78" cy="44" r="2" fill="#d6b77b" />
+    </g>}
+    {phase === 'christmas' && <g data-hallo-art="christmas">
+      <path d="M86 11 70 34h8L66 50h40L94 34h8Z" fill="#166534" stroke="#86efac" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M86 6 88 10 92 10 89 13 90 17 86 15 82 17 83 13 80 10 84 10Z" fill="#fbbf24" />
+      <path d="M82 50V57H90V50" fill="#92400e" />
+      <circle cx="78" cy="36" r="2" fill="#fca5a5" />
+      <circle cx="94" cy="43" r="2" fill="#fbbf24" />
+      <circle cx="85" cy="27" r="1.8" fill="#fecaca" />
+      <path d="M7 10c18 9 30 7 49 0" stroke="#d4a72c" strokeWidth="1" />
+      <circle cx="15" cy="13" r="2" fill="#fbbf24" /><circle cx="28" cy="16" r="2" fill="#fca5a5" /><circle cx="42" cy="14" r="2" fill="#fbbf24" />
+      <path d="M30 32v5" stroke="#d4a72c" /><circle cx="30" cy="44" r="7" fill="#b91c1c" stroke="#fca5a5" strokeWidth="1" />
+      <path d="m45 27 2 4 4 1-4 2-2 4-1-4-4-2 4-1Z" fill="#fbbf24" />
+    </g>}
   </svg>
 );
 

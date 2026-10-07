@@ -1,10 +1,43 @@
-import type { SystemThemeId, WeatherTheme } from './themeTypes';
+import type { HalloChristmasPhase, SystemThemeId, WeatherTheme } from './themeTypes';
 
 export type LoaderContentType = 'inspiration' | 'trivia';
 export type LoaderThemeContent = Readonly<{ type: LoaderContentType; text: string }>;
 type ContentPool = readonly LoaderThemeContent[];
 const inspiration = (text: string): LoaderThemeContent => ({ type: 'inspiration', text });
 const trivia = (text: string): LoaderThemeContent => ({ type: 'trivia', text });
+
+export const HALLO_CHRISTMAS_LOADER_CONTENT: Record<HalloChristmasPhase, ContentPool> = {
+  halloween: [
+    inspiration('Bring a little Halloween wonder to the day.'),
+    inspiration('No tricks today, just thoughtful teamwork.'),
+    inspiration('A friendly smile makes any celebration brighter.'),
+    inspiration('Enjoy a playful moment, then take the next useful step.'),
+    inspiration('A little imagination can brighten an ordinary task.'),
+    inspiration('Share a cheerful welcome this Halloween.'),
+    inspiration('Small acts of kindness are always a treat.'),
+    trivia('Halloween falls on October 31.'),
+  ],
+  remembrance: [
+    inspiration('Remembering loved ones with love, prayer, and gratitude.'),
+    inspiration('May cherished memories bring quiet comfort.'),
+    inspiration('Honor those who came before us through thoughtful care.'),
+    inspiration('Take a gentle moment to remember a life well loved.'),
+    inspiration('Gratitude keeps the gifts of our loved ones close.'),
+    inspiration('May peace accompany every remembrance today.'),
+    inspiration('A quiet act of kindness can honor a lasting memory.'),
+    inspiration('Hold space for reflection, compassion, and love.'),
+  ],
+  christmas: [
+    inspiration('Wishing everyone peace, joy, and warmth this Christmas season.'),
+    inspiration('A warm welcome brings Christmas cheer to the day.'),
+    inspiration('Share a little gratitude with the people beside you.'),
+    inspiration('Small acts of generosity make the season brighter.'),
+    inspiration('May the Christmas season bring moments of peace.'),
+    inspiration('Make room for joy in the everyday details.'),
+    inspiration('Carry the warmth of Christmas into thoughtful teamwork.'),
+    trivia('Evergreen trees keep their foliage through the seasons.'),
+  ],
+};
 
 // Original, unattributed lines. Cultural/historical trivia references:
 // https://www.un.org/en/observances/womens-day
@@ -91,16 +124,7 @@ export const THEME_LOADER_CONTENT: Record<Exclude<SystemThemeId, 'weather-sync'>
     inspiration('Good fortune feels richer when shared.'),
     trivia('The Lantern Festival marks the end of New Year celebrations.'),
   ],
-  'hallo-christmas': [
-    inspiration('A little spooky, a little merry, and ready for the day.'),
-    inspiration('Every season brings something worth celebrating.'),
-    inspiration('Bring a little seasonal cheer to the task ahead.'),
-    inspiration('No tricks today, just thoughtful teamwork.'),
-    inspiration('A warm welcome works in every season.'),
-    inspiration('Leave room for a little wonder in a busy day.'),
-    trivia('Halloween falls on October 31.'),
-    trivia('Evergreen trees keep their foliage through the seasons.'),
-  ],
+  'hallo-christmas': HALLO_CHRISTMAS_LOADER_CONTENT.halloween,
   festive: [
     inspiration('Take a moment to appreciate what the team has done.'),
     inspiration('Small accomplishments deserve a little celebration.'),
@@ -161,7 +185,8 @@ export const WEATHER_LOADER_CONTENT: Record<WeatherTheme, ContentPool> = {
 };
 
 /** Unknown weather uses neutral Classic content without waiting for a request. */
-export const resolveLoaderContentPool = (theme: SystemThemeId, weather: WeatherTheme | null): ContentPool =>
+export const resolveLoaderContentPool = (theme: SystemThemeId, weather: WeatherTheme | null, phase: HalloChristmasPhase = 'halloween'): ContentPool =>
+  theme === 'hallo-christmas' ? HALLO_CHRISTMAS_LOADER_CONTENT[phase] :
   theme === 'weather-sync' ? (weather ? WEATHER_LOADER_CONTENT[weather] : THEME_LOADER_CONTENT.classic) : THEME_LOADER_CONTENT[theme];
 
 export const selectLoaderContent = (pool: ContentPool, random: () => number = Math.random): LoaderThemeContent =>

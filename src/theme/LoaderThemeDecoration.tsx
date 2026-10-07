@@ -1,22 +1,20 @@
 import React from 'react';
 import { Heart } from 'lucide-react';
 import { useThemeEffect } from './useThemeEffect';
-import { THEME_EFFECTS } from './effects/effectDefinitions';
 import { ThemeMotif } from './motifs/ThemeMotif';
 import './styles/loaderThemeDecoration.css';
 
 export const LoaderThemeDecoration: React.FC = () => {
-  const { effectId, effectsEnabled } = useThemeEffect();
-  if (!effectsEnabled || !effectId) return null;
-  const definition = THEME_EFFECTS[effectId];
+  const { effectId, effectsEnabled, halloChristmasPhase, definition } = useThemeEffect();
+  if (!effectsEnabled || !effectId || !definition) return null;
   const precipitation = ['rain', 'storm', 'snow'].includes(definition.kind);
   // Use a stable, smaller subset of the application's seeded particles.
   const particles = definition.particles.slice(0, precipitation ? 10 : 6);
   return (
-    <div key={effectId} className={`app-loader-theme-decoration app-loader-theme-decoration--${effectId}`} data-loader-effect={effectId} aria-hidden="true">
+    <div key={effectId} className={`app-loader-theme-decoration app-loader-theme-decoration--${effectId}`} data-loader-effect={effectId} data-hallo-phase={effectId === 'hallo-christmas' ? halloChristmasPhase : undefined} aria-hidden="true">
       {(['left', 'right'] as const).map(side => (
         <div key={side} className={`app-loader-theme-motif app-loader-theme-motif--${side}`}>
-          <ThemeMotif effectId={effectId} side={side} />
+          <ThemeMotif halloChristmasPhase={halloChristmasPhase} effectId={effectId} side={side} />
         </div>
       ))}
       <div className="app-loader-theme-particles">

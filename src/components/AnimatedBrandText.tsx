@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useTheme } from '../theme/ThemeProvider';
+import { resolveHalloChristmasMessage } from '../theme/halloChristmasPhase';
 import { SYSTEM_THEMES } from '../theme/themeRegistry';
 import type { SystemThemeDefinition } from '../theme/themeRegistry';
 
@@ -27,7 +28,7 @@ function usePrefersReducedMotion() {
   return reduced;
 }
 
-function AnimatedLines({ message }: { message: NonNullable<SystemThemeDefinition['brandMessage']> }) {
+function AnimatedLines({ message, compactMobile }: { message: NonNullable<SystemThemeDefinition['brandMessage']>; compactMobile: boolean }) {
   const [text, setText] = useState<BrandText>({ title: NORMAL_TITLE, subtitle: NORMAL_SUBTITLE, cursor: null });
 
   useEffect(() => {
@@ -85,12 +86,13 @@ function AnimatedLines({ message }: { message: NonNullable<SystemThemeDefinition
   }, [message]);
 
   const cursor = (line: Line) => text.cursor === line && <span className="brand-type-cursor" aria-hidden="true">|</span>;
-  return <BrandLines title={text.title} subtitle={text.subtitle} titleCursor={cursor('title')} subtitleCursor={cursor('subtitle')} />;
+  return <BrandLines compactMobile={compactMobile} title={text.title} subtitle={text.subtitle} titleCursor={cursor('title')} subtitleCursor={cursor('subtitle')} />;
 }
 
-function BrandLines({ title, subtitle, titleCursor, subtitleCursor }: {
+function BrandLines({ title, subtitle, titleCursor, subtitleCursor, compactMobile = false }: {
   title: string;
   subtitle: string;
+  compactMobile?: boolean;
   titleCursor?: ReactNode;
   subtitleCursor?: ReactNode;
 }) {
@@ -98,19 +100,21 @@ function BrandLines({ title, subtitle, titleCursor, subtitleCursor }: {
     <div className="min-w-0 flex-1" role="group" aria-label="HRMDO Records Management System">
       <div className="flex h-[4.75rem] flex-col justify-center" aria-hidden="true">
         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-300">HRMDO</p>
-        <p className="mt-0.5 max-h-8 overflow-hidden break-words text-xs font-bold leading-4 text-white sm:text-sm">{title}{titleCursor}</p>
-        <p className="mt-0.5 h-6 overflow-hidden break-words text-[10px] font-medium leading-3 text-slate-400">{subtitle}{subtitleCursor}</p>
+        <p className={'mt-0.5 overflow-hidden break-words font-bold text-white ' + (compactMobile ? 'max-h-6 text-[10px] leading-3 sm:max-h-8 sm:text-sm sm:leading-4' : 'max-h-8 text-xs leading-4 sm:text-sm')}>{title}{titleCursor}</p>
+        <p className={'mt-0.5 overflow-hidden break-words text-[10px] font-medium text-slate-400 ' + (compactMobile ? 'h-[33px] leading-[11px] sm:h-6 sm:leading-3' : 'h-6 leading-3')}>{subtitle}{subtitleCursor}</p>
       </div>
     </div>
   );
 }
 
 export function AnimatedBrandText() {
-  const { systemTheme, effectsEnabled } = useTheme();
+  const { systemTheme, effectsEnabled, halloChristmasPhase } = useTheme();
   const reducedMotion = usePrefersReducedMotion();
-  const message = SYSTEM_THEMES[systemTheme].brandMessage;
+  const message = systemTheme === 'hallo-christmas'
+    ? resolveHalloChristmasMessage(halloChristmasPhase)
+    : SYSTEM_THEMES[systemTheme].brandMessage;
   if (!effectsEnabled || reducedMotion || !message) {
     return <BrandLines title={NORMAL_TITLE} subtitle={NORMAL_SUBTITLE} />;
   }
-  return <AnimatedLines key={systemTheme} message={message} />;
+  return <AnimatedLines key={systemTheme} message={message} compactMobile={systemTheme !== 'hallo-christmas'} />;
 }

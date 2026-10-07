@@ -1,4 +1,4 @@
-import type { ThemeEffectId, WeatherTheme } from '../themeTypes';
+import type { HalloChristmasPhase, ThemeEffectId, WeatherTheme } from '../themeTypes';
 
 export type WeatherEffectId = `weather-${WeatherTheme}`;
 export type VisualEffectId = ThemeEffectId | WeatherEffectId;
@@ -76,6 +76,23 @@ export const THEME_EFFECTS: Record<VisualEffectId, EffectDefinition> = {
   'weather-thunderstorm': createDefinition('weather-thunderstorm', 'storm', 'fall', 32, 14, false, [2.8, 4.6]),
   'weather-winter': createDefinition('weather-winter', 'snow', 'fall', 30, 12, false, [9, 16]),
 };
+
+const remembranceEffect = createDefinition('hallo-christmas', 'mote', 'drift', 4, 2, true, [24, 32]);
+
+/** Keep one effect identity and the existing seeded particle system. */
+export const HALLO_CHRISTMAS_EFFECTS: Record<HalloChristmasPhase, EffectDefinition> = {
+  halloween: createDefinition('hallo-christmas', 'star', 'float', 10, 6, true, [14, 22]),
+  remembrance: {
+    ...remembranceEffect,
+    particles: remembranceEffect.particles.map(particle => ({
+      ...particle, size: particle.size * .45, opacity: particle.opacity * .45, drift: particle.drift * .1,
+    })),
+  },
+  christmas: createDefinition('hallo-christmas', 'snow', 'fall', 14, 8, true, [11, 18]),
+};
+
+export const resolveEffectDefinition = (effectId: VisualEffectId, phase: HalloChristmasPhase): EffectDefinition =>
+  effectId === 'hallo-christmas' ? HALLO_CHRISTMAS_EFFECTS[phase] : THEME_EFFECTS[effectId];
 
 export const WEATHER_EFFECTS: Record<WeatherTheme, WeatherEffectId> = {
   sunny:'weather-sunny', cloudy:'weather-cloudy', windy:'weather-windy', rainy:'weather-rainy', thunderstorm:'weather-thunderstorm', winter:'weather-winter',

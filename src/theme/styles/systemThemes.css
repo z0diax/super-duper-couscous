@@ -102,3 +102,29 @@
   .theme-effect-layer,
   .theme-nav-effect-field { display:none !important; }
 }
+
+/* Internal Hallo-Christmas phases retain the single selectable theme. */
+[data-system-theme="hallo-christmas"][data-hallo-phase="halloween"] {
+  --app-theme-accent:#7e22ce;--app-theme-accent-strong:#581c87;--app-theme-accent-soft:#faf5ff;
+}
+[data-system-theme="hallo-christmas"][data-hallo-phase="remembrance"] {
+  --app-primary:#786344;--app-primary-hover:#625037;--app-primary-soft:#faf6ed;--app-primary-text:#625037;
+  --app-header:#29261f;--app-sidebar:#29261f;--app-sidebar-hover:#403a2e;--app-sidebar-active:#786344;
+  --app-focus:#c6a66d;--app-theme-accent:#8b7350;--app-theme-accent-strong:#625037;
+  --app-theme-accent-soft:#faf6ed;--app-theme-highlight:#d6b77b;--app-theme-border-tint:#ddd2bd;
+}
+[data-system-theme="hallo-christmas"][data-hallo-phase="christmas"] {
+  --app-primary:#166534;--app-primary-hover:#14532d;--app-primary-soft:#f0fdf4;--app-primary-text:#166534;
+  --app-header:#102b20;--app-sidebar:#102b20;--app-sidebar-hover:#1b4430;--app-sidebar-active:#166534;
+  --app-focus:#d4a72c;--app-theme-accent:#b91c1c;--app-theme-accent-strong:#991b1b;
+  --app-theme-accent-soft:#fff1f2;--app-theme-highlight:#fbbf24;--app-theme-border-tint:#bbd7c2;
+}
+[data-appearance="dark"][data-system-theme="hallo-christmas"][data-hallo-phase="halloween"] { --app-theme-accent-soft:#35203f; }
+[data-appearance="dark"][data-system-theme="hallo-christmas"][data-hallo-phase="remembrance"] {
+  --app-primary:#786344;--app-primary-hover:#625037;--app-primary-soft:#332d23;--app-primary-text:#e1cca4;
+  --app-theme-accent-soft:#332d23;--app-theme-border-tint:#66583f;
+}
+[data-appearance="dark"][data-system-theme="hallo-christmas"][data-hallo-phase="christmas"] {
+  --app-primary:#22854b;--app-primary-hover:#166534;--app-primary-soft:#173b28;--app-primary-text:#86efac;
+  --app-theme-accent-soft:#3f2022;--app-theme-border-tint:#326344;
+}

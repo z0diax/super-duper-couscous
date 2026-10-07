@@ -1,5 +1,6 @@
 import React from 'react';
 import { Heart, Mail } from 'lucide-react';
+import type { HalloChristmasPhase } from '../themeTypes';
 import type { VisualEffectId } from '../effects/effectDefinitions';
 import {
   WomensMonthNavMotif,
@@ -35,7 +36,7 @@ const WeatherMotif: React.FC<{ kind: 'sunny' | 'cloudy' | 'windy' | 'thunderstor
 );
 
 /** Shared artwork; each surface controls placement through its own wrapper. */
-export const ThemeMotif: React.FC<{ effectId: VisualEffectId; side?: 'left' | 'right' }> = ({ effectId, side = 'left' }) => (
+export const ThemeMotif: React.FC<{ effectId: VisualEffectId; side?: 'left' | 'right'; halloChristmasPhase: HalloChristmasPhase }> = ({ effectId, side = 'left', halloChristmasPhase }) => (
   <>
     {effectId === 'valentine' && <><Heart className="theme-motif-heart" strokeWidth={.8} /><Mail className="theme-motif-mail" strokeWidth={.8} /></>}
     {effectId === 'womens-month' && <WomensMonthNavMotif side={side} />}
@@ -43,7 +44,7 @@ export const ThemeMotif: React.FC<{ effectId: VisualEffectId; side?: 'left' | 'r
     {effectId === 'amihan-bloom' && <AmihanBloomNavMotif side={side} />}
         {(effectId === 'winter' || effectId === 'weather-winter') && <WinterNavMotif side={side} />}
     {effectId === 'chinese-new-year' && <ChineseNewYearNavMotif side={side} />}
-    {effectId === 'hallo-christmas' && <HalloChristmasNavMotif side={side} />}
+    {effectId === 'hallo-christmas' && <HalloChristmasNavMotif side={side} phase={halloChristmasPhase} />}
     {effectId === 'festive' && <FestiveNavMotif side={side} />}
         {(effectId === 'rainy-season' || effectId === 'weather-rainy') && <RainySeasonNavMotif side={side} />}
     {effectId === 'weather-sunny' && <WeatherMotif kind="sunny" />}

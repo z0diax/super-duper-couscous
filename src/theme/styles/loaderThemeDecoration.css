@@ -84,3 +84,15 @@
 @media (prefers-reduced-motion: reduce) {
   .app-loader-theme-decoration .app-loader-theme-particle { display: none; animation: none; }
 }
+
+.app-loader-theme-decoration[data-hallo-phase="halloween"] .app-loader-theme-particle { color: #fdba74; }
+.app-loader-theme-decoration[data-hallo-phase="remembrance"] .app-loader-theme-particle { color: #fcd58b; animation-name: hallo-loader-remembrance-glow; }
+.app-loader-theme-decoration[data-hallo-phase="remembrance"] .app-loader-theme-motif { opacity: .24; }
+.app-loader-theme-decoration[data-hallo-phase="christmas"] .app-loader-theme-particle { color: #fef3c7; }
+@keyframes hallo-loader-remembrance-glow {
+  0%, 100% { transform: translateY(-1px); }
+  50% { transform: translateY(1px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-loader-theme-decoration[data-hallo-phase] .app-loader-theme-particle { display: none; animation: none; }
+}

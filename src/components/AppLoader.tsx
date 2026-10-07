@@ -12,8 +12,8 @@ type AppLoaderProps = {
 
 // Mounted only for the initial startup. Status/theme rerenders never reselect.
 const StartupContent: React.FC = () => {
-  const { systemTheme, effectiveWeatherTheme } = useTheme();
-  const [content] = useState(() => selectLoaderContent(resolveLoaderContentPool(systemTheme, effectiveWeatherTheme)));
+  const { systemTheme, effectiveWeatherTheme, halloChristmasPhase } = useTheme();
+  const [content] = useState(() => selectLoaderContent(resolveLoaderContentPool(systemTheme, effectiveWeatherTheme, halloChristmasPhase)));
   return (
     <p className="app-loader-content" data-content-type={content.type}>
       <span className="app-loader-content-accent" aria-hidden="true">✦</span>{' '}

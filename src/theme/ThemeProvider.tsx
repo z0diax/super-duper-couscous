@@ -7,6 +7,8 @@ import {
   saveSystemTheme,
   type SystemThemeSetting,
 } from '../services/themeApi';
+import { resolveHalloChristmasPhase } from './halloChristmasPhase';
+import type { HalloChristmasPhase } from './themeTypes';
 import { DEFAULT_SYSTEM_THEME, isSystemThemeId } from './themeRegistry';
 import { isWeatherTheme, type AppearanceMode, type ResolvedAppearance, type SystemThemeId, type WeatherTheme } from './themeTypes';
 
@@ -84,6 +86,7 @@ const systemAppearance = (): ResolvedAppearance =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 
 type ThemeContextValue = {
+  halloChristmasPhase: HalloChristmasPhase;
   appearanceMode: AppearanceMode;
   resolvedAppearance: ResolvedAppearance;
   systemTheme: SystemThemeId;
@@ -104,6 +107,8 @@ type ApplyOptions = { source: 'server' | 'broadcast'; broadcast?: boolean; hydra
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
+  // A session snapshot keeps every surface consistent without date polling.
+  const [halloChristmasPhase] = useState(() => resolveHalloChristmasPhase(new Date()));
   const [initialTheme] = useState(readCachedThemeState);
   const [appearanceMode, setAppearanceModeState] = useState<AppearanceMode>(readMode);
   const [system, setSystem] = useState<ResolvedAppearance>(systemAppearance);
@@ -169,8 +174,7 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     const controller = new AbortController();
     const sequence = ++requestSequenceRef.current;
     syncControllerRef.current = controller;
-    let requestPromise: Promise<SyncResult>;
-    requestPromise = (async () => {
+    const requestPromise = (async (): Promise<SyncResult> => {
       try {
         const setting = await getSystemTheme(controller.signal);
         if (controller.signal.aborted || sequence !== requestSequenceRef.current) return 'aborted';
@@ -184,11 +188,11 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
           return 'unauthorized';
         }
         return 'failed';
-      } finally {
-        if (inFlightRef.current === requestPromise) inFlightRef.current = null;
-        if (syncControllerRef.current === controller) syncControllerRef.current = null;
       }
-    })();
+    })().finally(() => {
+      if (inFlightRef.current === requestPromise) inFlightRef.current = null;
+      if (syncControllerRef.current === controller) syncControllerRef.current = null;
+    });
     inFlightRef.current = requestPromise;
     return requestPromise;
   }, [applyThemeState]);
@@ -212,6 +216,12 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     const root = document.documentElement;
     if (root.dataset.systemTheme !== systemTheme) root.dataset.systemTheme = systemTheme;
   }, [systemTheme]);
+  useEffect(() => {
+    const root = document.documentElement;
+    if (systemTheme === 'hallo-christmas') root.dataset.halloPhase = halloChristmasPhase;
+    else delete root.dataset.halloPhase;
+  }, [systemTheme, halloChristmasPhase]);
+
   useEffect(() => {
     const root = document.documentElement;
     if (systemTheme === 'weather-sync' && effectiveWeatherTheme) {
@@ -331,9 +341,9 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   }, [abortThemeSync, applyThemeState]);
 
   const value = useMemo(() => ({
-    appearanceMode, resolvedAppearance, systemTheme, effectiveWeatherTheme, systemThemeSetting, effectsEnabled,
+    halloChristmasPhase, appearanceMode, resolvedAppearance, systemTheme, effectiveWeatherTheme, systemThemeSetting, effectsEnabled,
     setAppearanceMode, setEffectsEnabled, refreshSystemTheme, updateSystemTheme, activateWeatherSync, refreshWeatherSync,
-  }), [appearanceMode, resolvedAppearance, systemTheme, effectiveWeatherTheme, systemThemeSetting, effectsEnabled, setAppearanceMode, setEffectsEnabled, refreshSystemTheme, updateSystemTheme, activateWeatherSync, refreshWeatherSync]);
+  }), [halloChristmasPhase, appearanceMode, resolvedAppearance, systemTheme, effectiveWeatherTheme, systemThemeSetting, effectsEnabled, setAppearanceMode, setEffectsEnabled, refreshSystemTheme, updateSystemTheme, activateWeatherSync, refreshWeatherSync]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };

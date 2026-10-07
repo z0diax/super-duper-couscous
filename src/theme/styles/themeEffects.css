@@ -497,3 +497,39 @@
   .theme-effect-layer,
   .theme-nav-effect-field { display:none !important; }
 }
+
+.theme-nav-effect-field--hallo-christmas[data-hallo-phase="halloween"] {
+  background: radial-gradient(ellipse 180px 64px at 3% 50%, rgb(249 115 22 / .13), transparent 80%), radial-gradient(ellipse 180px 64px at 97% 50%, rgb(126 34 206 / .10), transparent 80%);
+}
+.theme-nav-effect-field--hallo-christmas[data-hallo-phase="halloween"]::after {
+  background: linear-gradient(90deg, transparent, #fb923c80, #c4b5fd80, transparent);
+}
+[data-hallo-phase="halloween"] .theme-effect-particle--star { background: #fdba74; }
+[data-hallo-phase="halloween"] .theme-effect-particle--star[data-tone="1"] { background: #c4b5fd; }
+[data-hallo-phase="halloween"] .theme-effect-particle--star[data-tone="2"] { background: #fb923c; }
+.theme-nav-effect-field--hallo-christmas[data-hallo-phase="remembrance"] {
+  background: radial-gradient(ellipse 150px 64px at 3% 60%, rgb(214 183 123 / .06), transparent 80%), radial-gradient(ellipse 150px 64px at 97% 60%, rgb(214 183 123 / .06), transparent 80%);
+}
+.theme-nav-effect-field--hallo-christmas[data-hallo-phase="remembrance"]::after {
+  height: 1px; background: linear-gradient(90deg, transparent, rgb(214 183 123 / .25), transparent);
+}
+[data-hallo-phase="remembrance"] .theme-effect-particle--mote { background: #fcd58b; box-shadow: 0 0 3px #fcd58b30; }
+.theme-nav-effect-field--hallo-christmas[data-hallo-phase="remembrance"] .hallo-christmas-nav-motif { opacity: .6; }
+.theme-nav-effect-field--hallo-christmas[data-hallo-phase="remembrance"] .theme-effect-particle { animation-name: hallo-remembrance-glow; }
+@keyframes hallo-remembrance-glow {
+  0%, 100% { transform: translateY(-1px); }
+  50% { transform: translateY(1px); }
+}
+.theme-nav-effect-field--hallo-christmas[data-hallo-phase="christmas"] {
+  background: radial-gradient(ellipse 180px 64px at 3% 50%, rgb(22 101 52 / .18), transparent 80%), radial-gradient(ellipse 180px 64px at 97% 50%, rgb(185 28 28 / .13), transparent 80%);
+}
+.theme-nav-effect-field--hallo-christmas[data-hallo-phase="christmas"]::after {
+  background: linear-gradient(90deg, transparent, #86efac80, #fbbf2480, #fca5a580, transparent);
+}
+[data-hallo-phase="christmas"] .theme-effect-particle--snow { background: #fef3c7; }
+.theme-effect-layer--hallo-christmas[data-hallo-phase="halloween"]::before { background: radial-gradient(circle at 4% 8%, #f973160f, transparent 24%), radial-gradient(circle at 96% 90%, #7e22ce0d, transparent 24%); }
+.theme-effect-layer--hallo-christmas[data-hallo-phase="remembrance"]::before { background: radial-gradient(circle at 4% 8%, #d6b77b08, transparent 24%); }
+.theme-effect-layer--hallo-christmas[data-hallo-phase="christmas"]::before { background: radial-gradient(circle at 4% 8%, #1665340f, transparent 24%), radial-gradient(circle at 96% 90%, #b91c1c0d, transparent 24%); }
+@media (prefers-reduced-motion: reduce) {
+  .theme-nav-effect-field--hallo-christmas[data-hallo-phase] .theme-effect-particle { display: none; animation: none; }
+}
