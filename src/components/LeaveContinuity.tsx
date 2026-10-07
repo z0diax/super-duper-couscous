@@ -78,11 +78,15 @@ const workingDaysBetween = (startDate: string, endDate: string) => {
 const rangesForRecord = (record: LeaveApplicationRecord): DateRangeDraft[] => record.dateRanges?.length
   ? [...record.dateRanges].sort((a,b) => a.startDate.localeCompare(b.startDate)).map(range => ({ id: range.id, startDate: range.startDate, endDate: range.endDate, dayType: range.dayType || 'WHOLE_DAY' }))
   : [{ startDate: record.startDate, endDate: record.endDate, dayType: 'WHOLE_DAY' }];
+const calendarDaysBetween = (startDate: string, endDate: string) => {
+  const start = parseDateValue(startDate); const end = parseDateValue(endDate);
+  return start && end && start <= end ? Math.floor((end.getTime() - start.getTime()) / 86400000) + 1 : 0;
+};
 const calculatedDays = (ranges: DateRangeDraft[]) => ranges.reduce((total, range) => {
   if (!range.startDate || !range.endDate || range.startDate > range.endDate) return total;
-  const weekdays = workingDaysBetween(range.startDate, range.endDate);
-  if (range.dayType !== 'WHOLE_DAY') return total + (range.startDate === range.endDate && weekdays ? 0.5 : 0);
-  return total + weekdays;
+  const days = calendarDaysBetween(range.startDate, range.endDate);
+  if (range.dayType !== 'WHOLE_DAY') return total + (range.startDate === range.endDate && days ? 0.5 : 0);
+  return total + days;
 }, 0);
 const dayTypeLabel = (type?: LeaveDateRange['dayType']) => type ? ({ WHOLE_DAY: 'Whole Day', AM_HALF_DAY: 'AM Half-Day', PM_HALF_DAY: 'PM Half-Day' }[type]) : 'Archived Date Range';
 const formatDays = (days: number) => `${days} day${days === 1 ? '' : 's'}`;
@@ -216,7 +220,7 @@ export const LeaveContinuity: React.FC = () => {
       if (!saved) return;
       setIsModalOpen(false); resetForm(); selectRegistryMode('ewp'); return;
     }
-    if (!employeeName.trim() || !office.trim() || dateRanges.some(range => !range.startDate || !range.endDate || !workingDaysBetween(range.startDate, range.endDate))) return;
+    if (!employeeName.trim() || !office.trim() || dateRanges.some(range => !range.startDate || !range.endDate || !calendarDaysBetween(range.startDate, range.endDate))) return;
     const payload = {
       ...(editingRecord ? { id: editingRecord.id } : {}),
       employeeId: editingRecord?.employeeId || '', employeeName: employeeName.trim(), office: office.trim(), barcode: barcode.trim() || 'N/A', leaveType,
@@ -347,7 +351,7 @@ export const LeaveContinuity: React.FC = () => {
             <div className="mt-3 space-y-3">{dateRanges.map((range,index) => <div key={range.id || index} data-testid={`leave-date-range-${index}`} className="rounded-lg border border-slate-200 bg-white p-3"><div className="mb-2 flex items-center justify-between"><span className="font-bold text-slate-600">Date Range {index+1}</span>{dateRanges.length>1 && <button aria-label={`Remove date range ${index+1}`} type="button" onClick={() => setDateRanges(previous => previous.filter((_,i)=>i!==index))} className="rounded-md p-1 text-rose-500 hover:bg-rose-50"><Trash2 className="h-3.5 w-3.5" /></button>}</div><div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_11rem]">
               <label className="min-w-0 font-semibold text-slate-700">Date Range *<div className="mt-1"><LeaveDateRangePicker startDate={range.startDate} endDate={range.endDate} dayType={range.dayType} onChange={(startDate,endDate) => setDateRanges(previous => previous.map((item,i) => i===index ? { ...item, startDate, endDate } : item))} /></div></label>
               <label className="font-semibold text-slate-700">Duration *<select value={range.dayType} onChange={event => changeRange(index,'dayType',event.target.value)} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100"><option value="WHOLE_DAY">Whole Day</option><option value="AM_HALF_DAY">AM Half-Day</option><option value="PM_HALF_DAY">PM Half-Day</option></select></label>
-            </div>{range.startDate && range.endDate && !workingDaysBetween(range.startDate, range.endDate) && <p className="mt-2 text-xs font-medium text-rose-600">Select a range with at least one Monday-to-Friday working day.</p>}</div>)}</div>
+            </div>{range.startDate && range.endDate && !calendarDaysBetween(range.startDate, range.endDate) && <p className="mt-2 text-xs font-medium text-rose-600">Select a valid date range with the start on or before the end date.</p>}</div>)}</div>
             <div className="mt-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2"><span className="font-semibold text-blue-800">Calculated Leave Days</span><strong id="calculated-leave-days" className="text-base text-blue-900">{formatDays(calculatedDays(dateRanges))}</strong></div>
           </section>}
           <label className="block font-semibold text-slate-700">Remarks<textarea value={remarks} onChange={event => setRemarks(event.target.value)} rows={3} className="mt-1 w-full resize-y rounded-lg border border-slate-300 p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" /></label>

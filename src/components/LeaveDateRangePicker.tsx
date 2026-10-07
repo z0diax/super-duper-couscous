@@ -40,7 +40,7 @@ export const LeaveDateRangePicker: React.FC<Props> = ({ startDate, endDate, dayT
   const moveMonth = (amount: number) => setMonth(value => new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + amount, 1)));
   const chooseDate = (value: string) => {
     const date = parseDate(value);
-    if (!date || date.getUTCDay() === 0 || date.getUTCDay() === 6) return;
+    if (!date) return;
     if (dayType !== 'WHOLE_DAY') { onChange(value, value); setPendingStart(null); setHoveredDate(null); setIsOpen(false); return; }
     if (!pendingStart) { setPendingStart(value); setHoveredDate(null); onChange(value, value); return; }
     onChange(pendingStart < value ? pendingStart : value, pendingStart < value ? value : pendingStart);
@@ -61,16 +61,15 @@ export const LeaveDateRangePicker: React.FC<Props> = ({ startDate, endDate, dayT
         {LEAVE_CALENDAR_WEEKDAYS.map(day => <span key={day} className="py-1 text-[10px] font-bold uppercase text-slate-400">{day}</span>)}
         {days.map(date => {
           const value = isoDate(date); const inMonth = date.getUTCMonth() === month.getUTCMonth();
-          const weekend = date.getUTCDay() === 0 || date.getUTCDay() === 6;
           const previewStart = pendingStart && hoveredDate ? (pendingStart < hoveredDate ? pendingStart : hoveredDate) : '';
           const previewEnd = pendingStart && hoveredDate ? (pendingStart < hoveredDate ? hoveredDate : pendingStart) : '';
           const previewed = !!previewStart && value >= previewStart && value <= previewEnd;
           const selected = previewed || (!!startDate && value >= startDate && value <= (endDate || startDate));
-          const endpoint = !weekend && (pendingStart ? value === pendingStart || (!!hoveredDate && value === hoveredDate) : value === startDate || value === endDate);
-          return <button key={value} type="button" aria-label={value} disabled={weekend} title={weekend ? 'Weekend — excluded from leave days' : undefined} data-range-state={endpoint ? 'endpoint' : selected && !weekend ? 'between' : undefined} onPointerEnter={() => pendingStart && setHoveredDate(value)} onPointerMove={() => pendingStart && hoveredDate !== value && setHoveredDate(value)} onFocus={() => pendingStart && setHoveredDate(value)} onClick={() => chooseDate(value)} className={`h-9 text-xs font-semibold transition ${endpoint ? 'relative z-10 rounded-lg bg-blue-600 text-white shadow-sm' : weekend ? 'rounded-lg bg-slate-50 text-slate-300 cursor-not-allowed' : selected ? 'rounded-none bg-blue-100 text-blue-800' : inMonth ? 'rounded-lg text-slate-700 hover:bg-slate-100' : 'rounded-lg text-slate-300 hover:bg-slate-50'}`}>{date.getUTCDate()}</button>;
+          const endpoint = pendingStart ? value === pendingStart || (!!hoveredDate && value === hoveredDate) : value === startDate || value === endDate;
+          return <button key={value} type="button" aria-label={value} data-range-state={endpoint ? 'endpoint' : selected ? 'between' : undefined} onPointerEnter={() => pendingStart && setHoveredDate(value)} onPointerMove={() => pendingStart && hoveredDate !== value && setHoveredDate(value)} onFocus={() => pendingStart && setHoveredDate(value)} onClick={() => chooseDate(value)} className={`h-9 text-xs font-semibold transition ${endpoint ? 'relative z-10 rounded-lg bg-blue-600 text-white shadow-sm' : selected ? 'rounded-none bg-blue-100 text-blue-800' : inMonth ? 'rounded-lg text-slate-700 hover:bg-slate-100' : 'rounded-lg text-slate-300 hover:bg-slate-50'}`}>{date.getUTCDate()}</button>;
         })}
       </div>
-      <p className="mt-3 border-t border-slate-100 pt-2 text-center text-[10px] text-slate-500">{dayType === 'WHOLE_DAY' ? (pendingStart ? 'Select the last day of the leave period.' : 'Select the first day, then the last day.') : 'Select the half-day leave date.'} Weekends are skipped.</p>
+      <p className="mt-3 border-t border-slate-100 pt-2 text-center text-[10px] text-slate-500">{dayType === 'WHOLE_DAY' ? (pendingStart ? 'Select the last day of the leave period.' : 'Select the first day, then the last day.') : 'Select the half-day leave date.'}</p>
     </div>}
   </div>;
 };

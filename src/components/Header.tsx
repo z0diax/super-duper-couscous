@@ -395,7 +395,7 @@ export const Header: React.FC<HeaderProps> = ({ documentShell, payrollShell, onO
   return (
     <header className={`app-header relative isolate text-white border-b border-slate-800 sticky top-0 shadow-xs h-16 ${searchResults !== null ? 'z-50' : 'z-30'}`}>
       <ThemeNavEffects />
-      <div className="relative z-10 h-full px-4 sm:px-6 flex items-center justify-between gap-3 sm:gap-6">
+      <div className="relative z-10 h-full px-3 sm:px-6 lg:px-8 flex items-center justify-between gap-3 sm:gap-6">
         
         {/* Left: Mobile Menu Toggle */}
         <div className="flex items-center gap-3">

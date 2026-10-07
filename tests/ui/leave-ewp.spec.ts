@@ -33,7 +33,7 @@ test('leave intake switches to EWP and registers the requested fields', async ({
   await page.screenshot({ path: 'test-results/leave-ewp-registry.png', fullPage: true });
 });
 
-test('leave date spans skip weekends in the preview and saved dates', async ({ page }) => {
+test('leave intake selects weekend endpoints and includes weekends in saved dates', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-10-02T12:00:00Z'));
   await page.goto(`${fixture.base}/`);
   await page.getByLabel('Email address').fill('admin@example.test');
@@ -46,23 +46,26 @@ test('leave date spans skip weekends in the preview and saved dates', async ({ p
   await page.getByLabel(/Barcode \/ Tracking No/).fill('BROWSER-LEAVE-WEEKEND');
   await page.locator('#select-leave-subtype').selectOption('WITHIN_PHILIPPINES');
   await page.getByRole('button', { name: 'Select Leave Date Range' }).click();
-  await expect(page.getByRole('button', { name: '2026-10-31' })).toBeDisabled();
-  await page.getByRole('button', { name: '2026-10-30' }).click();
+  await expect(page.getByRole('button', { name: '2026-10-31' })).toBeEnabled();
+  await page.getByRole('button', { name: '2026-10-31' }).click();
   await page.getByRole('button', { name: 'Next month' }).click();
-  await expect(page.getByRole('button', { name: '2026-11-01' })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '2026-11-01' })).toBeEnabled();
+  await page.getByRole('button', { name: '2026-11-01' }).hover();
+  await expect(page.getByRole('button', { name: '2026-11-01' })).toHaveAttribute('data-range-state', 'endpoint');
+  await page.getByRole('button', { name: '2026-11-02' }).hover();
+  await expect(page.getByRole('button', { name: '2026-11-01' })).toHaveAttribute('data-range-state', 'between');
   await page.getByRole('button', { name: '2026-11-02' }).click();
-  await expect(page.locator('#calculated-leave-days')).toHaveText('2 days');
+  await expect(page.locator('#calculated-leave-days')).toHaveText('3 days');
   await page.locator('#btn-submit-filing').click();
   const row = page.getByText('BROWSER-LEAVE-WEEKEND', { exact: true }).locator('xpath=ancestor::tr');
-  await expect(row).toContainText('2');
+  await expect(row).toContainText('3');
   await row.getByRole('button', { name: 'Multiple Dates Selected' }).click();
   const dates = page.getByRole('dialog', { name: 'Inclusive Dates' });
-  await expect(dates).toContainText('2 dates');
+  await expect(dates).toContainText('3 dates');
   await expect(dates.getByText('October 2026')).toBeVisible();
-  await expect(dates.locator('time[data-date="2026-10-30"]')).toHaveAttribute('data-range-state', 'endpoint');
-  await expect(dates.locator('time[data-date="2026-10-31"]')).toHaveAttribute('data-range-state', 'skipped');
+  await expect(dates.locator('time[data-date="2026-10-31"]')).toHaveAttribute('data-range-state', 'endpoint');
   await dates.getByRole('button', { name: 'Next leave month' }).click();
   await expect(dates.getByText('November 2026')).toBeVisible();
-  await expect(dates.locator('time[data-date="2026-11-01"]')).toHaveAttribute('data-range-state', 'skipped');
+  await expect(dates.locator('time[data-date="2026-11-01"]')).toHaveAttribute('data-range-state', 'between');
   await expect(dates.locator('time[data-date="2026-11-02"]')).toHaveAttribute('data-range-state', 'endpoint');
 });

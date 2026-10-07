@@ -475,11 +475,15 @@ test('HRMDO leave registry separates applicant and encoder, validates barcodes, 
   const am=(await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-AM',dateRanges:[{startDate:'2026-09-24',endDate:'2026-09-24',dayType:'AM_HALF_DAY'}]}])).result; assert.equal(am.totalLeaveDays,0.5);
   const pm=(await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-PM',dateRanges:[{startDate:'2026-09-25',endDate:'2026-09-25',dayType:'PM_HALF_DAY'}]}])).result; assert.equal(pm.totalLeaveDays,0.5);
   const weekendSpan=(await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-WEEKEND-SPAN',dateRanges:[{startDate:'2026-10-02',endDate:'2026-10-05',dayType:'WHOLE_DAY'}],calculatedLeaveDays:4}])).result;
-  assert.equal(weekendSpan.totalLeaveDays,2); assert.equal(weekendSpan.workingDaysNumber,2); assert.equal(weekendSpan.dateRanges[0].leaveDayUnits,4);
+  assert.equal(weekendSpan.totalLeaveDays,4); assert.equal(weekendSpan.workingDaysNumber,4); assert.equal(weekendSpan.dateRanges[0].leaveDayUnits,8);
   const extendedSpan=(await receiver.action('updateLeaveApplication',[{...weekendSpan,dateRanges:[{...weekendSpan.dateRanges[0],endDate:'2026-10-12'}],calculatedLeaveDays:11}])).result;
-  assert.equal(extendedSpan.totalLeaveDays,7); assert.equal(extendedSpan.dateRanges[0].leaveDayUnits,14);
-  await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-WEEKEND-ONLY',dateRanges:[{startDate:'2026-10-03',endDate:'2026-10-04',dayType:'WHOLE_DAY'}]}],422);
-  await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-WEEKEND-HALF',dateRanges:[{startDate:'2026-10-03',endDate:'2026-10-03',dayType:'AM_HALF_DAY'}]}],422);
+  assert.equal(extendedSpan.totalLeaveDays,11); assert.equal(extendedSpan.dateRanges[0].leaveDayUnits,22);
+  const weekendOnly=(await receiver.action('fileLeaveApplication',[{...data,barcode:'LEAVE-WEEKEND-ONLY',dateRanges:[{startDate:'2026-10-03',endDate:'2026-10-04',dayType:'WHOLE_DAY'}]}])).result;
+  assert.equal(weekendOnly.totalLeaveDays,2); assert.equal(weekendOnly.dateRanges[0].leaveDayUnits,4);
+  for (const [date,dayType] of [['2026-10-03','AM_HALF_DAY'],['2026-10-04','PM_HALF_DAY']]) {
+    const weekendHalf=(await receiver.action('fileLeaveApplication',[{...data,barcode:`LEAVE-WEEKEND-${dayType}`,dateRanges:[{startDate:date,endDate:date,dayType}]}])).result;
+    assert.equal(weekendHalf.totalLeaveDays,0.5); assert.equal(weekendHalf.dateRanges[0].leaveDayUnits,1);
+  }
   const updated=(await receiver.action('updateLeaveApplication',[{...leave,dateRanges:[leave.dateRanges[0],{startDate:'2026-09-22',endDate:'2026-09-22',dayType:'PM_HALF_DAY'}],calculatedLeaveDays:99}])).result;
   assert.equal(updated.dateRanges.length,2); assert.equal(updated.totalLeaveDays,1.5); assert.equal(updated.workingDaysNumber,1.5);
   await receiver.action('fileLeaveApplication',[data],409);

@@ -25,6 +25,7 @@ import { useDocumentShellSummary } from './services/useDocumentShellSummary';
 import { usePayrollShellSummary } from './services/usePayrollShellSummary';
 
 const INITIAL_LOADER_KEY = 'hrmdo.initial-loader-shown';
+const SIDEBAR_COLLAPSED_KEY = 'hrmdo.sidebar-collapsed';
 
 const MainLayout: React.FC = () => {
   const { 
@@ -52,6 +53,14 @@ const MainLayout: React.FC = () => {
   const [initialDelayElapsed, setInitialDelayElapsed] = useState(false);
   const [initialDisplayExiting, setInitialDisplayExiting] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'; }
+    catch { return false; }
+  });
+  React.useEffect(() => {
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isSidebarCollapsed)); }
+    catch { /* Desktop layout still works without preference storage. */ }
+  }, [isSidebarCollapsed]);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-document', false);
   const [isRegisterPayrollModalOpen, setIsRegisterPayrollModalOpen] = useWorkspaceState(currentUser.id, 'modal.register-payroll', false);
   const operationTabs = currentUser.role === 'admin' ? ['dashboard','queues','payroll','registry','leave'] : currentUser.sidebarModules || ['dashboard','queues','payroll','registry','leave'];
@@ -127,7 +136,7 @@ const MainLayout: React.FC = () => {
   }
 
   return (
-    <div className={`relative isolate min-h-screen bg-slate-100 text-slate-900 flex font-sans selection:bg-blue-600 selection:text-white${initialDisplayExiting ? ' app-startup-reveal' : ''}`}>
+    <div data-sidebar-collapsed={isSidebarCollapsed} className={`app-layout relative isolate min-h-screen bg-slate-100 text-slate-900 flex font-sans selection:bg-blue-600 selection:text-white${initialDisplayExiting ? ' app-startup-reveal' : ''}`}>
       <ThemeEffects />
       {/* Toast Notification Container */}
       <Toast />
@@ -138,13 +147,15 @@ const MainLayout: React.FC = () => {
         documentShell={documentShell}
         payrollShell={payrollShell}
         isOpen={isSidebarOpen}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapsed={() => setIsSidebarCollapsed(previous => !previous)}
         onClose={() => setIsSidebarOpen(false)}
         onOpenRegisterModal={() => { if (canRegisterDocument) setIsRegisterModalOpen(true); }}
         onOpenPayrollModal={() => { if (canRegisterPayroll) setIsRegisterPayrollModalOpen(true); }}
       />
 
       {/* Main Content Area (offset by sidebar width on desktop) */}
-      <div className="relative z-10 flex min-h-screen w-full flex-1 flex-col transition-all duration-200 lg:pl-64 xl:pl-72">
+      <div className="app-content relative z-10 flex min-h-screen min-w-0 w-full flex-1 flex-col">
         
         {/* Top Header */}
         <Header 
@@ -156,7 +167,7 @@ const MainLayout: React.FC = () => {
         />
 
         {/* Dynamic Main Body Content */}
-        <main className="flex-1 max-w-7xl w-full mx-auto px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
+        <main className="min-w-0 flex-1 w-full px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
           {syncError&&<div role="alert" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{syncError} <button type="button" className="font-semibold underline" onClick={()=>void retrySync().catch(()=>{})}>Retry sync</button></div>}
           {can('canAdmin') && !workflowTemplates.some(w => w.isActive) && <div className="mb-5 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm">Before registering documents, configure your users, review the classification catalogue, and create active workflows. Payroll batches also require employment routing rules.</div>}
           {activeTab === 'dashboard' && (
@@ -202,7 +213,7 @@ const MainLayout: React.FC = () => {
 
         {/* Footer */}
         <footer className="mt-auto border-t border-slate-200 bg-white py-4 text-center text-xs text-slate-500">
-          <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-2 px-3 sm:flex-row sm:px-6 lg:px-8">
+          <div className="flex w-full flex-col items-center justify-between gap-2 px-3 sm:flex-row sm:px-6 lg:px-8">
             <span>
               Human Resource Management and Development Office (HRMDO) &bull; Records Management System
             </span>

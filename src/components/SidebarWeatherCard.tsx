@@ -105,7 +105,8 @@ export const SidebarWeatherCard: React.FC = () => {
   const presentation = weather ? weatherPresentation(weather.weatherCode, weather.isDay) : null;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-700/80 bg-slate-800/80 shadow-sm" aria-label="Tacloban date, time, and weather">
+    <>
+    <section className="sidebar-weather-detailed overflow-hidden rounded-xl border border-slate-700/80 bg-slate-800/80 shadow-sm" aria-label="Tacloban date, time, and weather">
       <div className="flex items-center justify-between gap-3 px-3 py-2.5">
         <div className="min-w-0">
           <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-blue-300">Tacloban City</p>
@@ -135,5 +136,10 @@ export const SidebarWeatherCard: React.FC = () => {
         </div>
       )}
     </section>
+    <div className="sidebar-weather-compact" aria-label={weather && presentation ? `Tacloban: ${presentation.label}, ${Math.round(weather.temperature)} degrees` : 'Tacloban weather unavailable'}>
+      {presentation ? <presentation.Icon className="h-5 w-5" strokeWidth={1.7} aria-hidden="true" /> : <Cloud className="h-5 w-5" aria-hidden="true" />}
+      <span>{weather ? `${Math.round(weather.temperature)}°` : '—'}</span>
+    </div>
+    </>
   );
 };
