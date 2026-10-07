@@ -358,7 +358,7 @@ export const MyTasksQueue: React.FC = () => {
                   </span>
                 </div>
                 <span className={`text-xs font-semibold truncate w-full ${
-                  isSelected ? 'text-blue-900' : 'text-slate-700'
+                  isSelected ? 'text-blue-800' : 'text-slate-800'
                 }`}>
                   {tab.label}
                 </span>

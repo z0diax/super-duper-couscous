@@ -93,7 +93,8 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},5000);
     const resume=()=>{if(document.visibilityState==='visible')void refresh();};
     window.addEventListener('focus',resume);document.addEventListener('visibilitychange',resume);
-    return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);};
+    window.addEventListener('online',resume);
+    return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);window.removeEventListener('online',resume);};
   },[payrollTargeted,currentUser.id,stateRevision,officeFilter,stageFilter,batchListPage,batchRetry,setBatchListPage,invalidation]);
   useEffect(()=>{
     if(!payrollTargeted||!editingBatchId){setEditingDetail(null);return;}
@@ -118,7 +119,8 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
     };
     void refresh();const timer=window.setInterval(()=>{if(document.visibilityState==='visible')void refresh();},5000);
     const resume=()=>{if(document.visibilityState==='visible')void refresh();};window.addEventListener('focus',resume);
-    return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);};
+    document.addEventListener('visibilitychange',resume);window.addEventListener('online',resume);
+    return()=>{active=false;window.clearInterval(timer);window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',resume);window.removeEventListener('online',resume);};
   },[payrollTargeted,currentUser.id,stateRevision,officeFilter,stageFilter,singleListPage,singleRetry,setSingleListPage,invalidation]);
   const payrollBatches=payrollTargeted?batchList?.data||[]:legacyPayrollBatches;
   const payrollItems=payrollTargeted?editingDetail?.items||[]:legacyPayrollItems;
@@ -231,8 +233,9 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
   const totalVouchers = payrollTargeted?singleList?.metrics.total??0:singlePayrollDocs.length;
   const heldBatches = payrollTargeted?batchList?.metrics.hold??0:ownedPayrollBatches.filter(batch => payrollItems.some(item => item.batchId === batch.id && (item.status === 'On_Hold' || item.status === 'Ready_For_Recheck' || item.verificationStatus === 'Exception'))).length;
   const heldVouchers = payrollTargeted?singleList?.metrics.hold??0:singlePayrollDocs.filter(doc => doc.status === 'On_Hold' || doc.status === 'Ready_For_Recheck').length;
-  const initialCheckingBatches = payrollTargeted?batchList?.metrics.initial??0:ownedPayrollBatches.filter(b => b.progress.initialChecking.active > 0).length;
-  const initialCheckingVouchers = payrollTargeted?singleList?.metrics.initial??0:singlePayrollDocs.filter(doc => doc.status !== 'Archived' && doc.status !== 'Released' && doc.currentStepNumber <= 2).length;
+  // Count every unreleased entry across all phases, independent of list filters and pagination.
+  const inProcessBatches = payrollTargeted?batchList?.metrics.active??0:ownedPayrollBatches.filter(b => b.progress.derivedStatus !== 'COMPLETED').length;
+  const inProcessVouchers = payrollTargeted?(singleList?singleList.metrics.total-singleList.metrics.released:0):singlePayrollDocs.filter(doc => doc.status !== 'Archived' && doc.status !== 'Released').length;
   const activeWorkGroupsCount = payrollTargeted?batchList?.metrics.workGroups??0:workGroups.filter(w => ownedPayrollBatches.some(batch => batch.id === w.batchId) && w.status === 'In_Progress').length;
   const releasedBatchesCount = payrollTargeted?batchList?.metrics.completed??0:ownedPayrollBatches.filter(b => b.progress.derivedStatus === 'COMPLETED').length;
   const releasedVouchersCount = payrollTargeted?singleList?.metrics.released??0:singlePayrollDocs.filter(doc => doc.status === 'Archived' || doc.status === 'Released').length;
@@ -289,8 +292,8 @@ export const PayrollManagement: React.FC<Props> = ({ onOpenRegisterBatchModal })
           </div>
 
           <div className="p-3 rounded-xl bg-amber-50/60 border border-amber-200/70">
-            <p className="text-xs font-semibold text-amber-800">Initial Checking</p>
-            <p className="text-2xl font-bold text-amber-900 mt-0.5">{payrollTargeted&&(!batchList||!singleList)?'—':initialCheckingBatches + initialCheckingVouchers}</p>
+            <p className="text-xs font-semibold text-amber-800">In Process</p>
+            <p className="text-2xl font-bold text-amber-900 mt-0.5">{payrollTargeted&&(!batchList||!singleList)?'—':inProcessBatches + inProcessVouchers}</p>
           </div>
 
           <div className="p-3 rounded-xl bg-emerald-50/60 border border-emerald-200/70">

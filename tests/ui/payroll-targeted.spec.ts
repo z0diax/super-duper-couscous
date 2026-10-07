@@ -13,6 +13,9 @@ test('targeted Payroll shell, list, tasks and detail use scoped read endpoints',
     const item={id:'browser-item',batchId:batch.id,batchNumber:batch.batchNumber,itemNumber:1,barcode:'P9-ITEM-BAR',title:'Browser payroll item',office:'HRMDO',classificationType:'Salary',status:'In_Progress',currentStage:'initial_checking',verificationStatus:'Pending',employmentClassification:'Regular',auditHistory:[],createdAt:'2026-10-01T00:00:00Z',updatedAt:'2026-10-01T00:00:00Z'};
     fixture.run(['-r',"require 'api/db.php'; $p=database(); $q=$p->prepare('INSERT INTO app_records (collection,id,record_json) VALUES (?,?,?)'); foreach(json_decode(getenv('PHASE9_ROWS'),true) as $r) $q->execute([$r['collection'],$r['id'],json_encode($r['value'])]);"],{PHASE9_ROWS:JSON.stringify([{collection:'payrollBatches',id:batch.id,value:batch},{collection:'payrollItems',id:item.id,value:item}])});
     fixture.run(['scripts/backfill_payroll_reads.php','--apply']);
+    // Later-phase single entries must count even beyond the ten-row list page.
+    const singles=Array.from({length:12},(_,index)=>({id:`metric-single-${index}`,trackingNumber:`METRIC-${index}`,title:'Metric payroll',sourceOffice:'HRMDO',dateEncoded:'2026-10-01T00:00:00Z',classification:'Payroll',status:index===11?'Released':'Ready_For_Release',currentStepNumber:4,encodedBy:{userId:owner.id},workflowSteps:[],auditHistory:[],attachments:[]}));
+    fixture.run(['-r',"require 'api/db.php'; $p=database(); foreach(json_decode(getenv('PAYROLL_METRIC_DOCS'),true) as $d){$raw=json_encode($d);$p->prepare(\"INSERT INTO app_records (collection,id,record_json) VALUES ('documents',?,?)\")->execute([$d['id'],$raw]);$p->prepare('INSERT INTO documents (id,classification,status,current_step_number,encoded_by_user_id,source_json,source_sha256) VALUES (?,?,?,?,?,?,?)')->execute([$d['id'],$d['classification'],$d['status'],$d['currentStepNumber'],$d['encodedBy']['userId'],$raw,hash('sha256',$raw)]);}"],{PAYROLL_METRIC_DOCS:JSON.stringify(singles)});
     const reads:string[]=[];
     page.on('request',request=>{if(request.url().includes('/api/payroll_'))reads.push(request.url());});
     await page.goto(`${fixture.base}/`);
@@ -20,6 +23,15 @@ test('targeted Payroll shell, list, tasks and detail use scoped read endpoints',
     await page.getByLabel('Password',{exact:true}).fill(testPassword);
     await page.getByRole('button',{name:'Sign in',exact:true}).click();
     await page.getByRole('button',{name:'Payroll Management',exact:true}).click();
+    await expect(page.getByText('P9-BROWSER',{exact:true}).first()).toBeVisible();
+    const processCard=page.getByText('In Process',{exact:true}).locator('..');
+    await expect(processCard.locator('p.text-2xl')).toHaveText('12');
+    await page.getByRole('button',{name:'Completed',exact:true}).click();
+    await expect(processCard.locator('p.text-2xl')).toHaveText('12');
+    // Simulate release by another session; polling must refresh the count.
+    fixture.run(['-r',"require 'api/db.php'; $p=database(); $p->exec(\"UPDATE documents SET status='Released' WHERE id='metric-single-0'\");"]);
+    await expect(processCard.locator('p.text-2xl')).toHaveText('11',{timeout:15000});
+    await page.getByRole('button',{name:'All Phases',exact:true}).click();
     await expect(page.getByText('P9-BROWSER',{exact:true}).first()).toBeVisible();
     await page.getByRole('button',{name:'Open',exact:true}).first().click();
     await expect(page.getByRole('dialog',{name:'Payroll batch details'}),pageErrors.join('; ')).toContainText('Browser payroll item');
