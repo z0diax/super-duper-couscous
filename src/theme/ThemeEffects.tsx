@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Gift, Heart, Mail, Sparkles } from 'lucide-react';
 import { useThemeEffect } from './useThemeEffect';
 import { ThemeMotif } from './motifs/ThemeMotif';
+import { WinterSantaFlyby } from './WinterSantaFlyby';
 
 const usePrefersReducedMotion = () => {
   const [reduced, setReduced] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
@@ -75,6 +76,7 @@ export const ThemeNavEffects: React.FC = () => {
           } as React.CSSProperties}
         />
       ))}
+      {effectId === 'winter' && !reducedMotion && <WinterSantaFlyby />}
     </div>
   );
 };

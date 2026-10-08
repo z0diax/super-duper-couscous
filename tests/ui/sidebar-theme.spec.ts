@@ -135,7 +135,7 @@ test('sidebar motifs and controls follow every system theme, appearance, and eff
     if (theme.effectId) await expect(aside.locator('.sidebar-theme-decoration')).toHaveAttribute('data-sidebar-effect', theme.effectId);
     if (theme.effectId) {
       await expect(page.locator('[data-nav-effect]')).toHaveAttribute('data-nav-effect', theme.effectId);
-      if (theme.id !== 'valentine') await expect(page.locator('[data-nav-effect] svg')).toHaveCount(2);
+      if (theme.id !== 'valentine') await expect(page.locator('[data-nav-effect]').locator(':scope > svg')).toHaveCount(2);
     } else {
       await expect(page.locator('[data-nav-effect]')).toHaveCount(0);
       await expect(aside.locator('.sidebar-theme-decoration')).toHaveCount(0);
@@ -184,7 +184,7 @@ test('sidebar motifs and controls follow every system theme, appearance, and eff
   await page.getByRole('group', { name: 'Theme effects' }).getByRole('button', { name: 'On' }).click();
   await expect(aside.locator('.sidebar-theme-decoration')).toHaveAttribute('data-sidebar-effect', 'weather-cloudy');
 
-  await page.locator('div.fixed.inset-0.z-40').click({ position: { x: 500, y: 500 } });
+  await page.locator('div.fixed.inset-0.z-40:visible').click({ position: { x: 500, y: 500 } });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(aside).toHaveClass(/-translate-x-full/);
   await page.locator('#btn-open-sidebar-menu').click();
