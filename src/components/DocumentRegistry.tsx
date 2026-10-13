@@ -80,7 +80,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
     if(deleteInFlight.current)return;
     deleteInFlight.current=true;setDeleting(true);
     try {
-      const dynamic=targetPage?.data.find(row=>row.id===documentId)?.routingMode==='dynamic';
+      const dynamic=(targeted ? targetPage?.data.find(row=>row.id===documentId) : documents.find(doc=>doc.id===documentId))?.routingMode==='dynamic';
       if (!(await (dynamic ? deleteRoutedDocument(documentId) : deleteDocument(documentId)))) return;
       setDeleteConfirmDocumentId(null);
       if(dynamic)showToast('success','Document deleted','The document has been removed from the registry.');
@@ -113,6 +113,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
     currentStepNumber: doc.currentStepNumber, totalSteps: doc.totalSteps, currentLocation: doc.currentLocation,
     currentStepName: doc.workflowSteps.find(step => step.stepNumber === doc.currentStepNumber)?.name,
     isLegacyV1: !!doc.isLegacyV1,
+    routingMode: doc.routingMode,
   }));
   const counts: RegistryCounts = targeted ? targetPage?.registryCounts || { all: 0, v1: 0, v2: 0, outside: 0 } : {
     all: registryDocuments.length, v1: registryDocuments.filter(doc => doc.isLegacyV1).length,
@@ -120,7 +121,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
     outside: registryDocuments.filter(doc => doc.status === 'Awaiting_External_Return').length,
   };
   const openDocument = (id: string) => {
-    if (targetedDetail || targetPage?.data.find(row=>row.id===id)?.routingMode==='dynamic') { openTargetedDocument(id); return; }
+    if (targetedDetail || rows.find(row=>row.id===id)?.routingMode==='dynamic') { openTargetedDocument(id); return; }
     const fullDocument = documents.find(doc => doc.id === id);
     if (fullDocument) setSelectedDocument(fullDocument);
     else showToast('error', 'Document unavailable', 'Refresh the application and try opening this document again.');

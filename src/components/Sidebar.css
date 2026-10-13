@@ -37,6 +37,14 @@
 .sidebar-collapse-control:hover { background: var(--app-sidebar-hover); border-color: var(--app-theme-highlight); }
 .sidebar-desktop-controls { position: fixed; top: 66px; z-index: 60; }
 
+/* Modal backdrops can live in the content stacking context, while tooltips
+   are portaled to body. Suppress both above any full-screen overlay. The
+   mobile drawer backdrop belongs to the sidebar itself and is excluded. */
+.app-layout:has(.fixed.inset-0:not(.sidebar-mobile-backdrop)) .sidebar-desktop-controls,
+body:has(.app-layout .fixed.inset-0:not(.sidebar-mobile-backdrop)) .sidebar-tooltip {
+  display: none;
+}
+
 @media (min-width: 1024px) {
   .app-layout { --sidebar-expanded-width: 256px; --sidebar-width: var(--sidebar-expanded-width); --sidebar-delay: 0ms; }
   .app-layout[data-sidebar-collapsed="true"] { --sidebar-width: 72px; --sidebar-delay: 100ms; }

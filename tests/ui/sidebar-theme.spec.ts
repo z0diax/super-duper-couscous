@@ -6,6 +6,50 @@ let fixture: Awaited<ReturnType<typeof startFixture>>;
 test.beforeAll(async () => { fixture = await startFixture(18784); });
 test.afterAll(async () => { await fixture?.stop(); });
 
+test('explicitly enabling navbar effects restores particles on reduced-motion computers', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const admin = await new Client(fixture.base).login();
+  await admin.request('settings.php', 'PUT', { theme: 'winter' });
+  await page.goto(`${fixture.base}/`);
+  await page.getByLabel('Email address').fill('admin@example.test');
+  await page.getByLabel('Password', { exact: true }).fill(testPassword);
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  const field = page.locator('[data-nav-effect]');
+  await expect(field).toHaveAttribute('data-nav-effect', 'winter');
+  await expect(field.locator('.theme-effect-particle')).toHaveCount(0);
+  await page.locator('#btn-persona-switcher').click();
+  await page.getByRole('group', { name: 'Theme effects' }).getByRole('button', { name: 'On' }).click();
+  for (const theme of ['winter', 'hallo-christmas', 'valentine'] as const) {
+    const setting = await admin.request('settings.php', 'PUT', { theme });
+    await page.evaluate(value => {
+      const channel = new BroadcastChannel('hrmdo-theme');
+      channel.postMessage(value);
+      channel.close();
+    }, setting);
+    await expect(field).toHaveAttribute('data-nav-effect', theme);
+    await expect(field).toBeVisible();
+    const particle = field.locator('.theme-effect-particle').first();
+    await expect(particle).toBeVisible();
+    expect(await particle.evaluate(element => {
+      const animation = element.getAnimations()[0];
+      if (!animation) return false;
+      animation.pause();
+      animation.currentTime = 0;
+      const before = getComputedStyle(element).transform;
+      animation.currentTime = Number(animation.effect!.getTiming().duration) / 2;
+      const after = getComputedStyle(element).transform;
+      animation.play();
+      return before !== after;
+    })).toBe(true);
+  }
+  await page.reload();
+  await expect(field).toHaveAttribute('data-motion-override', 'true');
+  await expect(field.locator('.theme-effect-particle').first()).toBeVisible();
+  await page.locator('#btn-persona-switcher').click();
+  await page.getByRole('group', { name: 'Theme effects' }).getByRole('button', { name: 'Off' }).click();
+  await expect(field).toHaveCount(0);
+});
+
 test('semantic nav icons play once, restart on activation, and respect reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.goto(`${fixture.base}/`);

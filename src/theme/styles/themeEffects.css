@@ -482,15 +482,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .theme-effect-layer,
-  .theme-nav-effect-field:not(.theme-nav-effect-field--womens-month):not(.theme-nav-effect-field--breast-cancer-awareness):not(.theme-nav-effect-field--amihan-bloom):not(.theme-nav-effect-field--winter):not(.theme-nav-effect-field--chinese-new-year):not(.theme-nav-effect-field--hallo-christmas):not(.theme-nav-effect-field--festive):not(.theme-nav-effect-field--rainy-season) { display: none; }
-  .theme-nav-effect-field--womens-month .theme-effect-particle,
-  .theme-nav-effect-field--breast-cancer-awareness .theme-effect-particle,
-  .theme-nav-effect-field--amihan-bloom .theme-effect-particle,
-  .theme-nav-effect-field--winter .theme-effect-particle,
-  .theme-nav-effect-field--chinese-new-year .theme-effect-particle,
-  .theme-nav-effect-field--hallo-christmas .theme-effect-particle,
-  .theme-nav-effect-field--festive .theme-effect-particle,
-  .theme-nav-effect-field--rainy-season .theme-effect-particle { display: none; }
+  .theme-nav-effect-field:not([data-motion-override="true"]):not(.theme-nav-effect-field--womens-month):not(.theme-nav-effect-field--breast-cancer-awareness):not(.theme-nav-effect-field--amihan-bloom):not(.theme-nav-effect-field--winter):not(.theme-nav-effect-field--chinese-new-year):not(.theme-nav-effect-field--hallo-christmas):not(.theme-nav-effect-field--festive):not(.theme-nav-effect-field--rainy-season) { display: none; }
+  .theme-nav-effect-field:not([data-motion-override="true"]) .theme-effect-particle { display: none; }
 }
 
 @media print {
@@ -531,5 +524,5 @@
 .theme-effect-layer--hallo-christmas[data-hallo-phase="remembrance"]::before { background: radial-gradient(circle at 4% 8%, #d6b77b08, transparent 24%); }
 .theme-effect-layer--hallo-christmas[data-hallo-phase="christmas"]::before { background: radial-gradient(circle at 4% 8%, #1665340f, transparent 24%), radial-gradient(circle at 96% 90%, #b91c1c0d, transparent 24%); }
 @media (prefers-reduced-motion: reduce) {
-  .theme-nav-effect-field--hallo-christmas[data-hallo-phase] .theme-effect-particle { display: none; animation: none; }
+  .theme-nav-effect-field--hallo-christmas[data-hallo-phase]:not([data-motion-override="true"]) .theme-effect-particle { display: none; animation: none; }
 }

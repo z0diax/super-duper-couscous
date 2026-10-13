@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { emptyState, loadAppState, performAction, getRevision, getReferenceData, type StateResponse, type RevisionResponse } from '../services/stateApi';
 import { ApiError, uploadFiles, deleteUnattachedUpload } from '../services/http';
-import { invalidateResource, type OperationalResource } from '../services/resourceInvalidation';
+import { invalidateResource, useResourceInvalidation, type OperationalResource } from '../services/resourceInvalidation';
 import { getSession, login as authenticate, logout as endSession } from '../services/authApi';
 import { createId } from '../services/id';
 import { readWorkspaceValue, writeWorkspaceValue } from '../services/workspace';
@@ -48,6 +48,7 @@ function useApplication() {
   const mounted = useRef(true);
   const sessionGeneration = useRef(0);
   const isAuthenticated = currentUser.id !== '';
+  const documentInvalidation = useResourceInvalidation('document');
   const showToast = useCallback((type: Toast['type'], title: string, message: string) => setToast({ id: createId(), type, title, message }), []);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 6500); return () => clearTimeout(timer); }, [toast]);
   const accept = useCallback((payload: StateResponse) => {
@@ -100,6 +101,9 @@ function useApplication() {
     return () => { mounted.current = false; };
   }, []);
   useEffect(() => { if(isAuthenticated)void refreshState(); },[isAuthenticated,refreshState]);
+  useEffect(() => {
+    if (isAuthenticated && documentInvalidation > 0 && !lightweightSync) void refreshState();
+  }, [isAuthenticated, documentInvalidation, refreshState]);
   useEffect(() => {
     if (!isAuthenticated||!databaseReady) return;
     // Keep assigned queues and notification counts current without requiring

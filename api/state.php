@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__.'/management.php';
 require_once __DIR__.'/payroll.php';
+require_once __DIR__.'/document_repository.php';
 $pdo=database(); $user=authenticated_user($pdo); $method=$_SERVER['REQUEST_METHOD'];
 fail_unless(in_array($method,['GET','POST'],true),'Use GET to read or POST an operation.',405);
 $body=[];
@@ -152,6 +153,10 @@ try {
     // Build the response from the authenticated user's record-level scope.  Actions
     // above always use the full state, so permission checks and routing rules are
     // evaluated against complete operational data before any records are hidden.
+    // Dynamic records live only in normalized tables. Add them to the read
+    // response AFTER legacy writes, never to load_state()/persist_state().
+    // This supports mixed rollout builds without copying or rewriting records.
+    $state['documents']=array_merge($state['documents'],document_repository_dynamic_snapshot($pdo,$user));
     $state=filter_state_for_view($state,$user);
     $pdo->commit(); respond(['state'=>$state,'revision'=>$revision,'configRevision'=>$configRevision,'result'=>$result]);
 } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }

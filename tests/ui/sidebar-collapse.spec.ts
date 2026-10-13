@@ -47,6 +47,31 @@ async function noOverflow(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 }
 
+test('modal overlays hide the sidebar edge control and its portaled tooltip', async ({ page }) => {
+  await open(page);
+  const control = page.locator('#btn-toggle-sidebar-collapsed');
+  for (const collapsed of [false, true]) {
+    if (collapsed) await collapse(page);
+    await control.hover();
+    await expect(page.getByRole('tooltip')).toHaveText(collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+    // Open without moving the pointer off the edge control, retaining its
+    // tooltip to reproduce the overlay leak shown in the reported screenshot.
+    await page.locator('#btn-dash-register-new').evaluate((button: HTMLButtonElement) => button.click());
+    await expect(page.getByRole('dialog', { name: 'Register Incoming Document' })).toBeVisible();
+    await expect(control).toBeHidden();
+    await expect(page.locator('.sidebar-tooltip')).toBeHidden();
+    await expect(page.locator('.app-layout')).toHaveAttribute('data-sidebar-collapsed', String(collapsed));
+    await page.getByRole('button', { name: 'Close document intake', exact: true }).click();
+    await expect(control).toBeVisible();
+  }
+  // Nested content overlays (personnel form) use a different stacking context.
+  await page.locator('#sidebar-link-users').click();
+  await page.getByRole('button', { name: 'Add New Personnel', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Register New Personnel' })).toBeVisible();
+  await expect(control).toBeHidden();
+  await expect(page.locator('.sidebar-tooltip')).toBeHidden();
+});
+
 test('desktop rail preserves all navigation, animations, names, badges, tooltips and quick actions', async ({ page }) => {
   let weatherReads = 0;
   page.on('request', request => { if (request.url().includes('/api/weather.php')) weatherReads++; });

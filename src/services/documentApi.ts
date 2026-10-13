@@ -12,6 +12,10 @@ export async function deleteRoutedDocument(documentId: string): Promise<boolean>
 }
 export async function sendRoutingAction(data: Record<string, unknown>): Promise<DocumentRecord> {
   const result=await request('document_routing.php',{method:'POST',body:JSON.stringify(data)});
+  if (!result.data || typeof result.data.id !== 'string' || !result.data.id ||
+      typeof result.data.trackingNumber !== 'string' || !result.data.trackingNumber || result.data.routingMode !== 'dynamic') {
+    throw new Error('The server did not confirm the saved document. Check the registry using its barcode before retrying.');
+  }
   invalidateResource('document');invalidateResource('dashboard');
   return result.data;
 }

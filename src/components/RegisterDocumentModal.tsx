@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   X, 
@@ -53,6 +53,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
   const [routingPeople, setRoutingPeople] = useState<UserAccount[]>([]);
   const [routingError, setRoutingError] = useState('');
   const [routingBusy, setRoutingBusy] = useState(false);
+  const submissionInFlight = useRef(false);
   useEffect(() => {
     if (!isOpen || classification !== 'Others') return;
     let active=true;
@@ -108,9 +109,13 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submissionInFlight.current) return;
     if (!title.trim() || !barcode.trim()) return;
 
-    if (dynamicRouting && (!documentType.trim() || !initialAssigneeId)) return;
+    if (dynamicRouting && (!documentType.trim() || !routingPeople.some(person=>person.id===initialAssigneeId))) {
+      setRoutingError('Enter a custom document type and choose a current employee as Person in Charge.');
+      return;
+    }
     if (!resolvedWorkflow && !dynamicRouting) {
       alert('No active workflow is configured. Ask an administrator to create a workflow with at least one phase before registering documents.');
       return;
@@ -142,11 +147,11 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
       barcode: barcode.trim(),
       initialAssigneeId: dynamicRouting || initialPoolUserIds.length > 0 ? initialAssigneeId : undefined,
     };
-    setRoutingBusy(true);setRoutingError('');
+    submissionInFlight.current=true;setRoutingBusy(true);setRoutingError('');
     let newDoc;
     try { newDoc = dynamicRouting ? await registerRoutedDocument(registration,files) : await registerDocument(registration); }
     catch(error) { setRoutingError(error instanceof Error?error.message:'Could not send the document.');return; }
-    finally { setRoutingBusy(false); }
+    finally { submissionInFlight.current=false;setRoutingBusy(false); }
     if (!newDoc) return;
 
     setTitle(''); setBarcode(''); setRemarks(''); setFiles([]); setInitialAssigneeId('');
@@ -244,7 +249,7 @@ export const RegisterDocumentModal: React.FC<RegisterDocumentModalProps> = ({ is
             </label>}
             {dynamicRouting && <label className="block rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs font-semibold text-slate-700 sm:col-span-2">Person in Charge *<select required value={initialAssigneeId} onChange={e=>setInitialAssigneeId(e.target.value)} className="mt-1.5 w-full rounded-lg border border-blue-300 bg-white p-2.5 text-sm"><option value="">Select employee...</option>{routingPeople.map(person=><option key={person.id} value={person.id}>{person.name} — {person.roleTitle}</option>)}</select><span className="mt-2 block font-normal text-slate-600">No predefined workflow is configured for this document. Select the person who should handle it first.</span></label>}
             {!resolvedWorkflow && !dynamicRouting && <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800 sm:col-span-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>No active workflow is configured for this classification and document type.</span></div>}
-            {dynamicRouting && routingError && <p role="alert" className="text-sm text-rose-700 sm:col-span-2">{routingError}</p>}
+            {routingError && <p role="alert" className="text-sm text-rose-700 sm:col-span-2">{routingError}</p>}
           </div>
 
           {/* Title */}

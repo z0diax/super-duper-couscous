@@ -101,8 +101,9 @@ export const MyTasksQueue: React.FC = () => {
   const selectQueue=(queue:DocumentTaskQueue)=>{setPage(1);setActiveQueue(queue);};
   const taskDocuments=targeted?[]:documents;
   const openTask=(id:string,classification:string)=>{
-    if(targeted && (targetedDetail || taskPage?.data.find(row=>row.id===id)?.routingMode==='dynamic') && classification!=='Payroll'){openTargetedDocument(id);return;}
     const doc=documents.find(item=>item.id===id);
+    const dynamic=(targeted ? taskPage?.data.find(row=>row.id===id) : doc)?.routingMode==='dynamic';
+    if(((targeted && targetedDetail) || dynamic) && classification!=='Payroll'){openTargetedDocument(id);return;}
     if(doc)setSelectedDocument(doc);
     else showToast('error','Document unavailable','Refresh the application and try opening this document again.');
   };
@@ -175,7 +176,7 @@ export const MyTasksQueue: React.FC = () => {
   const readyForReleaseTasks = taskDocuments.filter(doc => !doc.isLegacyV1 && doc.status === 'Ready_For_Release');
 
   // 6. Completed / Released
-  const completedTasks = taskDocuments.filter(doc => !doc.isLegacyV1 && ['Released', 'Disapproved'].includes(doc.status));
+  const completedTasks = taskDocuments.filter(doc => !doc.isLegacyV1 && (['Released', 'Disapproved'].includes(doc.status) || (doc.status === 'Archived' && doc.routingMode === 'dynamic')));
 
   // Select which set to show
   let currentList: DocumentRecord[] = [];

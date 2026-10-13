@@ -4,7 +4,7 @@ export type SystemThemeDefinition = {
   id: SystemThemeId;
   name: string;
   description: string;
-  enabled: boolean;
+  enabled: boolean; 
   category: 'standard' | 'seasonal' | 'institutional';
   preview: { primary: string; secondary: string; surface: string };
   effectId: ThemeEffectId | null;

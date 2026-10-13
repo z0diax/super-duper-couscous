@@ -52,7 +52,7 @@ test('Others uses durable normalized routing, assignment locks, history and comp
     const people=(await admin.request('document_routing.php')).data;
     const [a,b,c]=['Alice','Bob','Carol'].map(name=>people.find(p=>p.name===name));
     const alice=await new Client(f.base).login('alice@example.test'),bob=await new Client(f.base).login('bob@example.test'),carol=await new Client(f.base).login('carol@example.test');
-    const input={action:'register',classification:'Others',documentType:'Manual unknown type',title:'Dynamic routing example',sourceOffice:'HRMDO',barcode:'DYNAMIC-TEST-1',initialAssigneeId:a.id};
+    const input={action:'register',classification:'Others',documentType:'Hiring',title:'Dynamic routing example',sourceOffice:'HRMDO',barcode:'DYNAMIC-TEST-1',initialAssigneeId:a.id};
     for(const change of [{documentType:''},{initialAssigneeId:''},{initialAssigneeId:'missing'},{classification:'Request'}]) await admin.request('document_routing.php','POST',{...input,...change},422);
     await alice.request('document_routing.php','POST',input,403);
     await admin.request('document_routing.php','POST',input,403,{'X-CSRF-Token':'invalid'});
@@ -63,12 +63,21 @@ test('Others uses durable normalized routing, assignment locks, history and comp
     const file=(await admin.request('files.php','POST',form,201)).file;
     let doc=(await admin.request('document_routing.php','POST',{...input,files:[file]})).data;
     assert.equal(doc.routingMode,'dynamic');assert.equal(doc.workflowTemplateId,null);
+    assert.equal(doc.documentType,'Hiring');assert.equal(doc.trackingNumber,input.barcode);
+    assert.equal(doc.workflowSteps[0].assignedTo.userId,a.id);
+    assert.equal(doc.custodyHistory[0].movementType,'DOCKETED_SENT');
     const id=doc.id;
+    await admin.refresh();await alice.refresh();await bob.refresh();
+    assert.equal(admin.state.documents.find(record=>record.id===id).id,id);
+    assert.equal(alice.state.documents.find(record=>record.id===id).workflowSteps[0].assignedTo.userId,a.id);
+    assert.equal(bob.state.documents.some(record=>record.id===id),false);
     await admin.request('document_routing.php','POST',input,409);
     const registered=await admin.request('documents.php?registry=1&classification=Others&page=1&limit=1');
     assert.equal(registered.pagination.total,1);assert.equal(registered.data[0].id,id);assert.equal(registered.data[0].routing_mode,'dynamic');
     const tasks=async client=>(await client.request('document_tasks.php?queue=my_tasks&classification=Others&limit=1')).data.map(row=>row.id);
     assert.deepEqual(await tasks(alice),[id]);assert.deepEqual(await tasks(bob),[]);
+    assert.equal((await alice.request('document_tasks.php?queue=team_queue')).pagination.total,0);
+    assert.equal((await alice.request(`documents.php?id=${id}`)).data.id,id);
     const outsiderDownload=await fetch(`${f.base}/api/files.php?id=${file.id}`,{headers:{Cookie:carol.cookie}});assert.equal(outsiderDownload.status,404);
     await alice.action('completeStep',[id,'Attempt to bypass routing','Verified',[]],404);
     const action=(action,targetUserId,remarks='Please check')=>({documentId:id,action,targetUserId,remarks,routingRevision:doc.routingRevision});
@@ -111,6 +120,8 @@ test('Others uses durable normalized routing, assignment locks, history and comp
     assert.equal(normal.workflowTemplateId,template.id);assert.equal(normal.routingMode,undefined);
     await alice.request('document_routing.php','POST',{documentId:normal.id,action:'complete',routingRevision:1,remarks:'Attempt'},409);
     await alice.action('completeStep',[normal.id,'Processed','Verified',[]]);
+    await admin.refresh();
+    assert.equal(admin.state.documents.find(record=>record.id===id).custodyHistory.length,4);
     await admin.action('registerDocument',[{...input,classification:'Communication',documentType:'Letter',barcode:'MISSING-NORMAL'}],422);
     const backup=f.run(['scripts/backup.php']).match(/Database backup: (.+)/)[1].trim();
     const recovery=`hrmdo_test_${Date.now()}_abcdee`;
@@ -123,5 +134,39 @@ test('Others uses durable normalized routing, assignment locks, history and comp
       f.run(['-r',"require 'api/db.php';$name=app_config()['database'];if(!preg_match('/^hrmdo_test_[0-9]+_[a-f0-9]+$/',$name))exit(2);database(false)->exec('DROP DATABASE IF EXISTS `'.$name.'`');"],{HRMDO_DATABASE:recovery});
       assert(path.resolve(backup).startsWith(path.resolve('storage/backups')+path.sep));fs.unlinkSync(backup);
     }
+  } finally {await f.stop();}
+});
+
+test('registration rolls back all normalized writes and attachments; retry and concurrent duplicates remain safe',async()=>{
+  const f=await startFixture(18808,{HRMDO_DOCUMENT_TARGETED_READS_ENABLED:'1'});
+  try {
+    const admin=await new Client(f.base).login();
+    await admin.action('addUser',[{name:'Rollback Worker',email:'rollback@example.test',password:testPassword,role:'employee',roleTitle:'Employee',office:'HRMDO',division:'HRMDO',position:'Officer'}]);
+    const person=admin.state.users.find(user=>user.email==='rollback@example.test');
+    const input={action:'register',classification:'Others',documentType:'Hiring',title:'Rollback registration',sourceOffice:'HRMDO',barcode:'ROLLBACK-ROUTE',initialAssigneeId:person.id};
+    const form=new FormData();form.append('file',new Blob(['Rollback attachment'],{type:'text/plain'}),'rollback.txt');
+    const file=(await admin.request('files.php','POST',form,201)).file;
+    const inspect=()=>JSON.parse(f.run(['-r',"require 'api/db.php';$p=database();$counts=[];foreach(['documents','document_workflow_steps','document_custody_history','document_attachments','app_audit'] as $table)$counts[$table]=(int)$p->query('SELECT COUNT(*) FROM `'.$table.'`')->fetchColumn();$counts['revision']=(int)$p->query('SELECT revision FROM app_meta WHERE id=1')->fetchColumn();$q=$p->prepare('SELECT owner_id FROM app_files WHERE id=?');$q->execute([getenv('CHECK_FILE')]);$counts['owner']=$q->fetchColumn();echo json_encode($counts);"],{CHECK_FILE:file.id}));
+    const before=inspect();
+    f.run(['-r',"require 'api/db.php';database()->exec(\"CREATE TRIGGER fail_test_custody BEFORE INSERT ON document_custody_history FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Forced custody failure'\");"]);
+    const failed=await admin.request('document_routing.php','POST',{...input,files:[file]},503);
+    assert.equal(failed.data,undefined);assert.match(failed.error,/could not be saved/);
+    assert.deepEqual(inspect(),before);
+    f.run(['-r',"require 'api/db.php';database()->exec('DROP TRIGGER fail_test_custody');"]);
+    const saved=(await admin.request('document_routing.php','POST',{...input,files:[file]})).data;
+    assert.equal(saved.trackingNumber,input.barcode);
+    assert.equal(inspect().owner,saved.id);
+    await admin.request('document_routing.php','POST',input,409);
+    const second=await new Client(f.base).login();
+    const responses=await Promise.all([admin,second].map(async client=>{
+      const response=await fetch(`${f.base}/api/document_routing.php`,{method:'POST',headers:{Cookie:client.cookie,'Content-Type':'application/json','X-CSRF-Token':client.csrf},body:JSON.stringify({...input,barcode:'CONCURRENT-ROUTE'})});
+      return {status:response.status,payload:await response.json()};
+    }));
+    assert.deepEqual(responses.map(result=>result.status).sort(),[200,409]);
+    const committed=inspect();
+    assert.equal(committed.documents,2);assert.equal(committed.document_workflow_steps,2);assert.equal(committed.document_custody_history,2);
+    assert.equal(committed.revision,before.revision+2);
+    assert.equal(committed.app_audit,before.app_audit+2);
+    assert.equal((await admin.request('documents.php?registry=1')).pagination.total,2);
   } finally {await f.stop();}
 });

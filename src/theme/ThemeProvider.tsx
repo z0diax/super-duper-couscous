@@ -74,12 +74,14 @@ const readMode = (): AppearanceMode => {
   return 'system';
 };
 
-const readEffectsEnabled = () => {
-  if (typeof window === 'undefined') return true;
-  const value = window.localStorage.getItem(EFFECTS_STORAGE_KEY);
-  if (value === 'true' || value === 'false') return value === 'true';
-  if (value) try { window.localStorage.removeItem(EFFECTS_STORAGE_KEY); } catch { /* Preference storage is optional. */ }
-  return true;
+const readEffectsPreference = (): boolean | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const value = window.localStorage.getItem(EFFECTS_STORAGE_KEY);
+    if (value === 'true' || value === 'false') return value === 'true';
+    if (value) window.localStorage.removeItem(EFFECTS_STORAGE_KEY);
+  } catch { /* Preference storage is optional. */ }
+  return null;
 };
 
 const systemAppearance = (): ResolvedAppearance =>
@@ -93,6 +95,7 @@ type ThemeContextValue = {
   effectiveWeatherTheme: WeatherTheme | null;
   systemThemeSetting: SystemThemeSetting | null;
   effectsEnabled: boolean;
+  navbarMotionOverride: boolean;
   setAppearanceMode: (mode: AppearanceMode) => void;
   setEffectsEnabled: (enabled: boolean) => void;
   refreshSystemTheme: () => Promise<void>;
@@ -115,7 +118,10 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   const [systemTheme, setSystemTheme] = useState<SystemThemeId>(initialTheme.theme);
   const [effectiveWeatherTheme, setEffectiveWeatherTheme] = useState<WeatherTheme | null>(initialTheme.effectiveWeatherTheme);
   const [systemThemeSetting, setSystemThemeSetting] = useState<SystemThemeSetting | null>(null);
-  const [effectsEnabled, setEffectsEnabledState] = useState(readEffectsEnabled);
+  const [effectsPreference, setEffectsEnabledState] = useState(readEffectsPreference);
+  const effectsEnabled = effectsPreference !== false;
+  // Explicitly selecting On enables navbar particles even when the OS reduces motion.
+  const navbarMotionOverride = effectsPreference === true;
   const resolvedAppearance = appearanceMode === 'system' ? system : appearanceMode;
 
   const appliedThemeRef = useRef<SafeThemeState>(initialTheme);
@@ -304,7 +310,9 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
         const next = event.newValue as AppearanceMode | null;
         setAppearanceModeState(next && validModes.includes(next) ? next : 'system');
       }
-      if (event.key === EFFECTS_STORAGE_KEY) setEffectsEnabledState(event.newValue !== 'false');
+      if (event.key === EFFECTS_STORAGE_KEY) {
+        setEffectsEnabledState(event.newValue === 'true' ? true : event.newValue === 'false' ? false : null);
+      }
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -341,9 +349,9 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   }, [abortThemeSync, applyThemeState]);
 
   const value = useMemo(() => ({
-    halloChristmasPhase, appearanceMode, resolvedAppearance, systemTheme, effectiveWeatherTheme, systemThemeSetting, effectsEnabled,
+    halloChristmasPhase, appearanceMode, resolvedAppearance, systemTheme, effectiveWeatherTheme, systemThemeSetting, effectsEnabled, navbarMotionOverride,
     setAppearanceMode, setEffectsEnabled, refreshSystemTheme, updateSystemTheme, activateWeatherSync, refreshWeatherSync,
-  }), [halloChristmasPhase, appearanceMode, resolvedAppearance, systemTheme, effectiveWeatherTheme, systemThemeSetting, effectsEnabled, setAppearanceMode, setEffectsEnabled, refreshSystemTheme, updateSystemTheme, activateWeatherSync, refreshWeatherSync]);
+  }), [halloChristmasPhase, appearanceMode, resolvedAppearance, systemTheme, effectiveWeatherTheme, systemThemeSetting, effectsEnabled, navbarMotionOverride, setAppearanceMode, setEffectsEnabled, refreshSystemTheme, updateSystemTheme, activateWeatherSync, refreshWeatherSync]);
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 };

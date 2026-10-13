@@ -5,6 +5,19 @@ require_once __DIR__.'/domain.php';
 
 const DOCUMENT_LIST_COLUMNS='d.id,d.tracking_number,d.barcode,d.title,d.subject,d.source_office,d.sender_name,d.classification,d.document_type,d.employment_classification,d.priority,d.status,d.date_received,d.current_step_number,d.total_steps,d.current_location,d.workflow_template_id,d.encoded_by_user_id,d.is_legacy_v1,(SELECT s.name FROM document_workflow_steps s WHERE s.document_id=d.id AND s.step_number=d.current_step_number) AS current_step_name,(SELECT CASE WHEN s.assignment_source=\'dynamic\' THEN \'dynamic\' ELSE NULL END FROM document_workflow_steps s WHERE s.document_id=d.id AND s.step_number=d.current_step_number) AS routing_mode';
 
+/** Read compatibility for clients whose registry/task rollout flags are off. */
+function document_repository_dynamic_snapshot(PDO $pdo,array $user): array {
+    $roles=document_repository_role_state($pdo,$user);
+    [$scope,$params]=document_repository_visibility($roles,$user);
+    $q=$pdo->prepare("SELECT d.source_json FROM documents d WHERE JSON_UNQUOTE(JSON_EXTRACT(d.source_json,'$.routingMode'))='dynamic' AND $scope ORDER BY d.id");
+    document_repository_bind($q,$params); $q->execute(); $documents=[];
+    while ($json=$q->fetchColumn()) {
+        $doc=json_decode($json,true,64,JSON_THROW_ON_ERROR);
+        if (can_view_document($roles,$user,$doc)) $documents[]=$doc;
+    }
+    return $documents;
+}
+
 function document_repository_role_state(PDO $pdo,array $user): array {
     $q=$pdo->prepare("SELECT record_json FROM app_records WHERE collection='systemRoles' AND id=? LIMIT 1");
     $q->execute([$user['role']]); $json=$q->fetchColumn();

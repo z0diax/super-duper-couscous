@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Gift, Heart, Mail, Sparkles } from 'lucide-react';
 import { useThemeEffect } from './useThemeEffect';
+import { useTheme } from './ThemeProvider';
 import { ThemeMotif } from './motifs/ThemeMotif';
 import { WinterSantaFlyby } from './WinterSantaFlyby';
 
@@ -49,11 +50,13 @@ export const ThemeEffects: React.FC = () => {
  */
 export const ThemeNavEffects: React.FC = () => {
   const { effectId, effectsEnabled, halloChristmasPhase, definition } = useThemeEffect();
-  const reducedMotion = usePrefersReducedMotion();
+  const { navbarMotionOverride } = useTheme();
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const reducedMotion = prefersReducedMotion && !navbarMotionOverride;
   if (!effectsEnabled || !effectId || !definition || (reducedMotion && effectId !== 'womens-month' && effectId !== 'breast-cancer-awareness' && effectId !== 'amihan-bloom' && effectId !== 'winter' && effectId !== 'chinese-new-year' && effectId !== 'hallo-christmas' && effectId !== 'festive' && effectId !== 'rainy-season')) return null;
 
   return (
-    <div key={effectId} className={`theme-nav-effect-field theme-nav-effect-field--${effectId}`} data-nav-effect={effectId} data-hallo-phase={effectId === 'hallo-christmas' ? halloChristmasPhase : undefined} aria-hidden="true">
+    <div key={effectId} className={`theme-nav-effect-field theme-nav-effect-field--${effectId}`} data-nav-effect={effectId} data-motion-override={navbarMotionOverride ? 'true' : undefined} data-hallo-phase={effectId === 'hallo-christmas' ? halloChristmasPhase : undefined} aria-hidden="true">
       {effectId !== 'valentine' && !effectId.startsWith('weather-') && <>
         <ThemeMotif halloChristmasPhase={halloChristmasPhase} effectId={effectId} side="left" />
         <ThemeMotif halloChristmasPhase={halloChristmasPhase} effectId={effectId} side="right" />
