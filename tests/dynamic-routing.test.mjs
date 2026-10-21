@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { startFixture, Client, testPassword } from './support.mjs';
 
-test('administrators delete active and completed dynamic records transactionally and retain deletion audit',async()=>{
+test('administrators delete unprocessed dynamic records transactionally while completed records remain protected',async()=>{
   const f=await startFixture(18807,{HRMDO_DOCUMENT_TARGETED_READS_ENABLED:'1'});
   try {
     const admin=await new Client(f.base).login();
@@ -15,7 +15,7 @@ test('administrators delete active and completed dynamic records transactionally
     const form=new FormData();form.append('file',new Blob(['Delete attachment'],{type:'text/plain'}),'delete.txt');
     const file=(await admin.request('files.php','POST',form,201)).file;
     const doc=(await admin.request('document_routing.php','POST',{...input,files:[file]})).data;
-    const deletion={action:'delete',documentId:doc.id};
+    const deletion={action:'delete',documentId:doc.id,expectedVersion:doc.management.version};
     await worker.request('document_routing.php','POST',deletion,403);
     await admin.request('document_routing.php','POST',deletion,403,{'X-CSRF-Token':'invalid'});
     assert.equal((await worker.request('document_tasks.php?queue=my_tasks')).pagination.total,1);
@@ -28,13 +28,14 @@ test('administrators delete active and completed dynamic records transactionally
     assert.deepEqual(remaining,[0,0,0,0,0]);
     let completed=(await admin.request('document_routing.php','POST',{...input,barcode:'DELETE-COMPLETED'})).data;
     completed=(await worker.request('document_routing.php','POST',{documentId:completed.id,action:'complete',routingRevision:completed.routingRevision,remarks:'Done'})).data;
-    await admin.request('document_routing.php','POST',{action:'delete',documentId:completed.id});
+    await admin.request('document_routing.php','POST',{action:'delete',documentId:completed.id,expectedVersion:completed.management.version},409);
     await admin.refresh();
-    for(const record of [doc,completed]) {
+    for(const record of [doc]) {
       const events=admin.state.auditLogs.filter(event=>event.documentId===record.id && event.actionType==='DOCUMENT_DELETED');
       assert.equal(events.length,1);assert.deepEqual(JSON.parse(events[0].details).custodyHistory,record.custodyHistory);
     }
-    assert.equal((await admin.request('documents.php?registry=1')).pagination.total,0);
+    assert.equal(admin.state.auditLogs.some(event=>event.documentId===completed.id && event.actionType==='DOCUMENT_DELETED'),false);
+    assert.equal((await admin.request('documents.php?registry=1')).pagination.total,1);
     await admin.action('createWorkflowTemplate',[{title:'Normal delete test',classification:'Communication',documentType:'Office Order',isActive:true,steps:[{stepNumber:1,name:'Receive',assigneeType:'Person',assigneeUserId:person.id,assigneeName:person.name,slaHours:24,requiredAction:'Receive',allowHold:false,allowReturn:false,requiresAttachment:false}]}]);
     const normal=(await admin.action('registerDocument',[{...input,classification:'Communication',documentType:'Office Order',barcode:'DELETE-NORMAL'}])).result;
     await admin.request('document_routing.php','POST',{action:'delete',documentId:normal.id},409);

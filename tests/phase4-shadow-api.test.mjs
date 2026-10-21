@@ -51,9 +51,13 @@ test('runtime document and workflow writes synchronize atomically with their sha
     assert.equal(verify().counts.document_custody_history.normalized,5);
     const extDetail=(await admin.request(`documents.php?id=${encodeURIComponent(ext.id)}`)).data;
     assert.equal(extDetail.workflowSteps[1].externalStatus,'COMPLETED'); assert.equal(extDetail.currentStepNumber,3);
-    await admin.action('deleteDocument',[doc.id]);
-    assert.equal(verify().counts.documents.normalized,1);
-    await admin.request(`documents.php?id=${encodeURIComponent(doc.id)}`,'GET',undefined,404);
+    await admin.action('deleteDocument',[doc.id],409);
+    await admin.action('createWorkflowTemplate',[{title:'Unprocessed deletion',classification:'Communication',documentType:'Letter',isActive:true,steps:[step(1,'processor','Verify & Process')]}]);
+    const disposable=(await admin.action('registerDocument',[data('PHASE4-DELETE','Letter')])).result;
+    await admin.action('deleteDocument',[disposable.id]);
+    assert.equal(verify().counts.documents.normalized,2);
+    await admin.request(`documents.php?id=${encodeURIComponent(disposable.id)}`,'GET',undefined,404);
+    assert.equal((await admin.request(`documents.php?id=${encodeURIComponent(doc.id)}`)).data.status,'Released');
     const preRevision=admin.revision;
     fixture.run(['-r',`require 'api/db.php'; database()->exec("CREATE TRIGGER phase4_shadow_failure BEFORE INSERT ON document_workflow_steps FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Injected shadow failure'");`]);
     await admin.action('registerDocument',[data('PHASE4-ROLLBACK','Certification','Request')],503);
@@ -80,7 +84,7 @@ test('targeted read HTTP endpoints enforce sessions, scope, parameters and featu
     }
     const anonymous=new Client(fixture.base);
     await anonymous.request('documents.php','GET',undefined,401);
-    await admin.request('documents.php','POST',{},405);
+    await admin.request('documents.php','POST',{},422);
     const list=await worker.request('documents.php');
     assert.equal(list.pagination.limit,25); assert.equal(list.pagination.total,3); assert.equal(list.data.length,3);
     assert(!Object.hasOwn(list.data[0],'workflowSteps'));

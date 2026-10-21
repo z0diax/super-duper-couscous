@@ -1,6 +1,30 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__.'/document_read_http.php';
+require_once __DIR__.'/document_management.php';
+if (($_SERVER['REQUEST_METHOD']??'')==='POST') {
+    $pdo=database(); $user=authenticated_user($pdo); csrf_check(); $data=request_json();
+    $pdo->beginTransaction();
+    try {
+        $pdo->query('SELECT revision FROM app_meta WHERE id=1 FOR UPDATE')->fetchColumn();
+        $saved=document_management_write($pdo,authenticated_user($pdo),$data);
+        $pdo->exec('UPDATE app_meta SET revision=revision+1 WHERE id=1');
+        $pdo->commit(); respond(['data'=>$saved]);
+    } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
+}
+// Management retrieval is also available to default/legacy builds without
+// switching on paginated targeted reads. Existing visibility rules still apply.
+if (($_SERVER['REQUEST_METHOD']??'')==='GET' && isset($_GET['manage'])) {
+    $params=document_read_params(['manage','id']);
+    fail_unless(($params['manage']??'')==='1' && isset($params['id']),'Supply a document ID.',400);
+    $pdo=database(); $user=authenticated_user($pdo);
+    $pdo->beginTransaction();
+    try {
+        $doc=document_repository_detail($pdo,$user,$params['id']);
+        fail_unless($doc!==null,'Document not found.',404);
+        $pdo->commit(); respond(['data'=>$doc]);
+    } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
+}
 [$pdo,$user]=document_read_context();
 $params=document_read_params(['id','trackingNumber','barcode','page','limit','status','classification','documentType','priority','workflowTemplateId','assignedUser','assignedRole','assignedTeam','dateFrom','dateTo','registry','isLegacyV1']);
 $identifiers=array_intersect(['id','trackingNumber','barcode'],array_keys($params));

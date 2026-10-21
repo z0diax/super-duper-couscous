@@ -1,6 +1,15 @@
 import { request } from './http';
 import type { LeaveApplicationRecord, LeaveType, EwpRecord, AuditEvent } from '../types';
 
+export type LeaveSuggestionCategory = 'medical' | 'destination';
+export interface LeaveSuggestion { id: string; value: string }
+export const leaveSuggestionCategory = (type: LeaveType): LeaveSuggestionCategory | undefined =>
+  type === 'Sick Leave' ? 'medical' : type === 'Vacation Leave' || type === 'Special Privilege Leave' ? 'destination' : undefined;
+export const searchLeaveSuggestions = (category: LeaveSuggestionCategory, q: string, locationType: string, signal?: AbortSignal): Promise<{ items: LeaveSuggestion[] }> =>
+  request(`leave_suggestions.php?${new URLSearchParams({ category, q, locationType })}`, { signal });
+export const saveLeaveSuggestion = (category: LeaveSuggestionCategory, value: string, locationType: string): Promise<{ item: LeaveSuggestion; created: boolean }> =>
+  request('leave_suggestions.php', { method: 'POST', body: JSON.stringify({ category, value, locationType }) });
+
 export interface LeaveRegistryResponse {
   items: LeaveApplicationRecord[];
   pagination: { page: number; pageSize: number; totalRecords: number; totalPages: number };

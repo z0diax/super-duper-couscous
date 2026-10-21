@@ -78,12 +78,14 @@ function routing_action(PDO $pdo,array $user,array $data): array {
 }
 
 function routing_delete(PDO $pdo,array $user,array $data): array {
-    require_cap(document_repository_role_state($pdo,$user),$user,'canAdmin');
     $id=required($data,'documentId');
     $q=$pdo->prepare('SELECT source_json FROM documents WHERE id=? FOR UPDATE');$q->execute([$id]);$json=$q->fetchColumn();
     fail_unless($json!==false,'Record not found.',404);
     $doc=json_decode($json,true,64,JSON_THROW_ON_ERROR);
     fail_unless(($doc['routingMode']??'')==='dynamic' && ($doc['classification']??'')==='Others','Use the existing delete action for predefined workflow documents.',409);
+    document_management_assert_delete($doc,$user,document_repository_role_state($pdo,$user),document_repository_audit($pdo,$id));
+    $policy=document_management_permissions($doc,$user,document_repository_role_state($pdo,$user),document_repository_audit($pdo,$id));
+    fail_unless(hash_equals($policy['version'],required($data,'expectedVersion',64)),'The document changed. Reopen it before deletion.',409);
     // Retain a deletion audit, including the custody chain, before removing
     // the normalized record. The endpoint owns the enclosing transaction.
     audit($pdo,$user,'DOCUMENT_DELETED',$id,'Document deleted',p2_json(['routingMode'=>'dynamic','status'=>$doc['status'],'custodyHistory'=>$doc['custodyHistory']??[]]),$doc['trackingNumber']);

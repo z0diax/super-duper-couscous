@@ -445,7 +445,17 @@ export interface AuditEvent {
   stepNumber?: number;
 }
 
+export interface DocumentManagementPermissions {
+  canEdit: boolean;
+  canDelete: boolean;
+  mode: 'edit' | 'correction' | null;
+  processingStarted: boolean | null;
+  version: string;
+  restriction: string | null;
+}
+
 export interface DocumentRecord {
+  management?: DocumentManagementPermissions;
   id: string;
   trackingNumber: string;
   barcode?: string;

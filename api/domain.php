@@ -150,7 +150,8 @@ function filter_state_for_view(array $s,array $u): array {
     $s['documents']=$visibleDocuments; $s['payrollItems']=$visibleItems; $s['workGroups']=$visibleGroups; $s['payrollBatches']=$visibleBatches;
     $s['leaveApplications']=$visibleLeaves;
     $s['ewpRecords']=$visibleEwp;
-    $s['auditLogs']=array_values(array_filter($s['auditLogs'],fn($event)=>($event['actorId']??null)===$u['id'] || in_array($event['documentId']??'', $visibleIds,true)));
+    $canReadDeletionAudit=has_cap($s,$u,'canAdmin');
+    $s['auditLogs']=array_values(array_filter($s['auditLogs'],fn($event)=>($event['actorId']??null)===$u['id'] || in_array($event['documentId']??'', $visibleIds,true) || ($canReadDeletionAudit && ($event['actionType']??'')==='DOCUMENT_DELETED')));
     return $s;
 }
 function assert_barcode(array $s,string $barcode,array $additional=[],string $excludeLeaveId=''): void {
@@ -441,7 +442,10 @@ function register_document(PDO $pdo,array &$s,array $u,array $d): array {
     $s['documents'][]=$doc; return $doc;
 }
 function delete_document(PDO $pdo,array &$s,array $u,string $documentId): bool {
-    require_cap($s,$u,'canAdmin'); $i=index_of($s['documents'],$documentId); $doc=$s['documents'][$i];
+    require_once __DIR__.'/document_management_policy.php';
+    $i=index_of($s['documents'],$documentId); $doc=$s['documents'][$i];
+    if (($doc['classification']??'')==='Payroll') require_cap($s,$u,'canAdmin');
+    else document_management_assert_delete($doc,$u,$s,$s['auditLogs']??[]);
     $s['documents']=array_values(array_filter($s['documents'],fn($record)=>$record['id']!==$doc['id']));
     // A single payroll voucher has a document-backed payroll item.  Removing the
     // document must also remove that dependent item so it cannot remain in a queue.

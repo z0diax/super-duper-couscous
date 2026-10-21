@@ -11,6 +11,7 @@ import { SYSTEM_THEMES } from '../theme/themeRegistry';
 import { ThemeNavEffects } from '../theme/ThemeEffects';
 import { previewWeatherLocation, type WeatherPreview } from '../services/themeApi';
 import { searchShellDocuments, type ShellDocumentRow } from '../services/documentApi';
+import { useResourceInvalidation } from '../services/resourceInvalidation';
 import type { DocumentShellSnapshot } from '../services/useDocumentShellSummary';
 import { getPayrollBatchDetail, searchPayroll, type PayrollSearchBatch, type PayrollSearchItem } from '../services/payrollApi';
 import type { PayrollShellSnapshot } from '../services/usePayrollShellSummary';
@@ -80,6 +81,12 @@ export const Header: React.FC<HeaderProps> = ({ documentShell, payrollShell, onO
   const [searchError,setSearchError]=useState(false);
   const [searchTotal,setSearchTotal]=useState(0);
   const searchRequestId=useRef(0);
+  const documentInvalidation=useResourceInvalidation('document');
+  useEffect(()=>{
+    if(documentInvalidation===0)return;
+    searchRequestId.current++;
+    setSearchResults(null);setSearchLoading(false);setSearchError(false);
+  },[documentInvalidation]);
   useEffect(()=>()=>{searchRequestId.current++;},[currentUser.id]);
   const [isPersonaOpen, setIsPersonaOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);

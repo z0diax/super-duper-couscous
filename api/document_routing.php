@@ -15,5 +15,7 @@ try {
         'delete'=>routing_delete($pdo,$user,$data),
         default=>routing_action($pdo,$user,$data),
     };
-    $pdo->exec('UPDATE app_meta SET revision=revision+1 WHERE id=1');$pdo->commit();respond(['data'=>$doc]);
+    $pdo->exec('UPDATE app_meta SET revision=revision+1 WHERE id=1');
+    if (empty($doc['deleted'])) $doc['management']=document_management_permissions($doc,$user,document_repository_role_state($pdo,$user),document_repository_audit($pdo,$doc['id']));
+    $pdo->commit();respond(['data'=>$doc]);
 } catch(Throwable $e) { if($pdo->inTransaction())$pdo->rollBack();throw $e; }

@@ -5,8 +5,8 @@ import { uploadFiles, deleteUnattachedUpload, downloadUrl } from './http';
 import { invalidateResource } from './resourceInvalidation';
 
 export const getRoutingPeople = async (): Promise<UserAccount[]> => (await request('document_routing.php')).data;
-export async function deleteRoutedDocument(documentId: string): Promise<boolean> {
-  const result=await request('document_routing.php',{method:'POST',body:JSON.stringify({action:'delete',documentId})});
+export async function deleteRoutedDocument(documentId: string, expectedVersion: string): Promise<boolean> {
+  const result=await request('document_routing.php',{method:'POST',body:JSON.stringify({action:'delete',documentId,expectedVersion})});
   invalidateResource('document');invalidateResource('dashboard');
   return result.data.deleted===true;
 }
@@ -69,6 +69,7 @@ export interface DocumentTaskPage {
 }
 
 export interface RegistryRow {
+  management?: DocumentRecord['management'];
   routingMode?: 'dynamic';
   id: string; trackingNumber: string; title: string; subject: string;
   sourceOffice: string; senderName: string; classification: DocumentClassification;
@@ -77,6 +78,7 @@ export interface RegistryRow {
   totalSteps: number; currentLocation?: string; currentStepName?: string; isLegacyV1: boolean;
 }
 interface RegistryWireRow {
+  management?: DocumentRecord['management'];
   routing_mode?: 'dynamic' | null;
   id: string; tracking_number: string; title: string; subject: string | null;
   source_office: string; sender_name: string; classification: DocumentClassification;
@@ -107,6 +109,7 @@ export async function listRegistryDocuments(filters: RegistryFilters, page = 1, 
   const params = paramsFor(filters); params.set('page', String(page)); params.set('limit', String(limit));
   const result = await request(`documents.php?${params}`) as { data: RegistryWireRow[]; pagination: RegistryPage['pagination']; registryCounts: RegistryCounts };
   return { pagination: result.pagination, registryCounts: result.registryCounts, data: result.data.map(row => ({
+    management: row.management,
     routingMode:row.routing_mode || undefined, id: row.id, trackingNumber: row.tracking_number, title: row.title, subject: row.subject || '',
     sourceOffice: row.source_office, senderName: row.sender_name, classification: row.classification,
     documentType: row.document_type, employmentClassification: row.employment_classification || undefined,
@@ -142,6 +145,16 @@ export const getDocumentDetailByTrackingNumber = (value: string): Promise<Docume
   documentDetail(`trackingNumber=${encodeURIComponent(value)}`);
 export const getDocumentDetailByBarcode = (value: string): Promise<DocumentDetailPayload> =>
   documentDetail(`barcode=${encodeURIComponent(value)}`);
+export const getDocumentForManagement = async (id: string): Promise<DocumentRecord> =>
+  (await request(`documents.php?manage=1&id=${encodeURIComponent(id)}`)).data;
+export async function manageDocument(data: { action: 'edit' | 'correct' | 'delete'; documentId: string; expectedVersion: string; reason: string; fields?: Record<string,string> }): Promise<DocumentRecord | { id: string; trackingNumber: string; deleted: true }> {
+  const result=await request('documents.php',{method:'POST',body:JSON.stringify(data)});
+  if (!result.data?.id || !result.data?.trackingNumber || (data.action==='delete' && result.data.deleted!==true)) {
+    throw new Error('The server did not confirm your change. Review the document before retrying.');
+  }
+  invalidateResource('document');invalidateResource('dashboard');
+  return result.data;
+}
 export async function exportRegistryCsv(filters: RegistryFilters): Promise<void> {
   const response = await fetch(`${apiEndpoint('document_registry_export.php')}?${paramsFor(filters)}`, { credentials: 'same-origin', headers: { Accept: 'text/csv' } });
   if (!response.ok) throw new ApiError('Could not export the registry. Please try again.', response.status);

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 // Read-only normalized repository. app_records remains authoritative for writes.
 require_once __DIR__.'/domain.php';
+require_once __DIR__.'/document_management_policy.php';
 
 const DOCUMENT_LIST_COLUMNS='d.id,d.tracking_number,d.barcode,d.title,d.subject,d.source_office,d.sender_name,d.classification,d.document_type,d.employment_classification,d.priority,d.status,d.date_received,d.current_step_number,d.total_steps,d.current_location,d.workflow_template_id,d.encoded_by_user_id,d.is_legacy_v1,(SELECT s.name FROM document_workflow_steps s WHERE s.document_id=d.id AND s.step_number=d.current_step_number) AS current_step_name,(SELECT CASE WHEN s.assignment_source=\'dynamic\' THEN \'dynamic\' ELSE NULL END FROM document_workflow_steps s WHERE s.document_id=d.id AND s.step_number=d.current_step_number) AS routing_mode';
 
@@ -91,9 +92,17 @@ function document_repository_list(PDO $pdo,array $user,array $filters=[],int $pa
     $count=$pdo->prepare("SELECT COUNT(*) FROM documents d WHERE $where"); document_repository_bind($count,$params); $count->execute();
     $total=(int)$count->fetchColumn();
     $order=isset($filters['registry'])?'d.id ASC':'d.date_received DESC,d.id DESC';
-    $query=$pdo->prepare('SELECT '.DOCUMENT_LIST_COLUMNS." FROM documents d WHERE $where ORDER BY $order LIMIT ? OFFSET ?");
+    $query=$pdo->prepare('SELECT '.DOCUMENT_LIST_COLUMNS.(isset($filters['registry'])?',d.source_json':'')." FROM documents d WHERE $where ORDER BY $order LIMIT ? OFFSET ?");
     document_repository_bind($query,[...$params,$limit,$offset]); $query->execute();
-    $result=['items'=>$query->fetchAll(),'page'=>$page,'limit'=>$limit,'total'=>$total,'totalPages'=>(int)ceil($total/$limit)];
+    $items=$query->fetchAll();
+    if (isset($filters['registry'])) {
+        $events=document_management_events($pdo,array_column($items,'id'));
+        foreach ($items as &$item) {
+            $item['management']=document_management_permissions(json_decode($item['source_json'],true,64,JSON_THROW_ON_ERROR),$user,$roleState,$events);
+            unset($item['source_json']);
+        } unset($item);
+    }
+    $result=['items'=>$items,'page'=>$page,'limit'=>$limit,'total'=>$total,'totalPages'=>(int)ceil($total/$limit)];
     if (isset($filters['registry'])) $result['registryCounts']=document_repository_registry_counts($pdo,$user);
     return $result;
 }
@@ -171,7 +180,14 @@ function document_repository_detail(PDO $pdo,array $user,string $id): ?array {
     $document['attachments']=$attachments['normal'];
     if (array_key_exists('complianceAttachments',$document) || $attachments['compliance']) $document['complianceAttachments']=$attachments['compliance'];
     if (array_key_exists('custodyHistory',$document)) $document['custodyHistory']=document_repository_children($pdo,'document_custody_history',$id);
+    $document['management']=document_management_permissions($document,$user,document_repository_role_state($pdo,$user),document_repository_audit($pdo,$id));
     return $document;
+}
+function document_management_events(PDO $pdo,array $ids): array {
+    if (!$ids) return [];
+    $q=$pdo->prepare("SELECT record_json FROM app_audit WHERE JSON_UNQUOTE(JSON_EXTRACT(record_json,'$.documentId')) IN (".implode(',',array_fill(0,count($ids),'?')).')');
+    $q->execute($ids);
+    return array_map(fn($row)=>json_decode($row['record_json'],true,64,JSON_THROW_ON_ERROR),$q->fetchAll());
 }
 function document_repository_audit(PDO $pdo,string $documentId): array {
     // The caller has already authorized this document through document_repository_detail().

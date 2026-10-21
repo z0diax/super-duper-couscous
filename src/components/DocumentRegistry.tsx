@@ -5,7 +5,8 @@ import { useResourceInvalidation } from '../services/resourceInvalidation';
 import { DocumentRecord } from '../types';
 import { useWorkspaceState } from '../services/workspace';
 import { documentSenderLabel } from '../services/documentDisplay';
-import { deleteRoutedDocument, exportRegistryCsv, listRegistryDocuments, type RegistryCounts, type RegistryPage, type RegistryRow } from '../services/documentApi';
+import { exportRegistryCsv, listRegistryDocuments, type RegistryCounts, type RegistryPage, type RegistryRow } from '../services/documentApi';
+import { DocumentManagementModal } from './DocumentManagementModal';
 import { 
   FileStack, 
   Filter, 
@@ -14,10 +15,11 @@ import {
   Clock, 
   Database, 
   ExternalLink,
-  ChevronRight,
+  Eye,
   ShieldCheck,
   CheckCircle2,
-  Trash2
+  Trash2,
+  FilePenLine
 } from 'lucide-react';
 
 interface DocumentRegistryProps {
@@ -25,7 +27,7 @@ interface DocumentRegistryProps {
 }
 
 export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegisterModal }) => {
-  const { documents, setSelectedDocument, openTargetedDocument, showToast, deleteDocument, can, currentUser, stateRevision } = useApp();
+  const { documents, setSelectedDocument, openTargetedDocument, showToast, currentUser, stateRevision } = useApp();
   const invalidation=useResourceInvalidation('document');
   const targeted = import.meta.env.VITE_DOCUMENT_REGISTRY_TARGETED_READS === '1';
   const targetedDetail = import.meta.env.VITE_DOCUMENT_DETAIL_TARGETED_READS === '1';
@@ -34,11 +36,9 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
   const [classificationFilter, setClassificationFilter] = useWorkspaceState<string>(currentUser.id, 'registry.classification-filter', 'all');
   const [statusFilter, setStatusFilter] = useWorkspaceState<string>(currentUser.id, 'registry.status-filter', 'all');
   const [priorityFilter, setPriorityFilter] = useWorkspaceState<string>(currentUser.id, 'registry.priority-filter', 'all');
-  const [deleteConfirmDocumentId, setDeleteConfirmDocumentId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const deleteInFlight=useRef(false);
+  const [managementDialog,setManagementDialog]=useState<{id:string;intent:'edit'|'delete'}|null>(null);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(10);
   const [targetPage, setTargetPage] = useState<RegistryPage | null>(null);
   const [loading, setLoading] = useState(targeted);
   const [error, setError] = useState(false);
@@ -66,7 +66,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
     lastQuery.current=query;setError(false);
     listRegistryDocuments(filters, page, pageSize).then(result => {
       if (id !== requestId.current) return;
-      if (page > 1 && result.pagination.totalPages > 0 && page > result.pagination.totalPages) { setPage(result.pagination.totalPages); return; }
+      if (page > Math.max(1, result.pagination.totalPages)) { setPage(Math.max(1, result.pagination.totalPages)); return; }
       setTargetPage(result); setLoading(false);
     }).catch(() => { if (id === requestId.current) { setTargetPage(null); setLoading(false); setError(true); } });
     return () => { requestId.current++; };
@@ -76,18 +76,6 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
   const updateStatus = (value: string) => { setPage(1); setStatusFilter(value); };
   const updatePriority = (value: string) => { setPage(1); setPriorityFilter(value); };
 
-  const handleDeleteDocument = async (documentId: string) => {
-    if(deleteInFlight.current)return;
-    deleteInFlight.current=true;setDeleting(true);
-    try {
-      const dynamic=(targeted ? targetPage?.data.find(row=>row.id===documentId) : documents.find(doc=>doc.id===documentId))?.routingMode==='dynamic';
-      if (!(await (dynamic ? deleteRoutedDocument(documentId) : deleteDocument(documentId)))) return;
-      setDeleteConfirmDocumentId(null);
-      if(dynamic)showToast('success','Document deleted','The document has been removed from the registry.');
-    } catch(error) {
-      showToast('error','Document was not deleted',error instanceof Error?error.message:'Please try again.');
-    } finally {deleteInFlight.current=false;setDeleting(false);}
-  };
 
   const filteredDocs = registryDocuments.filter(doc => {
     // Dataset filter
@@ -105,7 +93,13 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
 
     return true;
   });
-  const rows: RegistryRow[] = targeted ? targetPage?.data || [] : filteredDocs.map(doc => ({
+  const totalRecords = targeted ? targetPage?.pagination.total ?? 0 : filteredDocs.length;
+  const totalPages = Math.max(1, targeted ? targetPage?.pagination.totalPages ?? 1 : Math.ceil(totalRecords / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  useEffect(() => {
+    if (!targeted && page > totalPages) setPage(totalPages);
+  }, [targeted, page, totalPages]);
+  const rows: RegistryRow[] = targeted ? targetPage?.data || [] : filteredDocs.slice((currentPage - 1) * pageSize, currentPage * pageSize).map(doc => ({
     id: doc.id, trackingNumber: doc.trackingNumber, title: doc.title, subject: doc.subject,
     sourceOffice: doc.sourceOffice, senderName: doc.senderName, classification: doc.classification,
     documentType: doc.documentType, employmentClassification: doc.employmentClassification,
@@ -114,6 +108,7 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
     currentStepName: doc.workflowSteps.find(step => step.stepNumber === doc.currentStepNumber)?.name,
     isLegacyV1: !!doc.isLegacyV1,
     routingMode: doc.routingMode,
+    management: doc.management,
   }));
   const counts: RegistryCounts = targeted ? targetPage?.registryCounts || { all: 0, v1: 0, v2: 0, outside: 0 } : {
     all: registryDocuments.length, v1: registryDocuments.filter(doc => doc.isLegacyV1).length,
@@ -385,26 +380,23 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
                       {/* Action */}
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1">
-                          {can('canAdmin') && (deleteConfirmDocumentId === doc.id ? (
-                            <>
-                              <button type="button" disabled={deleting} onClick={event => { event.stopPropagation(); void handleDeleteDocument(doc.id); }} className="rounded bg-rose-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-rose-700 disabled:opacity-50">{deleting?'Deleting...':'Confirm'}</button>
-                              <button type="button" disabled={deleting} onClick={event => { event.stopPropagation(); setDeleteConfirmDocumentId(null); }} className="rounded px-1.5 py-1 text-[10px] font-semibold text-slate-500 hover:bg-slate-100">Cancel</button>
-                            </>
-                          ) : (
-                            <button type="button" aria-label={`Delete ${doc.trackingNumber}`} title="Delete document" onClick={event => { event.stopPropagation(); setDeleteConfirmDocumentId(doc.id); }} className="rounded p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700">
+                          {doc.management?.canEdit && <button type="button" aria-label={`${doc.management.mode==='correction'?'Correct':'Edit'} ${doc.trackingNumber}`} title={doc.management.mode==='correction'?'Correct descriptive metadata':'Edit document'} onClick={event=>{event.stopPropagation();setManagementDialog({id:doc.id,intent:'edit'});}} className="rounded p-1.5 text-blue-600 hover:bg-blue-50"><FilePenLine className="h-4 w-4"/></button>}
+                          {doc.management?.canDelete && (
+                            <button type="button" aria-label={`Delete ${doc.trackingNumber}`} title="Delete document" onClick={event => { event.stopPropagation(); setManagementDialog({id:doc.id,intent:'delete'}); }} className="rounded p-1.5 text-rose-500 hover:bg-rose-50 hover:text-rose-700">
                               <Trash2 className="h-4 w-4" />
                             </button>
-                          ))}
+                          )}
                           <button
                             id={`btn-open-doc-reg-${doc.id}`}
+                            aria-label={`View ${doc.trackingNumber}`}
+                            title="View document"
                             onClick={e => {
                               e.stopPropagation();
                               openDocument(doc.id);
                             }}
-                            className="px-2.5 py-1 text-xs font-medium text-blue-600 hover:text-white hover:bg-blue-600 border border-blue-200 hover:border-blue-600 rounded transition-all inline-flex items-center gap-1 cursor-pointer"
+                            className="rounded p-1.5 text-blue-600 hover:bg-blue-50"
                           >
-                            <span>Inspect</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
+                            <Eye className="h-4 w-4" />
                           </button>
                         </div>
                       </td>
@@ -416,17 +408,20 @@ export const DocumentRegistry: React.FC<DocumentRegistryProps> = ({ onOpenRegist
           </div>
         )}
       </div>
-      {targeted && !loading && !error && targetPage && (
+      {managementDialog && <DocumentManagementModal key={managementDialog.id+managementDialog.intent} documentId={managementDialog.id} intent={managementDialog.intent} onClose={()=>setManagementDialog(null)} onSaved={()=>{
+        showToast('success',managementDialog.intent==='delete'?'Document deleted':'Document saved','The database has confirmed your change.');setManagementDialog(null);
+      }}/>}
+      {(!targeted || (!loading && !error && targetPage)) && (
         <nav aria-label="Registry pages" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-700">
-          <span>{targetPage.pagination.total} matching records</span>
-          <div className="flex items-center gap-2">
+          <span>Showing {totalRecords === 0 ? 0 : (currentPage - 1) * pageSize + 1}–{Math.min(currentPage * pageSize, totalRecords)} of {totalRecords} matching records</span>
+          <div className="flex flex-wrap items-center gap-2">
             <label htmlFor="registry-page-size">Rows per page</label>
             <select id="registry-page-size" value={pageSize} onChange={event => { setPage(1); setPageSize(Number(event.target.value)); }} className="rounded border border-slate-200 px-2 py-1">
-              <option value={25}>25</option><option value={50}>50</option><option value={100}>100</option>
+              <option value={10}>10</option><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option>
             </select>
-            <button type="button" onClick={() => setPage(value => Math.max(1, value - 1))} disabled={page <= 1} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Previous</button>
-            <span>Page {page} of {Math.max(1, targetPage.pagination.totalPages)}</span>
-            <button type="button" onClick={() => setPage(value => Math.min(targetPage.pagination.totalPages, value + 1))} disabled={page >= targetPage.pagination.totalPages} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Next</button>
+            <button type="button" onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Previous</button>
+            <span>Page {currentPage} of {totalPages}</span>
+            <button type="button" onClick={() => setPage(Math.min(totalPages, currentPage + 1))} disabled={currentPage >= totalPages} className="rounded border border-slate-200 px-2 py-1 disabled:opacity-40">Next</button>
           </div>
         </nav>
       )}

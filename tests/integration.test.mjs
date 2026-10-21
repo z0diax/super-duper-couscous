@@ -440,7 +440,7 @@ test('single payroll follows configured workflow and synchronizes its item on re
   assert.equal(admin.state.payrollItems.some(record=>record.documentId===single.id),false);
   await admin.action('updateEmploymentRoutingRule',[{...regularRule,assignmentMode:'fixed',primaryProcessorId:processingUser.id}]);
 });
-test('only the system administrator can delete an ordinary document',async()=>{
+test('non-creators cannot delete an ordinary unprocessed document',async()=>{
   const record=(await admin.action('registerDocument',[documentData('DELETE-DOCUMENT-001')])).result;
   await employee.action('deleteDocument',[record.id],403);
   await admin.action('deleteDocument',[record.id]);

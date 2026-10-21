@@ -8,6 +8,8 @@ import { readWorkspaceValue, writeWorkspaceValue } from '../services/workspace';
 import { OFFICE_OPTIONS } from '../data/offices';
 import { LeaveDateRangePicker } from './LeaveDateRangePicker';
 import { LeaveDatesCalendar } from './LeaveDatesCalendar';
+import { LeaveDetailsAutocomplete } from './LeaveDetailsAutocomplete';
+import { leaveSuggestionCategory } from '../services/leaveApi';
 
 const LEAVE_TYPES: LeaveType[] = [
   'COC', 'Vacation Leave', 'Mandatory / Forced Leave', 'Sick Leave', 'Wellness Leave',
@@ -344,7 +346,10 @@ export const LeaveContinuity: React.FC = () => {
               </select>
             </label>}
             {detailLabels(leaveType)[1] && <label className={`${detailLabels(leaveType)[0] ? 'mt-3' : ''} block font-semibold text-slate-700`}>{detailLabels(leaveType)[1]}{(leaveType === 'Sick Leave' || (leaveType === 'Others' && leaveSubtype === 'OTHER')) && ' *'}
-              <textarea id="input-leave-specific-details" required={leaveType === 'Sick Leave' || (leaveType === 'Others' && leaveSubtype === 'OTHER')} value={leaveDetails} onChange={event => setLeaveDetails(event.target.value)} rows={2} placeholder={leaveType === 'Vacation Leave' ? 'e.g. Cebu City or Japan' : leaveType === 'Sick Leave' ? 'Brief business-required illness information' : ''} className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" />
+              {leaveSuggestionCategory(leaveType) ? <LeaveDetailsAutocomplete key={`${currentUser.id}:${leaveType}:${leaveSubtype}`} category={leaveSuggestionCategory(leaveType)!}
+                locationType={leaveType === 'Sick Leave' ? '' : leaveSubtype} value={leaveDetails} onChange={setLeaveDetails}
+                required={leaveType === 'Sick Leave'} placeholder={leaveType === 'Sick Leave' ? 'Brief business-required illness information' : 'e.g. Cebu City or Japan'} /> :
+              <textarea id="input-leave-specific-details" maxLength={2000} required={leaveType === 'Others' && leaveSubtype === 'OTHER'} value={leaveDetails} onChange={event => setLeaveDetails(event.target.value)} rows={2} className="mt-1 w-full resize-y rounded-lg border border-slate-300 bg-white p-2.5 font-normal outline-none focus:ring-2 focus:ring-blue-100" />}
             </label>}
           </section>}
           {intakeMode==='leave'&&<section className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-bold text-slate-800">Leave Dates</h3><p className="text-[10px] text-slate-500">Select the first and last date on the calendar. Saturdays and Sundays are skipped automatically. Add another range only for other non-consecutive dates.</p></div><button id="btn-add-leave-range" type="button" onClick={() => setDateRanges(previous => [...previous, emptyDateRange()])} className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 font-semibold text-blue-700 hover:bg-blue-50"><Plus className="h-3.5 w-3.5" /> Add Range</button></div>

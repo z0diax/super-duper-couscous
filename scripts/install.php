@@ -8,6 +8,7 @@ $pdo->exec('USE `'.$c['database'].'`');
 foreach (explode(';',file_get_contents(dirname(__DIR__).'/database/schema.sql')) as $sql) if (trim($sql)!=='') $pdo->exec($sql);
 foreach (explode(';',file_get_contents(dirname(__DIR__).'/database/phase2_documents_workflow.sql')) as $sql) if (trim($sql)!=='') $pdo->exec($sql);
 foreach (explode(';',file_get_contents(dirname(__DIR__).'/database/phase9_payroll_reads.sql')) as $sql) if (trim($sql)!=='') $pdo->exec($sql);
+foreach (explode(';',file_get_contents(dirname(__DIR__).'/database/leave_suggestions.sql')) as $sql) if (trim($sql)!=='') $pdo->exec($sql);
 $configRevision=$pdo->query("SHOW COLUMNS FROM app_meta LIKE 'config_revision'")->fetchAll();
 if (!$configRevision) $pdo->exec('ALTER TABLE app_meta ADD COLUMN config_revision BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER revision');
 $payrollUpdated=$pdo->query("SHOW COLUMNS FROM payroll_read_batches LIKE 'updated_at'")->fetchAll();

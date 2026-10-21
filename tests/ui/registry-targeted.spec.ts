@@ -18,19 +18,20 @@ test('targeted registry loads server pages, sends filters, and ignores older res
   const queries: URLSearchParams[]=[];
   await page.route('**/api/documents.php?*', async route => {
     const params=new URL(route.request().url()).searchParams; queries.push(params);
-    const current=Number(params.get('page') || 1), limit=Number(params.get('limit') || 25);
+    const current=Number(params.get('page') || 1), limit=Number(params.get('limit') || 10);
     if (params.get('status')==='Pending_Approval') await new Promise(resolve=>setTimeout(resolve,350));
     else await new Promise(resolve=>setTimeout(resolve,80));
-    const items=params.get('priority')==='Urgent'?[row(99)]:params.get('status')==='Pending_Approval'?[row(98)]:Array.from({length:current===1?25:1},(_,i)=>row((current-1)*25+i+1));
+    const items=params.get('priority')==='Urgent'?[row(99)]:params.get('status')==='Pending_Approval'?[row(98)]:Array.from({length:Math.min(limit,26-(current-1)*limit)},(_,i)=>row((current-1)*limit+i+1));
     await route.fulfill({ contentType:'application/json', body:JSON.stringify(response(items,current,limit,params.has('priority')||params.has('status')?1:26,26)) });
   });
   await login(page);
   await expect(page.getByRole('status').filter({hasText:'Loading registry records'})).toBeVisible();
   await expect(page.getByText('Visible 1', {exact:true})).toBeVisible();
-  await expect(page.getByText('Page 1 of 2')).toBeVisible();
+  await expect(page.locator('tbody tr')).toHaveCount(10);
+  await expect(page.getByText('Page 1 of 3')).toBeVisible();
   await page.getByRole('button',{name:'Next'}).click();
-  await expect(page.getByText('Visible 26',{exact:true})).toBeVisible();
-  await expect(page.getByText('Page 2 of 2')).toBeVisible();
+  await expect(page.getByText('Visible 11',{exact:true})).toBeVisible();
+  await expect(page.getByText('Page 2 of 3')).toBeVisible();
   await page.getByRole('button',{name:'Previous'}).click();
   await expect(page.getByText('Visible 1',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Next'}).click();
@@ -43,6 +44,7 @@ test('targeted registry loads server pages, sends filters, and ignores older res
   expect(queries.some(query=>query.get('page')==='2')).toBe(true);
   expect(queries.some(query=>query.get('status')==='Pending_Approval'&&query.get('priority')==='Urgent'&&query.get('page')==='1')).toBe(true);
   expect(queries.every(query=>query.get('registry')==='1')).toBe(true);
+  expect(queries.every(query=>query.get('limit')==='10')).toBe(true);
   await page.locator('#registry-page-size').selectOption('100');
   await expect(page.getByText('Page 1 of 1')).toBeVisible();
   await expect(page.getByRole('button',{name:'Next'})).toBeDisabled();
@@ -85,7 +87,7 @@ test('targeted registry row opens detail according to the independent Detail fla
   });
   await login(page);
   await expect(page.getByText('Targeted detail record',{exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'Inspect'}).click();
+  await page.getByRole('button',{name:/^View /}).click();
   await expect(page.locator('#btn-close-detail-modal')).toBeVisible();
   expect(detailRequests).toBe(process.env.VITE_DOCUMENT_DETAIL_TARGETED_READS==='1'?1:0);
   await page.locator('#btn-close-detail-modal').click();

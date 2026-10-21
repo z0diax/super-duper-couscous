@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__.'/management.php';
 require_once __DIR__.'/payroll.php';
 require_once __DIR__.'/document_repository.php';
+require_once __DIR__.'/leave_suggestion_history.php';
 $pdo=database(); $user=authenticated_user($pdo); $method=$_SERVER['REQUEST_METHOD'];
 fail_unless(in_array($method,['GET','POST'],true),'Use GET to read or POST an operation.',405);
 $body=[];
@@ -18,7 +19,10 @@ try {
         fail_unless(isset($body['revision']) && $body['revision']===$revision,'Another officer changed the records. Refresh, review the latest data, and submit again.',409);
         $action=required($body,'action',80); $args=$body['args']??[]; fail_unless(is_array($args),'Operation arguments are required.'); $before=$state;
         if ($action==='registerDocument') $result=register_document($pdo,$state,$user,$args[0]??[]);
-        elseif ($action==='deleteDocument') $result=delete_document($pdo,$state,$user,(string)($args[0]??''));
+        elseif ($action==='deleteDocument') {
+            $deletionSnapshot=$state['documents'][index_of($state['documents'],(string)($args[0]??''))];
+            $result=delete_document($pdo,$state,$user,(string)($args[0]??''));
+        }
         elseif (in_array($action,['claimTask','completeStep','returnStep','reassignTask','approveDocument','releaseDocument','addDocumentRemark','uploadSupportingFile','placeDocumentHold','submitDocumentCompliance','recheckDocumentHold','recordExternalHandoff','recordExternalReturn'],true)) $result=document_action($pdo,$state,$user,$action,$args);
         elseif (in_array($action,['registerSinglePayroll','registerPayrollBatch','updatePayrollBatch','deletePayrollBatch','updatePayrollItemClassification','bulkClassifyPayrollItems','markPayrollItemException','clearPayrollItemException','recordPayrollItemCompliance','recheckPayrollItem','placePayrollItemHold','submitPayrollItemCompliance','resumePayrollItemHold','completeInitialCheckingAndRoute','completePayrollItemInitialCheckingAndRoute','processWorkGroupItems','releasePayrollBatch'],true)) $result=payroll_action($pdo,$state,$user,$action,$args);
         elseif ($action==='fileLeaveApplication') {
@@ -104,6 +108,7 @@ try {
         $configChanged=in_array($action,['addUser','updateUser','deleteUser','changePassword'],true);
         foreach (['users','systemRoles','assigneeDesignations','classifications','workflowTemplates','employmentRoutingRules'] as $key) if (($before[$key]??[])!==($state[$key]??[])) { $configChanged=true; break; }
         persist_state($pdo,$before,$state);
+        if (in_array($action,['fileLeaveApplication','updateLeaveApplication'],true) && is_array($result)) remember_leave_history_suggestion($pdo,$result);
         $id=is_array($result)?($result['id']??'system'):(is_string($args[0]??null)?$args[0]:'system');
         $details='';
         if (in_array($action,['addUser','updateUser','changePassword'],true)) $details='Account credentials or profile updated.';
@@ -146,7 +151,8 @@ try {
             $auditAction='DOCUMENT_DISAPPROVED';
             $auditSummary='External review disapproved document';
         }
-        audit($pdo,$user,$auditAction,$id,$auditSummary,$details,is_array($result)?($result['trackingNumber']??$result['batchNumber']??$result['barcode']??''):'');
+        if (isset($deletionSnapshot)) $details=p2_json(['reason'=>'Deleted before processing began.','document'=>$deletionSnapshot]);
+        audit($pdo,$user,$auditAction,$id,$auditSummary,$details,isset($deletionSnapshot)?$deletionSnapshot['trackingNumber']:(is_array($result)?($result['trackingNumber']??$result['batchNumber']??$result['barcode']??''):''));
         $pdo->exec('UPDATE app_meta SET revision=revision+1'.($configChanged?',config_revision=config_revision+1':'').' WHERE id=1'); $revision++;if($configChanged)$configRevision++;
         $state=load_state($pdo); payroll_attach_batch_progress($state);
     }
@@ -158,5 +164,7 @@ try {
     // This supports mixed rollout builds without copying or rewriting records.
     $state['documents']=array_merge($state['documents'],document_repository_dynamic_snapshot($pdo,$user));
     $state=filter_state_for_view($state,$user);
+    foreach ($state['documents'] as &$doc) $doc['management']=document_management_permissions($doc,$user,$state,$state['auditLogs']);
+    unset($doc);
     $pdo->commit(); respond(['state'=>$state,'revision'=>$revision,'configRevision'=>$configRevision,'result'=>$result]);
 } catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }

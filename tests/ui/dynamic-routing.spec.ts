@@ -82,13 +82,17 @@ test('receiving officer sends Others, assignees forward and complete through the
     await page.reload();await expect(page.getByRole('button',{name:/^My Tasks & Queues/})).toBeVisible();
     await login('admin@example.test');
     await page.getByRole('button',{name:'Document Registry',exact:true}).click();
-    const remove=page.getByRole('button',{name:'Delete DYNAMIC-BROWSER',exact:true});
+    await expect(page.getByRole('button',{name:'Delete DYNAMIC-BROWSER',exact:true})).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'Edit DYNAMIC-BROWSER',exact:true})).toHaveCount(0);
+    await admin.request('document_routing.php','POST',{action:'register',classification:'Others',documentType:'Hiring',title:'Unprocessed deletion',sourceOffice:'HRMDO',barcode:'DYNAMIC-DELETE',initialAssigneeId:alice.id});
+    await page.reload();await page.getByRole('button',{name:'Document Registry',exact:true}).click();
+    const remove=page.getByRole('button',{name:'Delete DYNAMIC-DELETE',exact:true});
     await expect(remove).toBeVisible();await remove.click();
     await page.getByRole('button',{name:'Cancel',exact:true}).click();
     await expect(remove).toBeVisible();await remove.click();
-    await page.getByRole('button',{name:'Confirm',exact:true}).click();
-    await expect(page.getByText('Browser dynamic routing',{exact:true})).toHaveCount(0);
+    await page.getByRole('dialog',{name:'Delete Document'}).getByRole('button',{name:'Delete Document',exact:true}).click();
+    await expect(page.getByText('Unprocessed deletion',{exact:true})).toHaveCount(0);
     await page.reload();await page.getByRole('button',{name:'Document Registry',exact:true}).click();
-    await expect(page.getByRole('button',{name:'Delete DYNAMIC-BROWSER',exact:true})).toHaveCount(0);
+    await expect(page.getByRole('button',{name:'Delete DYNAMIC-DELETE',exact:true})).toHaveCount(0);
   } finally {await fixture.stop();}
 });
